@@ -84,7 +84,7 @@ export default function AppSidebar() {
           <div className="w-8 h-8 rounded-lg wine-gradient flex items-center justify-center">
             <Wine className="w-4 h-4 text-primary-foreground" />
           </div>
-          <h1 className="font-heading text-base font-semibold text-foreground">SimplyRest</h1>
+          <h1 className="font-heading text-base font-semibold text-foreground">Simply Rest</h1>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle className="p-1.5" />
@@ -103,8 +103,8 @@ export default function AppSidebar() {
               <Wine className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="font-heading text-lg font-semibold text-foreground">SimplyRest</h1>
-              <p className="text-xs text-muted-foreground">Wine Inventory</p>
+              <h1 className="font-heading text-lg font-semibold text-foreground">Simply Rest</h1>
+              <p className="text-xs text-muted-foreground">by Trusker Solutions</p>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 {
-  "name": "Cellar - Wine Inventory",
-  "short_name": "Cellar",
-  "description": "Smart Wine Inventory Management with AI Recognition",
+  "name": "Simply Rest — AI Restaurant Management",
+  "short_name": "Simply Rest",
+  "description": "AI-first restaurant management platform by Trusker Solutions",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#141420",
@@ -9,9 +9,9 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.ico",
-      "sizes": "64x64",
-      "type": "image/x-icon"
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png"
     }
   ]
 }
