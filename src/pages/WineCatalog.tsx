@@ -6,11 +6,12 @@ import { useColumnStore } from '@/stores/columnStore';
 import { Search, Plus, SlidersHorizontal, LayoutGrid, Table2, Wine as WineIcon, ImageOff, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
 import FilterManager, { FilterDef } from '@/components/FilterManager';
+import MultiSelectFilter from '@/components/MultiSelectFilter';
+import DataTable, { DataTableColumn } from '@/components/DataTable';
 
-const CATALOG_COLUMNS: ColumnDef[] = [
+const CATALOG_COLUMN_DEFS: ColumnDef[] = [
   { key: 'wine', label: 'Wine' },
   { key: 'producer', label: 'Producer' },
   { key: 'vintage', label: 'Vintage' },
@@ -33,7 +34,6 @@ const CATALOG_FILTER_DEFS: FilterDef[] = [
   { key: 'country', label: 'Country' },
   { key: 'region', label: 'Region' },
   { key: 'stock', label: 'Stock Status' },
-  { key: 'sort', label: 'Sort By' },
 ];
 
 function StockBadge({ wine }: { wine: Wine }) {
@@ -94,39 +94,66 @@ function WineCard({ wine, onClick, hideStock }: { wine: Wine; onClick: () => voi
   );
 }
 
-type SortOption = 'name-asc' | 'name-desc' | 'producer' | 'vintage' | 'stock' | 'updated';
+function buildCatalogColumns(isAdmin: boolean, hideStock: boolean): DataTableColumn<Wine>[] {
+  return [
+    { key: 'wine', label: 'Wine', minWidth: 140, render: w => <span className="font-medium">{w.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
+    { key: 'producer', label: 'Producer', render: w => <span className="text-muted-foreground">{w.producer}</span>, sortFn: (a, b) => a.producer.localeCompare(b.producer) },
+    { key: 'vintage', label: 'Vintage', render: w => w.vintage || 'NV', sortFn: (a, b) => (b.vintage || 0) - (a.vintage || 0) },
+    { key: 'type', label: 'Type', render: w => <TypeBadge type={w.type} />, sortFn: (a, b) => a.type.localeCompare(b.type) },
+    { key: 'volume', label: 'Volume', render: w => <span className="text-muted-foreground">{w.volume}ml</span> },
+    { key: 'country', label: 'Country', render: w => <span className="text-muted-foreground">{w.country}</span>, sortFn: (a, b) => a.country.localeCompare(b.country) },
+    { key: 'region', label: 'Region', render: w => <span className="text-muted-foreground">{w.region}</span>, sortFn: (a, b) => a.region.localeCompare(b.region) },
+    { key: 'abv', label: 'ABV', align: 'center', render: w => <span className="text-muted-foreground">{w.abv}%</span>, sortFn: (a, b) => a.abv - b.abv },
+    ...(!hideStock ? [
+      { key: 'stock', label: 'Stock', render: (w: Wine) => `${w.stockUnopened}U + ${w.stockOpened}O`, sortFn: (a: Wine, b: Wine) => (a.stockUnopened + a.stockOpened) - (b.stockUnopened + b.stockOpened) },
+      { key: 'status', label: 'Status', render: (w: Wine) => <StockBadge wine={w} /> },
+    ] : []),
+    ...(isAdmin ? [{ key: 'price', label: 'Price', align: 'right' as const, render: (w: Wine) => <span className="text-accent">${w.price}</span>, sortFn: (a: Wine, b: Wine) => a.price - b.price }] : []),
+    { key: 'barcode', label: 'Barcode', render: w => <span className="text-xs text-muted-foreground font-mono">{w.barcode || '—'}</span> },
+    { key: 'grapeVarieties', label: 'Grapes', render: w => <span className="text-xs text-muted-foreground">{w.grapeVarieties.join(', ')}</span> },
+    { key: 'body', label: 'Body', render: w => <span className="text-xs text-muted-foreground capitalize">{w.body || '—'}</span> },
+    { key: 'location', label: 'Location', render: w => <span className="text-xs text-muted-foreground">{w.location}</span> },
+  ];
+}
 
 export default function WineCatalog() {
   const { user } = useAuthStore();
-  const { catalogColumns, setCatalogColumns, catalogFilters, setCatalogFilters } = useColumnStore();
+  const { catalogColumns, setCatalogColumns, catalogFilters, setCatalogFilters, columnWidths, setColumnWidth } = useColumnStore();
   const navigate = useNavigate();
   const isAdmin = user?.roleId === 'role_admin';
   const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
-  const [countryFilter, setCountryFilter] = useState('all');
-  const [regionFilter, setRegionFilter] = useState('all');
-  const [stockFilter, setStockFilter] = useState('all');
-  const [sortBy, setSortBy] = useState<SortOption>('name-asc');
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [countryFilter, setCountryFilter] = useState<string[]>([]);
+  const [regionFilter, setRegionFilter] = useState<string[]>([]);
+  const [stockFilter, setStockFilter] = useState<string[]>([]);
   const [view, setView] = useState<'cards' | 'table'>('cards');
   const [showFilters, setShowFilters] = useState(false);
 
   const countries = useMemo(() => [...new Set(mockWines.filter(w => w.isActive).map(w => w.country))].sort(), []);
   const regions = useMemo(() => [...new Set(mockWines.filter(w => w.isActive).map(w => w.region))].sort(), []);
+  const types = ['Red', 'White', 'Rosé', 'Sparkling', 'Fortified', 'Dessert'];
+  const stockStatuses = ['In Stock', 'Low Stock', 'Out of Stock'];
 
-  const activeFilterCount = [typeFilter, countryFilter, regionFilter, stockFilter].filter(f => f !== 'all').length;
+  const activeFilterCount = [typeFilter, countryFilter, regionFilter, stockFilter].filter(f => f.length > 0).length;
   const fv = (key: string) => catalogFilters.includes(key);
 
+  const clearFilters = () => {
+    setTypeFilter([]);
+    setCountryFilter([]);
+    setRegionFilter([]);
+    setStockFilter([]);
+  };
+
   const filtered = useMemo(() => {
-    let wines = mockWines.filter(w => {
+    return mockWines.filter(w => {
       if (!w.isActive) return false;
-      if (typeFilter !== 'all' && w.type !== typeFilter) return false;
-      if (countryFilter !== 'all' && w.country !== countryFilter) return false;
-      if (regionFilter !== 'all' && w.region !== regionFilter) return false;
-      if (stockFilter !== 'all') {
+      if (typeFilter.length > 0 && !typeFilter.includes(w.type)) return false;
+      if (countryFilter.length > 0 && !countryFilter.includes(w.country)) return false;
+      if (regionFilter.length > 0 && !regionFilter.includes(w.region)) return false;
+      if (stockFilter.length > 0) {
         const total = w.stockUnopened + w.stockOpened;
-        if (stockFilter === 'in-stock' && (total === 0 || total < w.minStockLevel)) return false;
-        if (stockFilter === 'low' && (total >= w.minStockLevel || total === 0)) return false;
-        if (stockFilter === 'out' && total > 0) return false;
+        const wStatus = total === 0 ? 'Out of Stock' : total < w.minStockLevel ? 'Low Stock' : 'In Stock';
+        if (!stockFilter.includes(wStatus)) return false;
       }
       if (search) {
         const q = search.toLowerCase();
@@ -137,24 +164,10 @@ export default function WineCatalog() {
       }
       return true;
     });
-
-    wines.sort((a, b) => {
-      switch (sortBy) {
-        case 'name-asc': return a.name.localeCompare(b.name);
-        case 'name-desc': return b.name.localeCompare(a.name);
-        case 'producer': return a.producer.localeCompare(b.producer);
-        case 'vintage': return (b.vintage || 0) - (a.vintage || 0);
-        case 'stock': return (b.stockUnopened + b.stockOpened) - (a.stockUnopened + a.stockOpened);
-        case 'updated': return (b.updatedAt || '').localeCompare(a.updatedAt || '');
-        default: return 0;
-      }
-    });
-
-    return wines;
-  }, [search, typeFilter, countryFilter, regionFilter, stockFilter, sortBy]);
+  }, [search, typeFilter, countryFilter, regionFilter, stockFilter]);
 
   const hideStock = !isAdmin;
-  const v = (key: string) => catalogColumns.includes(key);
+  const tableColumns = useMemo(() => buildCatalogColumns(isAdmin, hideStock), [isAdmin, hideStock]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -171,7 +184,6 @@ export default function WineCatalog() {
         )}
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -179,24 +191,10 @@ export default function WineCatalog() {
             <Input
               placeholder="Search wine, producer, region, grape..."
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={e => setSearch(e.target.value)}
               className="pl-10 h-11 bg-card border-border"
             />
           </div>
-          {fv('type') && (
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-full sm:w-[140px] h-11 bg-card border-border">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="Red">Red</SelectItem>
-                <SelectItem value="White">White</SelectItem>
-                <SelectItem value="Rosé">Rosé</SelectItem>
-                <SelectItem value="Sparkling">Sparkling</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
           <Button
             variant="outline"
             className={`h-11 border-border gap-2 ${showFilters ? 'bg-primary/10 text-primary border-primary/30' : ''}`}
@@ -210,8 +208,7 @@ export default function WineCatalog() {
               </span>
             )}
           </Button>
-          <FilterManager filters={CATALOG_FILTER_DEFS} visibleFilters={catalogFilters} onChange={setCatalogFilters} />
-          {isAdmin && view === 'table' && <ColumnManager columns={CATALOG_COLUMNS} visibleColumns={catalogColumns} onChange={setCatalogColumns} />}
+          {isAdmin && view === 'table' && <ColumnManager columns={CATALOG_COLUMN_DEFS} visibleColumns={catalogColumns} onChange={setCatalogColumns} />}
           <div className="flex border border-border rounded-lg overflow-hidden">
             <button onClick={() => setView('cards')} className={`p-2.5 transition-colors ${view === 'cards' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
               <LayoutGrid className="w-5 h-5" />
@@ -226,61 +223,25 @@ export default function WineCatalog() {
           <div className="wine-glass-effect rounded-xl p-4 animate-fade-in">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Advanced Filters</p>
-              {activeFilterCount > 0 && (
-                <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={() => { setCountryFilter('all'); setRegionFilter('all'); setStockFilter('all'); setTypeFilter('all'); }}>
-                  <X className="w-3 h-3 mr-1" /> Clear all
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {activeFilterCount > 0 && (
+                  <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={clearFilters}>
+                    <X className="w-3 h-3 mr-1" /> Clear all
+                  </Button>
+                )}
+                <FilterManager filters={CATALOG_FILTER_DEFS} visibleFilters={catalogFilters} onChange={setCatalogFilters} />
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              {fv('country') && (
-                <Select value={countryFilter} onValueChange={setCountryFilter}>
-                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Country" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Countries</SelectItem>
-                    {countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              {fv('region') && (
-                <Select value={regionFilter} onValueChange={setRegionFilter}>
-                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Region" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Regions</SelectItem>
-                    {regions.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              {!hideStock && fv('stock') && (
-                <Select value={stockFilter} onValueChange={setStockFilter}>
-                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Stock" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Stock</SelectItem>
-                    <SelectItem value="in-stock">In Stock</SelectItem>
-                    <SelectItem value="low">Low Stock</SelectItem>
-                    <SelectItem value="out">Out of Stock</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-              {fv('sort') && (
-                <Select value={sortBy} onValueChange={vl => setSortBy(vl as SortOption)}>
-                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Sort" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="name-asc">Name A-Z</SelectItem>
-                    <SelectItem value="name-desc">Name Z-A</SelectItem>
-                    <SelectItem value="producer">Producer</SelectItem>
-                    <SelectItem value="vintage">Vintage (newest)</SelectItem>
-                    <SelectItem value="stock">Stock Level</SelectItem>
-                    <SelectItem value="updated">Last Updated</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
+            <div className="flex flex-wrap gap-2">
+              {fv('type') && <MultiSelectFilter label="Type" options={types} selected={typeFilter} onChange={setTypeFilter} />}
+              {fv('country') && <MultiSelectFilter label="Country" options={countries} selected={countryFilter} onChange={setCountryFilter} />}
+              {fv('region') && <MultiSelectFilter label="Region" options={regions} selected={regionFilter} onChange={setRegionFilter} />}
+              {!hideStock && fv('stock') && <MultiSelectFilter label="Stock" options={stockStatuses} selected={stockFilter} onChange={setStockFilter} />}
             </div>
           </div>
         )}
       </div>
 
-      {/* Cards View */}
       {view === 'cards' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map(wine => (
@@ -289,53 +250,18 @@ export default function WineCatalog() {
         </div>
       )}
 
-      {/* Table View */}
       {view === 'table' && (
         <div className="wine-glass-effect rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  {v('wine') && <th className="text-left p-4 font-medium">Wine</th>}
-                  {v('producer') && <th className="text-left p-4 font-medium">Producer</th>}
-                  {v('vintage') && <th className="text-left p-4 font-medium">Vintage</th>}
-                  {v('type') && <th className="text-left p-4 font-medium">Type</th>}
-                  {v('volume') && <th className="text-left p-4 font-medium">Volume</th>}
-                  {v('country') && <th className="text-left p-4 font-medium">Country</th>}
-                  {v('region') && <th className="text-left p-4 font-medium">Region</th>}
-                  {v('abv') && <th className="text-center p-4 font-medium">ABV</th>}
-                  {!hideStock && v('stock') && <th className="text-left p-4 font-medium">Stock</th>}
-                  {!hideStock && v('status') && <th className="text-left p-4 font-medium">Status</th>}
-                  {isAdmin && v('price') && <th className="text-left p-4 font-medium">Price</th>}
-                  {v('barcode') && <th className="text-left p-4 font-medium">Barcode</th>}
-                  {v('grapeVarieties') && <th className="text-left p-4 font-medium">Grapes</th>}
-                  {v('body') && <th className="text-left p-4 font-medium">Body</th>}
-                  {v('location') && <th className="text-left p-4 font-medium">Location</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(wine => (
-                  <tr key={wine.id} onClick={() => navigate(`/catalog/${wine.id}`)} className="border-b border-border/50 hover:bg-wine-surface-hover transition-colors cursor-pointer">
-                    {v('wine') && <td className="p-4 font-medium">{wine.name}</td>}
-                    {v('producer') && <td className="p-4 text-muted-foreground">{wine.producer}</td>}
-                    {v('vintage') && <td className="p-4">{wine.vintage || 'NV'}</td>}
-                    {v('type') && <td className="p-4"><TypeBadge type={wine.type} /></td>}
-                    {v('volume') && <td className="p-4 text-muted-foreground">{wine.volume}ml</td>}
-                    {v('country') && <td className="p-4 text-muted-foreground">{wine.country}</td>}
-                    {v('region') && <td className="p-4 text-muted-foreground">{wine.region}</td>}
-                    {v('abv') && <td className="p-4 text-center text-muted-foreground">{wine.abv}%</td>}
-                    {!hideStock && v('stock') && <td className="p-4">{wine.stockUnopened}U + {wine.stockOpened}O</td>}
-                    {!hideStock && v('status') && <td className="p-4"><StockBadge wine={wine} /></td>}
-                    {isAdmin && v('price') && <td className="p-4 text-accent">${wine.price}</td>}
-                    {v('barcode') && <td className="p-4 text-xs text-muted-foreground font-mono">{wine.barcode || '—'}</td>}
-                    {v('grapeVarieties') && <td className="p-4 text-xs text-muted-foreground">{wine.grapeVarieties.join(', ')}</td>}
-                    {v('body') && <td className="p-4 text-xs text-muted-foreground capitalize">{wine.body || '—'}</td>}
-                    {v('location') && <td className="p-4 text-xs text-muted-foreground">{wine.location}</td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            data={filtered}
+            columns={tableColumns}
+            visibleColumns={catalogColumns}
+            columnWidths={columnWidths}
+            onColumnResize={setColumnWidth}
+            keyExtractor={w => w.id}
+            onRowClick={w => navigate(`/catalog/${w.id}`)}
+            emptyMessage="No wines match your filters"
+          />
         </div>
       )}
 

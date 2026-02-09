@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useSessionStore, AuditEntry } from '@/stores/sessionStore';
 import { useColumnStore } from '@/stores/columnStore';
+import MultiSelectFilter from '@/components/MultiSelectFilter';
+import FilterManager, { FilterDef } from '@/components/FilterManager';
 import { Navigate } from 'react-router-dom';
 import { Search, Filter, CheckCircle2, Clock, AlertTriangle, XCircle, ChevronDown, ChevronUp, ThumbsUp, Flag, CalendarDays, History } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -61,7 +63,7 @@ export default function SessionReview() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
-  const [sessionColumns, setSessionColumns] = useState(SESSION_COLUMNS.map(c => c.key));
+  const { sessionColumns, setSessionColumns } = useColumnStore();
   const [flagDialogSession, setFlagDialogSession] = useState<string | null>(null);
   const [flagReason, setFlagReason] = useState('');
   const [approveNotes, setApproveNotes] = useState('');

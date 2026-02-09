@@ -28,8 +28,9 @@ export default function FilterManager({ filters, visibleFilters, onChange }: Fil
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="icon" className="h-11 w-11 border-border" title="Configure filters">
-          <Settings2 className="w-4 h-4" />
+        <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground gap-1.5" title="Configure filters">
+          <Settings2 className="w-3.5 h-3.5" />
+          Configure
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-56 p-3 bg-popover border-border">

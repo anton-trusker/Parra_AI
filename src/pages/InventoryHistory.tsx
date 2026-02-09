@@ -1,15 +1,17 @@
 import { useState, useMemo } from 'react';
-import { mockMovements } from '@/data/mockWines';
+import { mockMovements, InventoryMovement } from '@/data/mockWines';
 import { useAuthStore } from '@/stores/authStore';
 import { useColumnStore } from '@/stores/columnStore';
-import { Search, Camera, Scan, Clock, CalendarDays, X, SlidersHorizontal } from 'lucide-react';
+import { Search, Camera, Scan, Clock, X, SlidersHorizontal } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
 import FilterManager, { FilterDef } from '@/components/FilterManager';
+import MultiSelectFilter from '@/components/MultiSelectFilter';
+import DataTable, { DataTableColumn } from '@/components/DataTable';
 
-const HISTORY_COLUMNS: ColumnDef[] = [
+const HISTORY_COLUMN_DEFS: ColumnDef[] = [
   { key: 'timestamp', label: 'Timestamp' },
   { key: 'user', label: 'User' },
   { key: 'wine', label: 'Wine' },
@@ -36,59 +38,79 @@ function MethodIcon({ method }: { method: string }) {
   return <Search className="w-4 h-4" />;
 }
 
-function MethodLabel({ method }: { method: string }) {
-  const labels: Record<string, string> = { manual: 'Search', barcode: 'Barcode', image_ai: 'Image AI' };
-  return <>{labels[method] || method}</>;
-}
+const methodLabels: Record<string, string> = { manual: 'Search', barcode: 'Barcode', image_ai: 'Image AI' };
 
-const DATE_PRESETS = [
-  { label: 'All Time', value: 'all' },
-  { label: 'Today', value: 'today' },
-  { label: 'This Week', value: 'week' },
-  { label: 'Last 30 Days', value: '30days' },
-];
+const DATE_PRESETS = ['All Time', 'Today', 'This Week', 'Last 30 Days'];
+
+function buildHistoryColumns(isAdmin: boolean): DataTableColumn<InventoryMovement>[] {
+  const formatDate = (ts: string) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  
+  return [
+    { key: 'timestamp', label: 'Timestamp', render: m => <span className="text-muted-foreground whitespace-nowrap"><Clock className="w-3 h-3 inline mr-1" />{formatDate(m.timestamp)}</span>, sortFn: (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime() },
+    ...(isAdmin ? [{ key: 'user', label: 'User', render: (m: InventoryMovement) => <span className="font-medium">{m.userName}</span>, sortFn: (a: InventoryMovement, b: InventoryMovement) => a.userName.localeCompare(b.userName) }] : []),
+    { key: 'wine', label: 'Wine', minWidth: 140, render: m => m.wineName, sortFn: (a, b) => a.wineName.localeCompare(b.wineName) },
+    { key: 'method', label: 'Method', render: m => <span className="wine-badge bg-secondary text-secondary-foreground"><MethodIcon method={m.method} /><span className="ml-1">{methodLabels[m.method] || m.method}</span></span> },
+    { key: 'session', label: 'Session', render: m => <span className="text-muted-foreground font-mono text-xs">{m.sessionId}</span> },
+    { key: 'closed', label: 'Closed', align: 'center' as const, render: m => m.unopened, sortFn: (a, b) => a.unopened - b.unopened },
+    { key: 'open', label: 'Open', align: 'center' as const, render: m => <span className="text-muted-foreground">{m.opened}</span> },
+    { key: 'total', label: 'Total', align: 'center' as const, render: m => <span className="font-semibold">{m.unopened + m.opened}</span>, sortFn: (a, b) => (a.unopened + a.opened) - (b.unopened + b.opened) },
+    ...(isAdmin ? [{ key: 'confidence', label: 'Confidence', align: 'center' as const, render: (m: InventoryMovement) => m.confidence ? `${m.confidence}%` : '—' }] : []),
+    { key: 'notes', label: 'Notes', render: m => <span className="text-xs text-muted-foreground">{m.notes || '—'}</span> },
+    { key: 'location', label: 'Location', render: m => <span className="text-xs text-muted-foreground">—</span> },
+  ];
+}
 
 export default function InventoryHistory() {
   const { user } = useAuthStore();
-  const { historyColumns, setHistoryColumns, historyFilters, setHistoryFilters } = useColumnStore();
+  const { historyColumns, setHistoryColumns, historyFilters, setHistoryFilters, columnWidths, setColumnWidth } = useColumnStore();
   const isAdmin = user?.roleId === 'role_admin';
-  const [methodFilter, setMethodFilter] = useState('all');
+  const [methodFilter, setMethodFilter] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const [datePreset, setDatePreset] = useState('all');
-  const [userFilter, setUserFilter] = useState('all');
-  const [sessionFilter, setSessionFilter] = useState('all');
+  const [datePreset, setDatePreset] = useState<string[]>([]);
+  const [userFilter, setUserFilter] = useState<string[]>([]);
+  const [sessionFilter, setSessionFilter] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
 
   const uniqueUsers = useMemo(() => [...new Set(mockMovements.map(m => m.userName))], []);
   const uniqueSessions = useMemo(() => [...new Set(mockMovements.map(m => m.sessionId))], []);
+  const methods = ['Search', 'Barcode', 'Image AI'];
 
-  const activeFilterCount = [methodFilter, datePreset, userFilter, sessionFilter].filter(f => f !== 'all').length;
+  const activeFilterCount = [methodFilter, datePreset, userFilter, sessionFilter].filter(f => f.length > 0).length;
   const fv = (key: string) => historyFilters.includes(key);
+
+  const clearFilters = () => {
+    setMethodFilter([]);
+    setDatePreset([]);
+    setUserFilter([]);
+    setSessionFilter([]);
+  };
 
   const movements = useMemo(() => {
     let data = isAdmin ? mockMovements : mockMovements.filter(m => m.userId === user?.id);
     return data.filter(m => {
-      if (methodFilter !== 'all' && m.method !== methodFilter) return false;
+      if (methodFilter.length > 0) {
+        const label = methodLabels[m.method] || m.method;
+        if (!methodFilter.includes(label)) return false;
+      }
       if (search && !m.wineName.toLowerCase().includes(search.toLowerCase())) return false;
-      if (isAdmin && userFilter !== 'all' && m.userName !== userFilter) return false;
-      if (sessionFilter !== 'all' && m.sessionId !== sessionFilter) return false;
-      if (datePreset !== 'all') {
+      if (isAdmin && userFilter.length > 0 && !userFilter.includes(m.userName)) return false;
+      if (sessionFilter.length > 0 && !sessionFilter.includes(m.sessionId)) return false;
+      if (datePreset.length > 0 && !datePreset.includes('All Time')) {
         const ts = new Date(m.timestamp).getTime();
         const now = Date.now();
-        if (datePreset === 'today' && now - ts > 86400000) return false;
-        if (datePreset === 'week' && now - ts > 604800000) return false;
-        if (datePreset === '30days' && now - ts > 2592000000) return false;
+        const pass = datePreset.some(p => {
+          if (p === 'Today') return now - ts <= 86400000;
+          if (p === 'This Week') return now - ts <= 604800000;
+          if (p === 'Last 30 Days') return now - ts <= 2592000000;
+          return true;
+        });
+        if (!pass) return false;
       }
       return true;
     });
   }, [isAdmin, user, methodFilter, search, datePreset, userFilter, sessionFilter]);
 
-  const formatDate = (ts: string) => {
-    const d = new Date(ts);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  };
-
-  const v = (key: string) => historyColumns.includes(key);
+  const tableColumns = useMemo(() => buildHistoryColumns(isAdmin), [isAdmin]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -103,30 +125,6 @@ export default function InventoryHistory() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search wine..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-11 bg-card border-border" />
           </div>
-          {fv('method') && (
-            <Select value={methodFilter} onValueChange={setMethodFilter}>
-              <SelectTrigger className="w-full sm:w-[150px] h-11 bg-card border-border">
-                <SelectValue placeholder="Method" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Methods</SelectItem>
-                <SelectItem value="manual">Manual Search</SelectItem>
-                <SelectItem value="barcode">Barcode</SelectItem>
-                <SelectItem value="image_ai">Image AI</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
-          {fv('dateRange') && (
-            <Select value={datePreset} onValueChange={setDatePreset}>
-              <SelectTrigger className="w-full sm:w-[150px] h-11 bg-card border-border">
-                <CalendarDays className="w-4 h-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {DATE_PRESETS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          )}
           {isAdmin && (
             <Button
               variant="outline"
@@ -134,6 +132,7 @@ export default function InventoryHistory() {
               onClick={() => setShowFilters(!showFilters)}
             >
               <SlidersHorizontal className="w-4 h-4" />
+              <span className="hidden sm:inline">Filters</span>
               {activeFilterCount > 0 && (
                 <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
                   {activeFilterCount}
@@ -141,39 +140,27 @@ export default function InventoryHistory() {
               )}
             </Button>
           )}
-          {isAdmin && <FilterManager filters={HISTORY_FILTER_DEFS} visibleFilters={historyFilters} onChange={setHistoryFilters} />}
-          {isAdmin && <ColumnManager columns={HISTORY_COLUMNS} visibleColumns={historyColumns} onChange={setHistoryColumns} />}
+          {isAdmin && <ColumnManager columns={HISTORY_COLUMN_DEFS} visibleColumns={historyColumns} onChange={setHistoryColumns} />}
         </div>
 
         {isAdmin && showFilters && (
           <div className="wine-glass-effect rounded-xl p-4 animate-fade-in">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Advanced Filters</p>
-              {activeFilterCount > 0 && (
-                <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={() => { setUserFilter('all'); setSessionFilter('all'); setMethodFilter('all'); setDatePreset('all'); }}>
-                  <X className="w-3 h-3 mr-1" /> Clear
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {activeFilterCount > 0 && (
+                  <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={clearFilters}>
+                    <X className="w-3 h-3 mr-1" /> Clear
+                  </Button>
+                )}
+                <FilterManager filters={HISTORY_FILTER_DEFS} visibleFilters={historyFilters} onChange={setHistoryFilters} />
+              </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              {fv('user') && (
-                <Select value={userFilter} onValueChange={setUserFilter}>
-                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="User" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Users</SelectItem>
-                    {uniqueUsers.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              {fv('session') && (
-                <Select value={sessionFilter} onValueChange={setSessionFilter}>
-                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Session" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Sessions</SelectItem>
-                    {uniqueSessions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
+            <div className="flex flex-wrap gap-2">
+              {fv('method') && <MultiSelectFilter label="Method" options={methods} selected={methodFilter} onChange={setMethodFilter} />}
+              {fv('dateRange') && <MultiSelectFilter label="Date Range" options={DATE_PRESETS} selected={datePreset} onChange={setDatePreset} />}
+              {fv('user') && <MultiSelectFilter label="User" options={uniqueUsers} selected={userFilter} onChange={setUserFilter} />}
+              {fv('session') && <MultiSelectFilter label="Session" options={uniqueSessions} selected={sessionFilter} onChange={setSessionFilter} />}
             </div>
           </div>
         )}
@@ -187,7 +174,7 @@ export default function InventoryHistory() {
               <p className="font-medium text-sm truncate flex-1">{m.wineName}</p>
               <span className="wine-badge bg-secondary text-secondary-foreground ml-2">
                 <MethodIcon method={m.method} />
-                <span className="ml-1"><MethodLabel method={m.method} /></span>
+                <span className="ml-1">{methodLabels[m.method] || m.method}</span>
               </span>
             </div>
             {isAdmin && <p className="text-xs text-accent">{m.userName}</p>}
@@ -200,50 +187,23 @@ export default function InventoryHistory() {
               {m.confidence && <span className="text-xs text-accent">{m.confidence}%</span>}
             </div>
             <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> {formatDate(m.timestamp)} · {m.sessionId}
+              <Clock className="w-3 h-3" /> {new Date(m.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · {m.sessionId}
             </p>
           </div>
         ))}
       </div>
 
-      {/* Desktop Table View */}
+      {/* Desktop Table */}
       <div className="hidden lg:block wine-glass-effect rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-muted-foreground">
-                {v('timestamp') && <th className="text-left p-4 font-medium">Timestamp</th>}
-                {isAdmin && v('user') && <th className="text-left p-4 font-medium">User</th>}
-                {v('wine') && <th className="text-left p-4 font-medium">Wine</th>}
-                {v('method') && <th className="text-left p-4 font-medium">Method</th>}
-                {v('session') && <th className="text-left p-4 font-medium">Session</th>}
-                {v('closed') && <th className="text-center p-4 font-medium">Closed</th>}
-                {v('open') && <th className="text-center p-4 font-medium">Open</th>}
-                {v('total') && <th className="text-center p-4 font-medium">Total</th>}
-                {isAdmin && v('confidence') && <th className="text-center p-4 font-medium">Confidence</th>}
-                {v('notes') && <th className="text-left p-4 font-medium">Notes</th>}
-                {v('location') && <th className="text-left p-4 font-medium">Location</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {movements.map(m => (
-                <tr key={m.id} className="border-b border-border/50 hover:bg-wine-surface-hover transition-colors">
-                  {v('timestamp') && <td className="p-4 text-muted-foreground whitespace-nowrap"><Clock className="w-3 h-3 inline mr-1" />{formatDate(m.timestamp)}</td>}
-                  {isAdmin && v('user') && <td className="p-4 font-medium">{m.userName}</td>}
-                  {v('wine') && <td className="p-4">{m.wineName}</td>}
-                  {v('method') && <td className="p-4"><span className="wine-badge bg-secondary text-secondary-foreground"><MethodIcon method={m.method} /><span className="ml-1"><MethodLabel method={m.method} /></span></span></td>}
-                  {v('session') && <td className="p-4 text-muted-foreground font-mono text-xs">{m.sessionId}</td>}
-                  {v('closed') && <td className="p-4 text-center">{m.unopened}</td>}
-                  {v('open') && <td className="p-4 text-center text-muted-foreground">{m.opened}</td>}
-                  {v('total') && <td className="p-4 text-center font-semibold">{m.unopened + m.opened}</td>}
-                  {isAdmin && v('confidence') && <td className="p-4 text-center">{m.confidence ? `${m.confidence}%` : '—'}</td>}
-                  {v('notes') && <td className="p-4 text-xs text-muted-foreground">{m.notes || '—'}</td>}
-                  {v('location') && <td className="p-4 text-xs text-muted-foreground">—</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          data={movements}
+          columns={tableColumns}
+          visibleColumns={historyColumns}
+          columnWidths={columnWidths}
+          onColumnResize={setColumnWidth}
+          keyExtractor={m => m.id}
+          emptyMessage="No entries match your filters"
+        />
       </div>
 
       {movements.length === 0 && (
