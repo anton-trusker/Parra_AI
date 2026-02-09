@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
+import FilterManager, { FilterDef } from '@/components/FilterManager';
 
 const HISTORY_COLUMNS: ColumnDef[] = [
   { key: 'timestamp', label: 'Timestamp' },
@@ -18,6 +19,15 @@ const HISTORY_COLUMNS: ColumnDef[] = [
   { key: 'open', label: 'Open' },
   { key: 'total', label: 'Total' },
   { key: 'confidence', label: 'Confidence' },
+  { key: 'notes', label: 'Notes' },
+  { key: 'location', label: 'Location' },
+];
+
+const HISTORY_FILTER_DEFS: FilterDef[] = [
+  { key: 'method', label: 'Method' },
+  { key: 'dateRange', label: 'Date Range' },
+  { key: 'user', label: 'User' },
+  { key: 'session', label: 'Session' },
 ];
 
 function MethodIcon({ method }: { method: string }) {
@@ -40,7 +50,7 @@ const DATE_PRESETS = [
 
 export default function InventoryHistory() {
   const { user } = useAuthStore();
-  const { historyColumns, setHistoryColumns } = useColumnStore();
+  const { historyColumns, setHistoryColumns, historyFilters, setHistoryFilters } = useColumnStore();
   const isAdmin = user?.roleId === 'role_admin';
   const [methodFilter, setMethodFilter] = useState('all');
   const [search, setSearch] = useState('');
@@ -53,6 +63,7 @@ export default function InventoryHistory() {
   const uniqueSessions = useMemo(() => [...new Set(mockMovements.map(m => m.sessionId))], []);
 
   const activeFilterCount = [methodFilter, datePreset, userFilter, sessionFilter].filter(f => f !== 'all').length;
+  const fv = (key: string) => historyFilters.includes(key);
 
   const movements = useMemo(() => {
     let data = isAdmin ? mockMovements : mockMovements.filter(m => m.userId === user?.id);
@@ -92,26 +103,30 @@ export default function InventoryHistory() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search wine..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-11 bg-card border-border" />
           </div>
-          <Select value={methodFilter} onValueChange={setMethodFilter}>
-            <SelectTrigger className="w-full sm:w-[150px] h-11 bg-card border-border">
-              <SelectValue placeholder="Method" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Methods</SelectItem>
-              <SelectItem value="manual">Manual Search</SelectItem>
-              <SelectItem value="barcode">Barcode</SelectItem>
-              <SelectItem value="image_ai">Image AI</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={datePreset} onValueChange={setDatePreset}>
-            <SelectTrigger className="w-full sm:w-[150px] h-11 bg-card border-border">
-              <CalendarDays className="w-4 h-4 mr-2" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {DATE_PRESETS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          {fv('method') && (
+            <Select value={methodFilter} onValueChange={setMethodFilter}>
+              <SelectTrigger className="w-full sm:w-[150px] h-11 bg-card border-border">
+                <SelectValue placeholder="Method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Methods</SelectItem>
+                <SelectItem value="manual">Manual Search</SelectItem>
+                <SelectItem value="barcode">Barcode</SelectItem>
+                <SelectItem value="image_ai">Image AI</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          {fv('dateRange') && (
+            <Select value={datePreset} onValueChange={setDatePreset}>
+              <SelectTrigger className="w-full sm:w-[150px] h-11 bg-card border-border">
+                <CalendarDays className="w-4 h-4 mr-2" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {DATE_PRESETS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          )}
           {isAdmin && (
             <Button
               variant="outline"
@@ -126,6 +141,7 @@ export default function InventoryHistory() {
               )}
             </Button>
           )}
+          {isAdmin && <FilterManager filters={HISTORY_FILTER_DEFS} visibleFilters={historyFilters} onChange={setHistoryFilters} />}
           {isAdmin && <ColumnManager columns={HISTORY_COLUMNS} visibleColumns={historyColumns} onChange={setHistoryColumns} />}
         </div>
 
@@ -140,20 +156,24 @@ export default function InventoryHistory() {
               )}
             </div>
             <div className="flex flex-wrap gap-3">
-              <Select value={userFilter} onValueChange={setUserFilter}>
-                <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="User" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Users</SelectItem>
-                  {uniqueUsers.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={sessionFilter} onValueChange={setSessionFilter}>
-                <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Session" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Sessions</SelectItem>
-                  {uniqueSessions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              {fv('user') && (
+                <Select value={userFilter} onValueChange={setUserFilter}>
+                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="User" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Users</SelectItem>
+                    {uniqueUsers.map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+              {fv('session') && (
+                <Select value={sessionFilter} onValueChange={setSessionFilter}>
+                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Session" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Sessions</SelectItem>
+                    {uniqueSessions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         )}
@@ -201,6 +221,8 @@ export default function InventoryHistory() {
                 {v('open') && <th className="text-center p-4 font-medium">Open</th>}
                 {v('total') && <th className="text-center p-4 font-medium">Total</th>}
                 {isAdmin && v('confidence') && <th className="text-center p-4 font-medium">Confidence</th>}
+                {v('notes') && <th className="text-left p-4 font-medium">Notes</th>}
+                {v('location') && <th className="text-left p-4 font-medium">Location</th>}
               </tr>
             </thead>
             <tbody>
@@ -215,6 +237,8 @@ export default function InventoryHistory() {
                   {v('open') && <td className="p-4 text-center text-muted-foreground">{m.opened}</td>}
                   {v('total') && <td className="p-4 text-center font-semibold">{m.unopened + m.opened}</td>}
                   {isAdmin && v('confidence') && <td className="p-4 text-center">{m.confidence ? `${m.confidence}%` : '—'}</td>}
+                  {v('notes') && <td className="p-4 text-xs text-muted-foreground">{m.notes || '—'}</td>}
+                  {v('location') && <td className="p-4 text-xs text-muted-foreground">—</td>}
                 </tr>
               ))}
             </tbody>

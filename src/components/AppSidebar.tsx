@@ -15,8 +15,7 @@ interface NavItemDef {
 
 const allNav: NavItemDef[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', module: 'dashboard' },
-  { label: 'Current Stock', icon: Package, path: '/stock', module: 'stock' },
-  { label: 'Inventory Count', icon: Wine, path: '/count', module: 'count' },
+  { label: 'Inventory', icon: Package, path: '/stock', module: 'stock' },
   { label: 'Wine Catalog', icon: Wine, path: '/catalog', module: 'catalog' },
   { label: 'User Management', icon: Users, path: '/users', module: 'users' },
   { label: 'History & Audit', icon: History, path: '/history', module: 'history' },

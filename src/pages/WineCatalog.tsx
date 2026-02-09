@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
+import FilterManager, { FilterDef } from '@/components/FilterManager';
 
 const CATALOG_COLUMNS: ColumnDef[] = [
   { key: 'wine', label: 'Wine' },
@@ -20,6 +21,19 @@ const CATALOG_COLUMNS: ColumnDef[] = [
   { key: 'stock', label: 'Stock' },
   { key: 'status', label: 'Status' },
   { key: 'price', label: 'Price' },
+  { key: 'abv', label: 'ABV' },
+  { key: 'barcode', label: 'Barcode' },
+  { key: 'grapeVarieties', label: 'Grapes' },
+  { key: 'body', label: 'Body' },
+  { key: 'location', label: 'Location' },
+];
+
+const CATALOG_FILTER_DEFS: FilterDef[] = [
+  { key: 'type', label: 'Type' },
+  { key: 'country', label: 'Country' },
+  { key: 'region', label: 'Region' },
+  { key: 'stock', label: 'Stock Status' },
+  { key: 'sort', label: 'Sort By' },
 ];
 
 function StockBadge({ wine }: { wine: Wine }) {
@@ -84,7 +98,7 @@ type SortOption = 'name-asc' | 'name-desc' | 'producer' | 'vintage' | 'stock' | 
 
 export default function WineCatalog() {
   const { user } = useAuthStore();
-  const { catalogColumns, setCatalogColumns } = useColumnStore();
+  const { catalogColumns, setCatalogColumns, catalogFilters, setCatalogFilters } = useColumnStore();
   const navigate = useNavigate();
   const isAdmin = user?.roleId === 'role_admin';
   const [search, setSearch] = useState('');
@@ -100,6 +114,7 @@ export default function WineCatalog() {
   const regions = useMemo(() => [...new Set(mockWines.filter(w => w.isActive).map(w => w.region))].sort(), []);
 
   const activeFilterCount = [typeFilter, countryFilter, regionFilter, stockFilter].filter(f => f !== 'all').length;
+  const fv = (key: string) => catalogFilters.includes(key);
 
   const filtered = useMemo(() => {
     let wines = mockWines.filter(w => {
@@ -168,18 +183,20 @@ export default function WineCatalog() {
               className="pl-10 h-11 bg-card border-border"
             />
           </div>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-full sm:w-[140px] h-11 bg-card border-border">
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              <SelectItem value="Red">Red</SelectItem>
-              <SelectItem value="White">White</SelectItem>
-              <SelectItem value="Rosé">Rosé</SelectItem>
-              <SelectItem value="Sparkling">Sparkling</SelectItem>
-            </SelectContent>
-          </Select>
+          {fv('type') && (
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-full sm:w-[140px] h-11 bg-card border-border">
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="Red">Red</SelectItem>
+                <SelectItem value="White">White</SelectItem>
+                <SelectItem value="Rosé">Rosé</SelectItem>
+                <SelectItem value="Sparkling">Sparkling</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
           <Button
             variant="outline"
             className={`h-11 border-border gap-2 ${showFilters ? 'bg-primary/10 text-primary border-primary/30' : ''}`}
@@ -193,6 +210,7 @@ export default function WineCatalog() {
               </span>
             )}
           </Button>
+          <FilterManager filters={CATALOG_FILTER_DEFS} visibleFilters={catalogFilters} onChange={setCatalogFilters} />
           {isAdmin && view === 'table' && <ColumnManager columns={CATALOG_COLUMNS} visibleColumns={catalogColumns} onChange={setCatalogColumns} />}
           <div className="flex border border-border rounded-lg overflow-hidden">
             <button onClick={() => setView('cards')} className={`p-2.5 transition-colors ${view === 'cards' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
@@ -215,21 +233,25 @@ export default function WineCatalog() {
               )}
             </div>
             <div className="flex flex-wrap gap-3">
-              <Select value={countryFilter} onValueChange={setCountryFilter}>
-                <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Country" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Countries</SelectItem>
-                  {countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <Select value={regionFilter} onValueChange={setRegionFilter}>
-                <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Region" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Regions</SelectItem>
-                  {regions.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              {!hideStock && (
+              {fv('country') && (
+                <Select value={countryFilter} onValueChange={setCountryFilter}>
+                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Country" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Countries</SelectItem>
+                    {countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+              {fv('region') && (
+                <Select value={regionFilter} onValueChange={setRegionFilter}>
+                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Region" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Regions</SelectItem>
+                    {regions.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              )}
+              {!hideStock && fv('stock') && (
                 <Select value={stockFilter} onValueChange={setStockFilter}>
                   <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Stock" /></SelectTrigger>
                   <SelectContent>
@@ -240,17 +262,19 @@ export default function WineCatalog() {
                   </SelectContent>
                 </Select>
               )}
-              <Select value={sortBy} onValueChange={vl => setSortBy(vl as SortOption)}>
-                <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Sort" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name-asc">Name A-Z</SelectItem>
-                  <SelectItem value="name-desc">Name Z-A</SelectItem>
-                  <SelectItem value="producer">Producer</SelectItem>
-                  <SelectItem value="vintage">Vintage (newest)</SelectItem>
-                  <SelectItem value="stock">Stock Level</SelectItem>
-                  <SelectItem value="updated">Last Updated</SelectItem>
-                </SelectContent>
-              </Select>
+              {fv('sort') && (
+                <Select value={sortBy} onValueChange={vl => setSortBy(vl as SortOption)}>
+                  <SelectTrigger className="w-[160px] h-9 bg-card border-border text-sm"><SelectValue placeholder="Sort" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name-asc">Name A-Z</SelectItem>
+                    <SelectItem value="name-desc">Name Z-A</SelectItem>
+                    <SelectItem value="producer">Producer</SelectItem>
+                    <SelectItem value="vintage">Vintage (newest)</SelectItem>
+                    <SelectItem value="stock">Stock Level</SelectItem>
+                    <SelectItem value="updated">Last Updated</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         )}
@@ -279,9 +303,14 @@ export default function WineCatalog() {
                   {v('volume') && <th className="text-left p-4 font-medium">Volume</th>}
                   {v('country') && <th className="text-left p-4 font-medium">Country</th>}
                   {v('region') && <th className="text-left p-4 font-medium">Region</th>}
+                  {v('abv') && <th className="text-center p-4 font-medium">ABV</th>}
                   {!hideStock && v('stock') && <th className="text-left p-4 font-medium">Stock</th>}
                   {!hideStock && v('status') && <th className="text-left p-4 font-medium">Status</th>}
                   {isAdmin && v('price') && <th className="text-left p-4 font-medium">Price</th>}
+                  {v('barcode') && <th className="text-left p-4 font-medium">Barcode</th>}
+                  {v('grapeVarieties') && <th className="text-left p-4 font-medium">Grapes</th>}
+                  {v('body') && <th className="text-left p-4 font-medium">Body</th>}
+                  {v('location') && <th className="text-left p-4 font-medium">Location</th>}
                 </tr>
               </thead>
               <tbody>
@@ -294,9 +323,14 @@ export default function WineCatalog() {
                     {v('volume') && <td className="p-4 text-muted-foreground">{wine.volume}ml</td>}
                     {v('country') && <td className="p-4 text-muted-foreground">{wine.country}</td>}
                     {v('region') && <td className="p-4 text-muted-foreground">{wine.region}</td>}
+                    {v('abv') && <td className="p-4 text-center text-muted-foreground">{wine.abv}%</td>}
                     {!hideStock && v('stock') && <td className="p-4">{wine.stockUnopened}U + {wine.stockOpened}O</td>}
                     {!hideStock && v('status') && <td className="p-4"><StockBadge wine={wine} /></td>}
                     {isAdmin && v('price') && <td className="p-4 text-accent">${wine.price}</td>}
+                    {v('barcode') && <td className="p-4 text-xs text-muted-foreground font-mono">{wine.barcode || '—'}</td>}
+                    {v('grapeVarieties') && <td className="p-4 text-xs text-muted-foreground">{wine.grapeVarieties.join(', ')}</td>}
+                    {v('body') && <td className="p-4 text-xs text-muted-foreground capitalize">{wine.body || '—'}</td>}
+                    {v('location') && <td className="p-4 text-xs text-muted-foreground">{wine.location}</td>}
                   </tr>
                 ))}
               </tbody>

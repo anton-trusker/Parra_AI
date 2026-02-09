@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, GlassWater, MapPin, Wine, Ruler, ChevronDown, ChevronRight } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import CollapsibleSection from '@/components/CollapsibleSection';
 
 export default function GeneralSettings() {
   const { user } = useAuthStore();
@@ -70,7 +70,7 @@ export default function GeneralSettings() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-3xl mx-auto space-y-4 animate-fade-in">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Link to="/settings" className="hover:text-foreground transition-colors flex items-center gap-1">
           <ArrowLeft className="w-4 h-4" /> Settings
@@ -82,23 +82,21 @@ export default function GeneralSettings() {
       <h1 className="text-2xl lg:text-3xl font-heading font-bold">General Settings</h1>
 
       {/* Opened bottle unit */}
-      <section className="wine-glass-effect rounded-xl p-5 space-y-3">
-        <h3 className="font-heading font-semibold text-lg flex items-center gap-2"><Ruler className="w-5 h-5 text-primary" /> Opened Bottle Measurement</h3>
-        <p className="text-sm text-muted-foreground">How opened bottles are measured during inventory counts</p>
-        <Select value={openedBottleUnit} onValueChange={(v) => setOpenedBottleUnit(v as any)}>
+      <CollapsibleSection icon={Ruler} title="Opened Bottle Measurement" defaultOpen>
+        <p className="text-sm text-muted-foreground mb-3">How opened bottles are measured during inventory counts</p>
+        <Select value={openedBottleUnit} onValueChange={(v) => { setOpenedBottleUnit(v as any); toast.success('Measurement unit saved'); }}>
           <SelectTrigger className="bg-secondary border-border w-64"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="fraction">Fraction of bottle (e.g. 0.3)</SelectItem>
             <SelectItem value="litres">Litres (e.g. 0.25L)</SelectItem>
           </SelectContent>
         </Select>
-      </section>
+      </CollapsibleSection>
 
       {/* Glass Dimensions */}
-      <section className="wine-glass-effect rounded-xl p-5 space-y-4">
-        <h3 className="font-heading font-semibold text-lg flex items-center gap-2"><GlassWater className="w-5 h-5 text-primary" /> Glass Dimensions</h3>
-        <p className="text-sm text-muted-foreground">Define standard glass pour sizes for by-the-glass service</p>
-        <div className="space-y-2">
+      <CollapsibleSection icon={GlassWater} title="Glass Dimensions" badge={`${glassDimensions.length} sizes`}>
+        <p className="text-sm text-muted-foreground mb-3">Define standard glass pour sizes for by-the-glass service</p>
+        <div className="space-y-2 mb-4">
           {glassDimensions.map(g => (
             <div key={g.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
               <div>
@@ -122,13 +120,12 @@ export default function GeneralSettings() {
           </div>
           <Button size="sm" onClick={handleAddGlass} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Locations with sub-locations */}
-      <section className="wine-glass-effect rounded-xl p-5 space-y-4">
-        <h3 className="font-heading font-semibold text-lg flex items-center gap-2"><MapPin className="w-5 h-5 text-primary" /> Locations</h3>
-        <p className="text-sm text-muted-foreground">Storage locations and sub-locations for wine inventory</p>
-        <div className="space-y-2">
+      <CollapsibleSection icon={MapPin} title="Locations" badge={`${locations.length} locations`}>
+        <p className="text-sm text-muted-foreground mb-3">Storage locations and sub-locations for wine inventory</p>
+        <div className="space-y-2 mb-4">
           {locations.map(l => {
             const isExpanded = expandedLocations.has(l.id);
             return (
@@ -198,13 +195,12 @@ export default function GeneralSettings() {
           </div>
           <Button size="sm" onClick={handleAddLocation} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
         </div>
-      </section>
+      </CollapsibleSection>
 
       {/* Bottle Volumes */}
-      <section className="wine-glass-effect rounded-xl p-5 space-y-4">
-        <h3 className="font-heading font-semibold text-lg flex items-center gap-2"><Wine className="w-5 h-5 text-primary" /> Bottle Volumes</h3>
-        <p className="text-sm text-muted-foreground">Available bottle sizes/volumes. Used in wine forms and litre calculations.</p>
-        <div className="space-y-2">
+      <CollapsibleSection icon={Wine} title="Bottle Volumes" badge={`${volumes.length} sizes`}>
+        <p className="text-sm text-muted-foreground mb-3">Available bottle sizes/volumes. Used in wine forms and litre calculations.</p>
+        <div className="space-y-2 mb-4">
           {volumes.map(v => (
             <div key={v.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
               <div>
@@ -228,7 +224,7 @@ export default function GeneralSettings() {
           </div>
           <Button size="sm" onClick={handleAddVolume} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
         </div>
-      </section>
+      </CollapsibleSection>
     </div>
   );
 }

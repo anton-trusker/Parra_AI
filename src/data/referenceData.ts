@@ -43,7 +43,7 @@ export type ModuleKey =
 export const ALL_MODULES: { key: ModuleKey; label: string }[] = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'catalog', label: 'Wine Catalog' },
-  { key: 'stock', label: 'Current Stock' },
+  { key: 'stock', label: 'Inventory' },
   { key: 'count', label: 'Inventory Count' },
   { key: 'history', label: 'History & Audit' },
   { key: 'sessions', label: 'Session Review' },
