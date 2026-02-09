@@ -162,7 +162,7 @@ export default function CurrentStock() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl lg:text-3xl font-heading font-bold">Inventory</h1>
           <div className="flex items-center gap-4 mt-2 text-sm">
@@ -173,24 +173,26 @@ export default function CurrentStock() {
             <span className="text-accent font-semibold">${totalValue.toLocaleString()}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
+            size="sm"
             className="border-border"
             onClick={() => navigate('/catalog/new')}
           >
-            <Plus className="w-4 h-4 mr-2" />
+            <Plus className="w-4 h-4 mr-1" />
             Add New
           </Button>
           <Button
+            size="sm"
             className="wine-gradient text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20"
             onClick={() => navigate('/count')}
           >
-            <ClipboardCheck className="w-4 h-4 mr-2" />
+            <ClipboardCheck className="w-4 h-4 mr-1" />
             Start Count
           </Button>
           <Button variant="outline" size="sm" className="border-border" onClick={() => toast.info('Export coming soon')}>
-            <Download className="w-4 h-4 mr-2" /> Export
+            <Download className="w-4 h-4 mr-1" /> Export
           </Button>
         </div>
       </div>
