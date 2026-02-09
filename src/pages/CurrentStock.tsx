@@ -8,11 +8,13 @@ import { Search, Download, SlidersHorizontal, X, ClipboardCheck, Plus, Settings2
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
 import FilterManager, { FilterDef } from '@/components/FilterManager';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import DataTable, { DataTableColumn } from '@/components/DataTable';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const STOCK_COLUMN_DEFS: ColumnDef[] = [
   { key: 'wine', label: 'Wine' },
@@ -96,6 +98,7 @@ export default function CurrentStock() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const { stockColumns, setStockColumns, stockFilters, setStockFilters, columnWidths, setColumnWidth } = useColumnStore();
+  const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
@@ -103,6 +106,7 @@ export default function CurrentStock() {
   const [regionFilter, setRegionFilter] = useState<string[]>([]);
   const [countryFilter, setCountryFilter] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [stockRange, setStockRange] = useState<[number, number]>([0, 100]);
 
   const totalValue = mockWines.reduce((s, w) => s + (w.stockUnopened + w.stockOpened) * w.price, 0);
@@ -162,92 +166,201 @@ export default function CurrentStock() {
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-        <div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl lg:text-3xl font-heading font-bold">Inventory</h1>
-          <div className="flex items-center gap-4 mt-2 text-sm">
+          <div className="flex items-center gap-2 sm:gap-4 mt-1 text-xs sm:text-sm">
             <span className="text-muted-foreground">{filtered.length} wines</span>
-            <span className="text-muted-foreground">•</span>
-            <span className="text-muted-foreground">{totalBottles} bottles</span>
+            <span className="text-muted-foreground hidden sm:inline">•</span>
+            <span className="text-muted-foreground hidden sm:inline">{totalBottles} bottles</span>
             <span className="text-muted-foreground">•</span>
             <span className="text-accent font-semibold">${totalValue.toLocaleString()}</span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <Button variant="outline" size="sm" className="border-border h-8 px-2 sm:px-3 text-xs" onClick={() => navigate('/catalog/new')}>
-            <Plus className="w-3.5 h-3.5 mr-1" />
-            Add New
+            <Plus className="w-3.5 h-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Add New</span>
           </Button>
           <Button size="sm" className="wine-gradient text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20 h-8 px-2 sm:px-3 text-xs" onClick={() => navigate('/count')}>
-            <ClipboardCheck className="w-3.5 h-3.5 mr-1" />
-            Start Count
+            <ClipboardCheck className="w-3.5 h-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Start Count</span>
           </Button>
           <Button variant="outline" size="sm" className="border-border h-8 px-2 sm:px-3 text-xs" onClick={() => toast.info('Export coming soon')}>
-            <Download className="w-3.5 h-3.5 mr-1" />
-            Export
+            <Download className="w-3.5 h-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Export</span>
           </Button>
         </div>
       </div>
 
       {/* Search & filter bar */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search wine or producer..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-11 bg-card border-border" />
-          </div>
-          <Button
-            variant="outline"
-            className={`h-11 border-border gap-2 ${showFilters ? 'bg-primary/10 text-primary border-primary/30' : ''}`}
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-            <span className="hidden sm:inline">Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                {activeFilterCount}
-              </span>
-            )}
-          </Button>
-          <ColumnManager columns={STOCK_COLUMN_DEFS} visibleColumns={stockColumns} onChange={setStockColumns} />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder="Search wine or producer..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 bg-card border-border" />
         </div>
-
-        {showFilters && (
-          <div className="wine-glass-effect rounded-xl p-4 animate-fade-in">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Advanced Filters</p>
-              <div className="flex items-center gap-2">
-                {activeFilterCount > 0 && (
-                  <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={clearFilters}>
-                    <X className="w-3 h-3 mr-1" /> Clear all
-                  </Button>
-                )}
-                <FilterManager filters={STOCK_FILTERS} visibleFilters={stockFilters} onChange={setStockFilters} />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {fv('status') && <MultiSelectFilter label="Status" options={statuses} selected={statusFilter} onChange={setStatusFilter} />}
-              {fv('type') && <MultiSelectFilter label="Type" options={types} selected={typeFilter} onChange={setTypeFilter} />}
-              {fv('country') && <MultiSelectFilter label="Country" options={countries} selected={countryFilter} onChange={setCountryFilter} />}
-              {fv('region') && <MultiSelectFilter label="Region" options={regions} selected={regionFilter} onChange={setRegionFilter} />}
-              {fv('location') && <MultiSelectFilter label="Location" options={locations} selected={locationFilter} onChange={setLocationFilter} />}
-            </div>
-            {fv('stockRange') && (
-              <div className="mt-4">
-                <p className="text-xs text-muted-foreground mb-2">Stock range: {stockRange[0]} – {stockRange[1]}+</p>
-                <Slider
-                  value={stockRange}
-                  onValueChange={v => setStockRange(v as [number, number])}
-                  max={100}
-                  min={0}
-                  step={1}
-                  className="w-full max-w-xs"
-                />
-              </div>
-            )}
-          </div>
-        )}
+        <Button
+          variant="outline"
+          size="icon"
+          className={`h-10 w-10 shrink-0 border-border relative ${(isMobile ? mobileFiltersOpen : showFilters) ? 'bg-primary/10 text-primary border-primary/30' : ''}`}
+          onClick={() => isMobile ? setMobileFiltersOpen(true) : setShowFilters(!showFilters)}
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          {activeFilterCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
+              {activeFilterCount}
+            </span>
+          )}
+        </Button>
+        <ColumnManager columns={STOCK_COLUMN_DEFS} visibleColumns={stockColumns} onChange={setStockColumns} />
       </div>
+
+      {/* Desktop inline filters */}
+      {!isMobile && showFilters && (
+        <div className="wine-glass-effect rounded-xl p-4 animate-fade-in">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Advanced Filters</p>
+            <div className="flex items-center gap-2">
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={clearFilters}>
+                  <X className="w-3 h-3 mr-1" /> Clear all
+                </Button>
+              )}
+              <FilterManager filters={STOCK_FILTERS} visibleFilters={stockFilters} onChange={setStockFilters} />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {fv('status') && <MultiSelectFilter label="Status" options={statuses} selected={statusFilter} onChange={setStatusFilter} />}
+            {fv('type') && <MultiSelectFilter label="Type" options={types} selected={typeFilter} onChange={setTypeFilter} />}
+            {fv('country') && <MultiSelectFilter label="Country" options={countries} selected={countryFilter} onChange={setCountryFilter} />}
+            {fv('region') && <MultiSelectFilter label="Region" options={regions} selected={regionFilter} onChange={setRegionFilter} />}
+            {fv('location') && <MultiSelectFilter label="Location" options={locations} selected={locationFilter} onChange={setLocationFilter} />}
+          </div>
+          {fv('stockRange') && (
+            <div className="mt-4">
+              <p className="text-xs text-muted-foreground mb-2">Stock range: {stockRange[0]} – {stockRange[1]}+</p>
+              <Slider value={stockRange} onValueChange={v => setStockRange(v as [number, number])} max={100} min={0} step={1} className="w-full max-w-xs" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Mobile filter sheet */}
+      <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+        <SheetContent side="bottom" className="bg-card border-border rounded-t-2xl max-h-[85vh] overflow-y-auto">
+          <SheetHeader>
+            <div className="flex items-center justify-between">
+              <SheetTitle className="text-foreground font-heading">Filters</SheetTitle>
+              {activeFilterCount > 0 && (
+                <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={clearFilters}>
+                  <X className="w-3 h-3 mr-1" /> Clear all
+                </Button>
+              )}
+            </div>
+          </SheetHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Active Filters</p>
+              <FilterManager filters={STOCK_FILTERS} visibleFilters={stockFilters} onChange={setStockFilters} />
+            </div>
+
+            <div className="space-y-3">
+              {fv('status') && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Status</p>
+                  <div className="flex flex-wrap gap-2">
+                    {statuses.map(s => (
+                      <button
+                        key={s}
+                        onClick={() => statusFilter.includes(s) ? setStatusFilter(statusFilter.filter(x => x !== s)) : setStatusFilter([...statusFilter, s])}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${statusFilter.includes(s) ? 'bg-primary/15 border-primary/40 text-primary' : 'border-border text-muted-foreground hover:border-foreground/20'}`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {fv('type') && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Type</p>
+                  <div className="flex flex-wrap gap-2">
+                    {types.map(t => (
+                      <button
+                        key={t}
+                        onClick={() => typeFilter.includes(t) ? setTypeFilter(typeFilter.filter(x => x !== t)) : setTypeFilter([...typeFilter, t])}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${typeFilter.includes(t) ? 'bg-primary/15 border-primary/40 text-primary' : 'border-border text-muted-foreground hover:border-foreground/20'}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {fv('country') && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Country</p>
+                  <div className="flex flex-wrap gap-2">
+                    {countries.map(c => (
+                      <button
+                        key={c}
+                        onClick={() => countryFilter.includes(c) ? setCountryFilter(countryFilter.filter(x => x !== c)) : setCountryFilter([...countryFilter, c])}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${countryFilter.includes(c) ? 'bg-primary/15 border-primary/40 text-primary' : 'border-border text-muted-foreground hover:border-foreground/20'}`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {fv('region') && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Region</p>
+                  <div className="flex flex-wrap gap-2">
+                    {regions.map(r => (
+                      <button
+                        key={r}
+                        onClick={() => regionFilter.includes(r) ? setRegionFilter(regionFilter.filter(x => x !== r)) : setRegionFilter([...regionFilter, r])}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${regionFilter.includes(r) ? 'bg-primary/15 border-primary/40 text-primary' : 'border-border text-muted-foreground hover:border-foreground/20'}`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {fv('location') && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Location</p>
+                  <div className="flex flex-wrap gap-2">
+                    {locations.map(l => (
+                      <button
+                        key={l}
+                        onClick={() => locationFilter.includes(l) ? setLocationFilter(locationFilter.filter(x => x !== l)) : setLocationFilter([...locationFilter, l])}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${locationFilter.includes(l) ? 'bg-primary/15 border-primary/40 text-primary' : 'border-border text-muted-foreground hover:border-foreground/20'}`}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {fv('stockRange') && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Stock range: {stockRange[0]} – {stockRange[1]}+</p>
+                  <Slider value={stockRange} onValueChange={v => setStockRange(v as [number, number])} max={100} min={0} step={1} className="w-full" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <Button className="w-full wine-gradient text-primary-foreground h-11 mt-2" onClick={() => setMobileFiltersOpen(false)}>
+            Apply Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+          </Button>
+        </SheetContent>
+      </Sheet>
+
 
       {/* Table for all viewports */}
       <div className="wine-glass-effect rounded-xl overflow-hidden">
