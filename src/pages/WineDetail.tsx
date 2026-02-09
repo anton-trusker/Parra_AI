@@ -193,16 +193,33 @@ export default function WineDetail() {
         <div className="wine-glass-effect rounded-xl p-5">
           <h3 className="font-heading font-semibold mb-3 flex items-center gap-2"><Clock className="w-4 h-4 text-accent" /> Recent Movements</h3>
           <div className="space-y-2">
-            {movements.map(m => (
-              <div key={m.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 text-sm">
-                <div className="flex items-center gap-2">
-                  <MethodIcon method={m.method} />
-                  <span className="text-muted-foreground">{m.userName}</span>
+            {movements.map(m => {
+              const totalBtl = m.unopened + m.opened;
+              const volMl = wine.volume || 750;
+              const totalLtr = ((m.unopened * volMl) / 1000).toFixed(1);
+              return (
+                <div key={m.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 text-sm gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
+                      <MethodIcon method={m.method} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{m.userName}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(m.timestamp).toLocaleDateString()} · {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 flex-shrink-0 text-right">
+                    <div>
+                      <p className="font-heading font-bold">{totalBtl} <span className="text-xs font-normal text-muted-foreground">btl</span></p>
+                      <p className="text-xs text-muted-foreground">{totalLtr} L</p>
+                    </div>
+                    {m.confidence && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent font-medium">{m.confidence}%</span>
+                    )}
+                  </div>
                 </div>
-                <span>{m.unopened}U + {m.opened}O</span>
-                <span className="text-xs text-muted-foreground">{new Date(m.timestamp).toLocaleDateString()}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <Button variant="ghost" size="sm" className="mt-2 text-accent" onClick={() => navigate('/history')}>
             View All History →
