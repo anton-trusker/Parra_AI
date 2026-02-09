@@ -140,7 +140,7 @@ export default function DataTable<T>({
                     )}
                   </span>
                   <div
-                    className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-primary/30 transition-colors"
+                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize bg-border/40 hover:bg-primary/50 hover:w-1.5 transition-all"
                     onMouseDown={e => handleResizeStart(e, col.key)}
                     onTouchStart={e => {
                       const touch = e.touches[0];
