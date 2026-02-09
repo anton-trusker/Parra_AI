@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { mockWines, Wine } from '@/data/mockWines';
 import { useAuthStore } from '@/stores/authStore';
 import { useColumnStore } from '@/stores/columnStore';
-import { Search, Plus, SlidersHorizontal, LayoutGrid, Table2, Wine as WineIcon, ImageOff, X } from 'lucide-react';
+import { Search, Plus, SlidersHorizontal, LayoutGrid, Table2, Wine as WineIcon, ImageOff, X, FileUp } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
@@ -177,10 +177,16 @@ export default function WineCatalog() {
           <p className="text-muted-foreground mt-1">{filtered.length} wines</p>
         </div>
         {isAdmin && (
-          <Button className="wine-gradient text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20" onClick={() => navigate('/catalog/new')}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Wine
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => navigate('/catalog/import')}>
+              <FileUp className="w-4 h-4 mr-2" />
+              Import CSV
+            </Button>
+            <Button className="wine-gradient text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20" onClick={() => navigate('/catalog/new')}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Wine
+            </Button>
+          </div>
         )}
       </div>
 

@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard";
 import WineCatalog from "./pages/WineCatalog";
 import WineDetail from "./pages/WineDetail";
 import WineForm from "./pages/WineForm";
+import ImportInventory from "./pages/ImportInventory";
 import InventoryCount from "./pages/InventoryCount";
 import CurrentStock from "./pages/CurrentStock";
 import InventoryHistory from "./pages/InventoryHistory";
@@ -51,6 +52,7 @@ const App = () => (
               <Route path="/catalog/new" element={<WineForm />} />
               <Route path="/catalog/:id" element={<WineDetail />} />
               <Route path="/catalog/:id/edit" element={<WineForm />} />
+              <Route path="/catalog/import" element={<ImportInventory />} />
               <Route path="/count" element={<InventoryCount />} />
               <Route path="/stock" element={<CurrentStock />} />
               <Route path="/history" element={<InventoryHistory />} />
