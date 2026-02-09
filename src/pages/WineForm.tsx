@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { mockWines, Wine } from '@/data/mockWines';
 import { useAuthStore } from '@/stores/authStore';
-import { ArrowLeft, Save, Trash2 } from 'lucide-react';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { getCountries, getRegionsForCountry, getSubRegionsForRegion, getAppellationsForRegion } from '@/data/referenceData';
+import { ArrowLeft, Save, Trash2, Upload, X, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,11 +18,12 @@ export default function WineForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const { volumes } = useSettingsStore();
   const isEdit = !!id;
   const existing = isEdit ? mockWines.find(w => w.id === id) : null;
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
-  if (isEdit && !existing) return <Navigate to="/catalog" replace />;
+  const [imagePreview, setImagePreview] = useState<string | null>(existing?.imageUrl || null);
 
   const [form, setForm] = useState({
     name: existing?.name || '',
@@ -41,25 +44,20 @@ export default function WineForm() {
     barcode: existing?.barcode || '',
     barcodeType: existing?.barcodeType || 'EAN-13',
     grapeVarieties: existing?.grapeVarieties?.join(', ') || '',
-    // Pricing
     purchasePrice: existing?.purchasePrice?.toString() || '',
     salePrice: (existing?.salePrice || existing?.price)?.toString() || '',
     glassPrice: existing?.glassPrice?.toString() || '',
     availableByGlass: existing?.availableByGlass || false,
-    // Stock
     stockUnopened: existing?.stockUnopened?.toString() || '0',
     stockOpened: existing?.stockOpened?.toString() || '0',
     minStockLevel: existing?.minStockLevel?.toString() || '6',
     maxStockLevel: existing?.maxStockLevel?.toString() || '',
     reorderPoint: existing?.reorderPoint?.toString() || '',
     reorderQuantity: existing?.reorderQuantity?.toString() || '',
-    // Location
     cellarSection: existing?.cellarSection || '',
     rackNumber: existing?.rackNumber || '',
     shelfPosition: existing?.shelfPosition || '',
-    // Supplier
     supplierName: existing?.supplierName || '',
-    // Tasting
     tastingNotes: existing?.tastingNotes || '',
     body: existing?.body || '',
     sweetness: existing?.sweetness || '',
@@ -68,16 +66,45 @@ export default function WineForm() {
     foodPairing: existing?.foodPairing || '',
   });
 
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (isEdit && !existing) return <Navigate to="/catalog" replace />;
+
   const update = (field: string, value: string | boolean) => setForm(f => ({ ...f, [field]: value }));
 
-  const handleSave = () => {
-    if (!form.name || !form.producer) {
-      toast.error('Name and Producer are required');
-      return;
+  const countries = getCountries();
+  const regions = form.country ? getRegionsForCountry(form.country) : [];
+  const subRegions = form.country && form.region ? getSubRegionsForRegion(form.country, form.region) : [];
+  const appellations = form.country && form.region ? getAppellationsForRegion(form.country, form.region) : [];
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5MB'); return; }
+    const reader = new FileReader();
+    reader.onload = () => setImagePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleVolumeSelect = (volId: string) => {
+    const vol = volumes.find(v => v.id === volId);
+    if (vol) {
+      setForm(f => ({ ...f, volume: vol.ml.toString(), bottleSize: vol.bottleSize }));
     }
+  };
+
+  const handleSave = () => {
+    if (!form.name || !form.producer) { toast.error('Name and Producer are required'); return; }
     toast.success(isEdit ? 'Wine updated successfully' : 'Wine added to catalog');
     navigate('/catalog');
   };
+
+  const volumeLitres = form.volume ? (parseInt(form.volume) / 1000).toFixed(3) : '0';
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 animate-fade-in">
@@ -90,6 +117,35 @@ export default function WineForm() {
       </div>
 
       <h1 className="text-2xl lg:text-3xl font-heading font-bold">{isEdit ? `Edit ${existing?.name}` : 'Add New Wine'}</h1>
+
+      {/* Image Upload */}
+      <section className="wine-glass-effect rounded-xl p-5 space-y-4">
+        <h3 className="font-heading font-semibold text-lg">Wine Image</h3>
+        <div className="flex items-start gap-4">
+          <div className="w-32 h-40 rounded-xl border-2 border-dashed border-border flex items-center justify-center overflow-hidden bg-secondary/30 flex-shrink-0">
+            {imagePreview ? (
+              <img src={imagePreview} alt="Wine" className="w-full h-full object-cover rounded-xl" />
+            ) : (
+              <div className="flex flex-col items-center text-muted-foreground">
+                <ImageIcon className="w-8 h-8 mb-1" />
+                <span className="text-xs">No Image</span>
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            <Button variant="outline" size="sm" className="border-border" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="w-4 h-4 mr-1" /> {imagePreview ? 'Change Image' : 'Upload Image'}
+            </Button>
+            {imagePreview && (
+              <Button variant="ghost" size="sm" className="text-destructive" onClick={handleRemoveImage}>
+                <X className="w-4 h-4 mr-1" /> Remove
+              </Button>
+            )}
+            <p className="text-xs text-muted-foreground">JPG, PNG or WebP, max 5MB</p>
+          </div>
+        </div>
+      </section>
 
       {/* Basic Info */}
       <section className="wine-glass-effect rounded-xl p-5 space-y-4">
@@ -133,29 +189,62 @@ export default function WineForm() {
         </div>
       </section>
 
-      {/* Origin */}
+      {/* Origin - with cascading dropdowns */}
       <section className="wine-glass-effect rounded-xl p-5 space-y-4">
         <h3 className="font-heading font-semibold text-lg">Origin</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-1.5"><Label>Country</Label><Input value={form.country} onChange={e => update('country', e.target.value)} className="bg-secondary border-border" /></div>
-          <div className="space-y-1.5"><Label>Region</Label><Input value={form.region} onChange={e => update('region', e.target.value)} className="bg-secondary border-border" /></div>
-          <div className="space-y-1.5"><Label>Sub-Region</Label><Input value={form.subRegion} onChange={e => update('subRegion', e.target.value)} className="bg-secondary border-border" /></div>
-          <div className="space-y-1.5"><Label>Appellation</Label><Input value={form.appellation} onChange={e => update('appellation', e.target.value)} placeholder="AOC, DOC, AVA..." className="bg-secondary border-border" /></div>
+          <div className="space-y-1.5">
+            <Label>Country</Label>
+            <Select value={form.country} onValueChange={v => { update('country', v); update('region', ''); update('subRegion', ''); update('appellation', ''); }}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select country" /></SelectTrigger>
+              <SelectContent>
+                {countries.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Region</Label>
+            <Select value={form.region} onValueChange={v => { update('region', v); update('subRegion', ''); update('appellation', ''); }} disabled={!form.country}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder={form.country ? 'Select region' : 'Select country first'} /></SelectTrigger>
+              <SelectContent>
+                {regions.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Sub-Region</Label>
+            <Select value={form.subRegion} onValueChange={v => update('subRegion', v)} disabled={!form.region || subRegions.length === 0}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder={subRegions.length ? 'Select sub-region' : 'N/A'} /></SelectTrigger>
+              <SelectContent>
+                {subRegions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>Appellation</Label>
+            <Select value={form.appellation} onValueChange={v => update('appellation', v)} disabled={!form.region || appellations.length === 0}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder={appellations.length ? 'Select appellation' : 'N/A'} /></SelectTrigger>
+              <SelectContent>
+                {appellations.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </section>
 
-      {/* Product Details */}
+      {/* Product Details - Volume from settings */}
       <section className="wine-glass-effect rounded-xl p-5 space-y-4">
         <h3 className="font-heading font-semibold text-lg">Product Details</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-          <div className="space-y-1.5"><Label>Volume (ml)</Label><Input type="number" value={form.volume} onChange={e => update('volume', e.target.value)} className="bg-secondary border-border" /></div>
-          <div className="space-y-1.5"><Label>Bottle Size</Label>
-            <Select value={form.bottleSize} onValueChange={v => update('bottleSize', v)}>
-              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+          <div className="space-y-1.5">
+            <Label>Volume</Label>
+            <Select onValueChange={handleVolumeSelect} value={volumes.find(v => v.ml === parseInt(form.volume))?.id || ''}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select volume" /></SelectTrigger>
               <SelectContent>
-                {['Half', 'Standard', 'Magnum', 'Jeroboam', 'Other'].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                {volumes.map(v => <SelectItem key={v.id} value={v.id}>{v.label} ({v.bottleSize})</SelectItem>)}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">{form.volume}ml = {volumeLitres}L</p>
           </div>
           <div className="space-y-1.5"><Label>ABV (%)</Label><Input type="number" step="0.1" value={form.abv} onChange={e => update('abv', e.target.value)} className="bg-secondary border-border" /></div>
           <div className="space-y-1.5"><Label>Closure</Label>
@@ -190,7 +279,7 @@ export default function WineForm() {
         <h3 className="font-heading font-semibold text-lg">Inventory Settings</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div className="space-y-1.5"><Label>Unopened Stock</Label><Input type="number" value={form.stockUnopened} onChange={e => update('stockUnopened', e.target.value)} className="bg-secondary border-border" /></div>
-          <div className="space-y-1.5"><Label>Opened Stock</Label><Input type="number" value={form.stockOpened} onChange={e => update('stockOpened', e.target.value)} className="bg-secondary border-border" /></div>
+          <div className="space-y-1.5"><Label>Opened Stock</Label><Input type="number" step="0.001" value={form.stockOpened} onChange={e => update('stockOpened', e.target.value)} className="bg-secondary border-border" /></div>
           <div className="space-y-1.5"><Label>Min Stock Level</Label><Input type="number" value={form.minStockLevel} onChange={e => update('minStockLevel', e.target.value)} className="bg-secondary border-border" /></div>
           <div className="space-y-1.5"><Label>Max Stock Level</Label><Input type="number" value={form.maxStockLevel} onChange={e => update('maxStockLevel', e.target.value)} className="bg-secondary border-border" /></div>
           <div className="space-y-1.5"><Label>Reorder Point</Label><Input type="number" value={form.reorderPoint} onChange={e => update('reorderPoint', e.target.value)} className="bg-secondary border-border" /></div>

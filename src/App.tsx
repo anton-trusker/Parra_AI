@@ -16,6 +16,7 @@ import SessionReview from "./pages/SessionReview";
 import UserManagement from "./pages/UserManagement";
 import Reports from "./pages/Reports";
 import AppSettings from "./pages/AppSettings";
+import GeneralSettings from "./pages/GeneralSettings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/users" element={<UserManagement />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<AppSettings />} />
+            <Route path="/settings/general" element={<GeneralSettings />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
