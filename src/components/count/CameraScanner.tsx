@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
-import { Scan, Camera, Search, StopCircle, Zap } from 'lucide-react';
+import { Scan, Camera, Search, StopCircle, Zap, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Wine, mockWines } from '@/data/mockWines';
 import { toast } from 'sonner';
 import ManualSearchSheet from './ManualSearchSheet';
 import QuantityPopup from './QuantityPopup';
 import ScanProgressDialog from './ScanProgressDialog';
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 
 type ScanMode = 'barcode' | 'image';
 
@@ -16,6 +17,8 @@ interface CameraScannerProps {
   onEndSession: () => void;
 }
 
+const SCANNER_ELEMENT_ID = 'barcode-scanner-region';
+
 export default function CameraScanner({ sessionId, counted, onCount, onEndSession }: CameraScannerProps) {
   const [mode, setMode] = useState<ScanMode>('barcode');
   const [showManualSearch, setShowManualSearch] = useState(false);
@@ -25,8 +28,27 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
   const [progressWine, setProgressWine] = useState<Wine | null>(null);
   const [isCompactQuantity, setIsCompactQuantity] = useState(false);
 
-  // Simulate barcode auto-detection
-  const handleBarcodeTap = () => {
+  // Real barcode detection handler
+  const handleBarcodeDetected = useCallback((code: string) => {
+    // Try to match barcode against mock wines
+    const matchedWine = mockWines.find(w => w.barcode === code);
+    if (matchedWine) {
+      toast.success(`Barcode matched: ${matchedWine.name}`, { duration: 1500 });
+      setSelectedWine(matchedWine);
+    } else {
+      // Unknown barcode — still show popup with info
+      toast.info(`Barcode scanned: ${code}`, { description: 'Wine not found in catalog. Try manual search.', duration: 3000 });
+      return;
+    }
+    setIsCompactQuantity(true);
+    setShowQuantity(true);
+  }, []);
+
+  const isBarcodeActive = mode === 'barcode' && !showQuantity && !showManualSearch && !showProgress;
+  const { isScanning, error: scannerError } = useBarcodeScanner(SCANNER_ELEMENT_ID, handleBarcodeDetected, isBarcodeActive);
+
+  // Simulate barcode for demo (fallback)
+  const handleSimulateScan = () => {
     const randomWine = mockWines[Math.floor(Math.random() * mockWines.length)];
     toast.success(`Barcode detected: ${randomWine.barcode || randomWine.sku}`, { duration: 1500 });
     setSelectedWine(randomWine);
@@ -68,7 +90,6 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
     onCount();
     setShowQuantity(false);
     setSelectedWine(null);
-    // Camera stays open with same mode for continuous scanning
   };
 
   const handleCancelQuantity = () => {
@@ -97,29 +118,51 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
 
       {/* Camera viewfinder area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Simulated camera background */}
-        <div className="absolute inset-0 bg-gradient-to-b from-secondary/50 to-background flex items-center justify-center">
-          {mode === 'barcode' ? (
-            <div className="text-center" onClick={handleBarcodeTap}>
-              {/* Barcode scanning frame */}
-              <div className="w-64 h-40 border-2 border-accent/60 rounded-xl relative mb-4 mx-auto">
-                <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-accent rounded-tl-lg" />
-                <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-accent rounded-tr-lg" />
-                <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-accent rounded-bl-lg" />
-                <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-accent rounded-br-lg" />
+        {mode === 'barcode' ? (
+          <div className="absolute inset-0 flex flex-col">
+            {/* Real camera feed from html5-qrcode */}
+            <div
+              id={SCANNER_ELEMENT_ID}
+              className="flex-1 bg-black [&_video]:object-cover [&_video]:w-full [&_video]:h-full [&>div]:!border-none [&_img]:hidden"
+            />
+
+            {/* Overlay scanning frame on top of camera */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+              <div className="w-64 h-40 relative">
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-3 border-l-3 border-accent rounded-tl-xl" />
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-3 border-r-3 border-accent rounded-tr-xl" />
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-3 border-l-3 border-accent rounded-bl-xl" />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-3 border-r-3 border-accent rounded-br-xl" />
                 {/* Scanning line */}
-                <div className="absolute left-2 right-2 top-1/2 h-0.5 bg-accent/80 animate-pulse" />
+                <div className="absolute left-3 right-3 top-1/2 h-0.5 bg-accent/80 animate-pulse" />
               </div>
-              <p className="text-sm text-muted-foreground">Point at barcode to scan</p>
-              <p className="text-xs text-muted-foreground mt-1">Auto-capture enabled</p>
-              <Button variant="ghost" size="sm" className="mt-4 text-accent" onClick={handleBarcodeTap}>
-                <Zap className="w-4 h-4 mr-1.5" />
-                Simulate Scan
-              </Button>
             </div>
-          ) : (
+
+            {/* Status overlay */}
+            <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-none">
+              {isScanning && (
+                <p className="text-sm text-foreground/80 bg-card/60 backdrop-blur-sm inline-block px-3 py-1.5 rounded-full">
+                  <Scan className="w-3.5 h-3.5 inline mr-1.5 animate-pulse" />
+                  Scanning… point at barcode
+                </p>
+              )}
+              {scannerError && (
+                <div className="pointer-events-auto inline-flex flex-col items-center gap-2">
+                  <p className="text-sm text-destructive bg-card/80 backdrop-blur-sm inline-flex items-center px-3 py-1.5 rounded-full">
+                    <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
+                    Camera unavailable
+                  </p>
+                  <Button variant="ghost" size="sm" className="text-accent" onClick={handleSimulateScan}>
+                    <Zap className="w-4 h-4 mr-1.5" />
+                    Simulate Scan
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-b from-secondary/50 to-background flex items-center justify-center">
             <div className="text-center">
-              {/* Image capture frame */}
               <div className="w-56 h-72 border-2 border-primary/50 rounded-xl relative mb-4 mx-auto flex items-center justify-center">
                 <Camera className="w-12 h-12 text-primary/40" />
                 <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-primary rounded-tl-lg" />
@@ -128,7 +171,6 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
                 <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-primary rounded-br-lg" />
               </div>
               <p className="text-sm text-muted-foreground">Position wine label in frame</p>
-              {/* Capture button */}
               <button
                 onClick={handleImageCapture}
                 className="mt-4 w-16 h-16 rounded-full border-4 border-primary flex items-center justify-center mx-auto hover:scale-105 transition-transform active:scale-95"
@@ -136,14 +178,13 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
                 <div className="w-12 h-12 rounded-full wine-gradient" />
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Bottom controls */}
       <div className="bg-card/90 backdrop-blur-md border-t border-border px-4 py-4 pb-safe z-10">
         <div className="flex items-center justify-between max-w-md mx-auto">
-          {/* Manual search button */}
           <button
             onClick={() => setShowManualSearch(true)}
             className="flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-muted transition-colors"
@@ -152,7 +193,6 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
             <span className="text-[10px] text-muted-foreground">Search</span>
           </button>
 
-          {/* Mode toggle */}
           <div className="flex items-center bg-secondary rounded-full p-1 gap-0.5">
             <button
               onClick={() => setMode('barcode')}
@@ -178,7 +218,6 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
             </button>
           </div>
 
-          {/* Spacer for symmetry */}
           <div className="w-[52px]" />
         </div>
       </div>
