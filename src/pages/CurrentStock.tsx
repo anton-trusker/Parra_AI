@@ -173,26 +173,18 @@ export default function CurrentStock() {
             <span className="text-accent font-semibold">${totalValue.toLocaleString()}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-border"
-            onClick={() => navigate('/catalog/new')}
-          >
-            <Plus className="w-4 h-4 mr-1" />
-            Add New
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <Button variant="outline" size="sm" className="border-border h-8 px-2 sm:px-3 text-xs" onClick={() => navigate('/catalog/new')}>
+            <Plus className="w-3.5 h-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Add New</span>
           </Button>
-          <Button
-            size="sm"
-            className="wine-gradient text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20"
-            onClick={() => navigate('/count')}
-          >
-            <ClipboardCheck className="w-4 h-4 mr-1" />
-            Start Count
+          <Button size="sm" className="wine-gradient text-primary-foreground hover:opacity-90 shadow-lg shadow-primary/20 h-8 px-2 sm:px-3 text-xs" onClick={() => navigate('/count')}>
+            <ClipboardCheck className="w-3.5 h-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Start Count</span>
           </Button>
-          <Button variant="outline" size="sm" className="border-border" onClick={() => toast.info('Export coming soon')}>
-            <Download className="w-4 h-4 mr-1" /> Export
+          <Button variant="outline" size="sm" className="border-border h-8 px-2 sm:px-3 text-xs" onClick={() => toast.info('Export coming soon')}>
+            <Download className="w-3.5 h-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Export</span>
           </Button>
         </div>
       </div>
