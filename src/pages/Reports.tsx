@@ -31,7 +31,7 @@ export default function Reports() {
       <div className="wine-glass-effect rounded-xl p-12 text-center">
         <BarChart3 className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
         <h2 className="font-heading text-xl font-semibold mb-2">Reports Coming Soon</h2>
-        <p className="text-muted-foreground">Connect Lovable Cloud to enable real-time analytics and reporting</p>
+        <p className="text-muted-foreground">Connect your backend to enable real-time analytics and reporting</p>
       </div>
     </div>
   );
