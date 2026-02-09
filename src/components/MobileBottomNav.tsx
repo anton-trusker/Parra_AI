@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import {
-  LayoutDashboard, Wine, Package, History, BarChart3, Settings, Users, MoreHorizontal
+  LayoutDashboard, Wine, Package, History, BarChart3, Settings, Users, MoreHorizontal, ClipboardCheck
 } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -24,6 +24,7 @@ const adminPrimaryNav: NavItem[] = [
 const adminMoreNav: NavItem[] = [
   { label: 'User Management', icon: Users, path: '/users' },
   { label: 'History & Audit', icon: History, path: '/history' },
+  { label: 'Session Review', icon: ClipboardCheck, path: '/sessions' },
   { label: 'Reports', icon: BarChart3, path: '/reports' },
   { label: 'Settings', icon: Settings, path: '/settings' },
 ];
