@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { Wine, ShieldCheck, User } from 'lucide-react';
+import { ShieldCheck, User, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import loginHero from '@/assets/login-hero.jpg';
 
 export default function Login() {
   const { login } = useAuthStore();
@@ -21,30 +22,37 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left: Decorative */}
-      <div className="hidden lg:flex lg:w-1/2 wine-gradient relative overflow-hidden items-center justify-center">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,hsl(350_55%_38%_/_0.4),transparent_60%)]" />
-        <div className="relative z-10 text-center px-12">
-          <Wine className="w-20 h-20 mx-auto mb-6 text-wine-gold opacity-80" />
-          <h2 className="font-heading text-5xl font-bold text-wine-cream mb-4">Cellar</h2>
-          <p className="text-lg text-wine-cream/70 max-w-md">
-            Smart wine inventory management with AI-powered recognition
+      {/* Left: Hero image */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden items-end justify-start">
+        <img
+          src={loginHero}
+          alt="Elegant restaurant interior"
+          className="absolute inset-0 w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/10" />
+        <div className="relative z-10 p-12 pb-16 max-w-lg">
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="w-5 h-5 text-wine-gold" />
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-wine-gold">AI-Powered</span>
+          </div>
+          <h2 className="font-heading text-5xl font-bold text-white mb-3 leading-tight">Parra</h2>
+          <p className="text-lg text-white/70 leading-relaxed">
+            Smart restaurant management with AI-powered tools
           </p>
         </div>
-        <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-background/30 to-transparent" />
       </div>
 
       {/* Right: Role selection */}
-      <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex-1 flex items-center justify-center p-8 bg-background">
         <div className="w-full max-w-sm animate-fade-in">
           <div className="lg:hidden flex items-center gap-3 mb-10">
             <div className="w-12 h-12 rounded-xl wine-gradient flex items-center justify-center">
-              <Wine className="w-6 h-6 text-primary-foreground" />
+              <Sparkles className="w-6 h-6 text-primary-foreground" />
             </div>
-            <h1 className="font-heading text-2xl font-bold">Cellar</h1>
+            <h1 className="font-heading text-2xl font-bold">Parra</h1>
           </div>
 
-          <h2 className="font-heading text-3xl font-bold mb-2">Welcome</h2>
+          <h2 className="font-heading text-3xl font-bold mb-2">Welcome back</h2>
           <p className="text-muted-foreground mb-8">Choose your role to continue</p>
 
           <div className="space-y-4">
@@ -64,6 +72,10 @@ export default function Login() {
               Sign in as Staff
             </Button>
           </div>
+
+          <p className="text-xs text-muted-foreground text-center mt-10">
+            © {new Date().getFullYear()} Parra · All rights reserved
+          </p>
         </div>
       </div>
     </div>
