@@ -40,16 +40,69 @@ export type ModuleKey =
   | 'settings'
   | 'users';
 
-export const ALL_MODULES: { key: ModuleKey; label: string }[] = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'catalog', label: 'Wine Catalog' },
-  { key: 'stock', label: 'Inventory' },
-  { key: 'count', label: 'Inventory Count' },
-  { key: 'history', label: 'History & Audit' },
-  { key: 'sessions', label: 'Session Review' },
-  { key: 'reports', label: 'Reports' },
-  { key: 'settings', label: 'Settings' },
-  { key: 'users', label: 'User Management' },
+export interface SubAction {
+  key: string; // e.g. 'view_analytics'
+  label: string;
+}
+
+export interface ModuleConfig {
+  key: ModuleKey;
+  label: string;
+  subActions: SubAction[];
+}
+
+export const ALL_MODULES: ModuleConfig[] = [
+  { key: 'dashboard', label: 'Dashboard', subActions: [
+    { key: 'view_analytics', label: 'View Analytics' },
+    { key: 'view_stock_alerts', label: 'View Stock Alerts' },
+    { key: 'export_reports', label: 'Export Reports' },
+  ]},
+  { key: 'catalog', label: 'Wine Catalog', subActions: [
+    { key: 'view_wines', label: 'View Wines' },
+    { key: 'add_edit_wines', label: 'Add / Edit Wines' },
+    { key: 'delete_wines', label: 'Delete Wines' },
+    { key: 'edit_pricing', label: 'Edit Pricing' },
+    { key: 'manage_categories', label: 'Manage Categories' },
+  ]},
+  { key: 'stock', label: 'Inventory (Current Stock)', subActions: [
+    { key: 'view_stock_levels', label: 'View Stock Levels' },
+    { key: 'adjust_stock', label: 'Adjust Stock' },
+    { key: 'transfer_locations', label: 'Transfer Between Locations' },
+    { key: 'view_cost_value', label: 'View Cost / Value' },
+  ]},
+  { key: 'count', label: 'Inventory Count', subActions: [
+    { key: 'start_session', label: 'Start Count Session' },
+    { key: 'perform_count', label: 'Perform Count' },
+    { key: 'edit_quantities', label: 'Edit Counted Quantities' },
+    { key: 'submit_count', label: 'Submit Count' },
+  ]},
+  { key: 'history', label: 'History & Audit', subActions: [
+    { key: 'view_logs', label: 'View History Logs' },
+    { key: 'export_history', label: 'Export History' },
+  ]},
+  { key: 'sessions', label: 'Session Review', subActions: [
+    { key: 'view_sessions', label: 'View Sessions' },
+    { key: 'approve_reject', label: 'Approve / Reject Sessions' },
+    { key: 'reopen_sessions', label: 'Reopen Sessions' },
+    { key: 'delete_sessions', label: 'Delete Sessions' },
+  ]},
+  { key: 'reports', label: 'Reports', subActions: [
+    { key: 'view_reports', label: 'View Reports' },
+    { key: 'export_reports', label: 'Export Reports' },
+    { key: 'view_financials', label: 'View Financial Data' },
+  ]},
+  { key: 'settings', label: 'Settings', subActions: [
+    { key: 'view_settings', label: 'View Settings' },
+    { key: 'edit_general', label: 'Edit General Settings' },
+    { key: 'manage_locations', label: 'Manage Locations' },
+    { key: 'manage_volumes', label: 'Manage Volumes & Glasses' },
+  ]},
+  { key: 'users', label: 'User Management', subActions: [
+    { key: 'view_users', label: 'View Users' },
+    { key: 'create_edit_users', label: 'Create / Edit Users' },
+    { key: 'delete_users', label: 'Delete Users' },
+    { key: 'assign_roles', label: 'Assign Roles' },
+  ]},
 ];
 
 export const ALL_PERMISSION_LEVELS: { value: PermissionLevel; label: string }[] = [
@@ -59,12 +112,32 @@ export const ALL_PERMISSION_LEVELS: { value: PermissionLevel; label: string }[] 
   { value: 'full', label: 'Full' },
 ];
 
+// Permission key is "module.subAction" e.g. "catalog.add_edit_wines"
+export type PermissionKey = `${ModuleKey}.${string}`;
+
 export interface AppRole {
   id: string;
   name: string;
   color: string;
-  isBuiltin: boolean; // cannot delete builtin roles
-  permissions: Record<ModuleKey, PermissionLevel>;
+  isBuiltin: boolean;
+  permissions: Record<string, PermissionLevel>; // keys are PermissionKey strings
+}
+
+// Helper to build a full permission key
+export function permKey(module: ModuleKey, action: string): string {
+  return `${module}.${action}`;
+}
+
+// Helper to get all permission keys
+export function getAllPermissionKeys(): string[] {
+  return ALL_MODULES.flatMap(m => m.subActions.map(a => permKey(m.key, a.key)));
+}
+
+// Build a permissions record with a default level for all sub-actions
+export function buildPermissions(level: PermissionLevel): Record<string, PermissionLevel> {
+  const perms: Record<string, PermissionLevel> = {};
+  ALL_MODULES.forEach(m => m.subActions.forEach(a => { perms[permKey(m.key, a.key)] = level; }));
+  return perms;
 }
 
 // Countries with their regions, sub-regions, and appellations
@@ -118,14 +191,22 @@ export const defaultVolumes: VolumeOption[] = [
   { id: 'v8', ml: 5000, label: '5.000L', bottleSize: 'Rehoboam' },
 ];
 
-const fullPermissions: Record<ModuleKey, PermissionLevel> = {
-  dashboard: 'full', catalog: 'full', stock: 'full', count: 'full',
-  history: 'full', sessions: 'full', reports: 'full', settings: 'full', users: 'full',
-};
+const fullPermissions = buildPermissions('full');
 
-const staffPermissions: Record<ModuleKey, PermissionLevel> = {
-  dashboard: 'view', catalog: 'view', stock: 'none', count: 'edit',
-  history: 'view', sessions: 'none', reports: 'none', settings: 'none', users: 'none',
+const staffPermissions: Record<string, PermissionLevel> = {
+  ...buildPermissions('none'),
+  // Dashboard: view only
+  'dashboard.view_analytics': 'view',
+  'dashboard.view_stock_alerts': 'view',
+  // Catalog: view only
+  'catalog.view_wines': 'view',
+  // Count: edit level
+  'count.start_session': 'edit',
+  'count.perform_count': 'edit',
+  'count.edit_quantities': 'edit',
+  'count.submit_count': 'edit',
+  // History: view
+  'history.view_logs': 'view',
 };
 
 export const defaultRoles: AppRole[] = [

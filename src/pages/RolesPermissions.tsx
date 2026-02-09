@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useHasPermission } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, Shield, ChevronDown } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Shield, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   ALL_MODULES,
   ALL_PERMISSION_LEVELS,
+  buildPermissions,
+  permKey,
   type AppRole,
   type ModuleKey,
   type PermissionLevel,
@@ -18,10 +20,11 @@ import {
 
 export default function RolesPermissions() {
   const canAccess = useHasPermission('settings', 'full');
-  const { roles, addRole, removeRole, setRolePermission } = useSettingsStore();
+  const { roles, addRole, removeRole, setRolePermission, setModulePermissions } = useSettingsStore();
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleColor, setNewRoleColor] = useState('#22c55e');
   const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set(roles.length <= 2 ? roles.map(r => r.id) : []));
+  const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
 
   if (!canAccess) return <Navigate to="/dashboard" replace />;
 
@@ -33,18 +36,23 @@ export default function RolesPermissions() {
     });
   };
 
+  const toggleModule = (roleId: string, moduleKey: string) => {
+    const compositeKey = `${roleId}:${moduleKey}`;
+    setExpandedModules(prev => {
+      const next = new Set(prev);
+      if (next.has(compositeKey)) next.delete(compositeKey); else next.add(compositeKey);
+      return next;
+    });
+  };
+
   const handleAddRole = () => {
     if (!newRoleName.trim()) { toast.error('Enter a role name'); return; }
-    const defaultPerms: Record<ModuleKey, PermissionLevel> = {} as any;
-    ALL_MODULES.forEach((m) => { defaultPerms[m.key] = 'none'; });
-    defaultPerms.dashboard = 'view';
-
     const newRole: AppRole = {
       id: `role_${Date.now()}`,
       name: newRoleName.trim(),
       color: newRoleColor,
       isBuiltin: false,
-      permissions: defaultPerms,
+      permissions: { ...buildPermissions('none'), 'dashboard.view_analytics': 'view' },
     };
     addRole(newRole);
     setNewRoleName('');
@@ -54,8 +62,28 @@ export default function RolesPermissions() {
 
   const getPermSummary = (role: AppRole) => {
     const active = Object.values(role.permissions).filter(v => v !== 'none').length;
-    return `${active}/${ALL_MODULES.length} modules`;
+    const total = Object.keys(role.permissions).length;
+    return `${active}/${total} permissions`;
   };
+
+  const getModuleSummary = (role: AppRole, moduleKey: ModuleKey) => {
+    const mod = ALL_MODULES.find(m => m.key === moduleKey)!;
+    const active = mod.subActions.filter(a => (role.permissions[permKey(moduleKey, a.key)] ?? 'none') !== 'none').length;
+    return `${active}/${mod.subActions.length}`;
+  };
+
+  const getModuleHighestLevel = (role: AppRole, moduleKey: ModuleKey): PermissionLevel => {
+    const mod = ALL_MODULES.find(m => m.key === moduleKey)!;
+    const hierarchy: PermissionLevel[] = ['none', 'view', 'edit', 'full'];
+    let best = 0;
+    mod.subActions.forEach(a => {
+      const lvl = hierarchy.indexOf(role.permissions[permKey(moduleKey, a.key)] ?? 'none');
+      if (lvl > best) best = lvl;
+    });
+    return hierarchy[best];
+  };
+
+  const isAdminLocked = (role: AppRole) => role.isBuiltin && role.id === 'role_admin';
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 animate-fade-in">
@@ -103,10 +131,11 @@ export default function RolesPermissions() {
         </div>
       </div>
 
-      {/* Roles list with collapsible permission matrices */}
+      {/* Roles list */}
       <div className="space-y-3">
         {roles.map((role) => {
           const isOpen = expandedRoles.has(role.id);
+          const locked = isAdminLocked(role);
           return (
             <Collapsible key={role.id} open={isOpen} onOpenChange={() => toggleRole(role.id)}>
               <div className="wine-glass-effect rounded-xl overflow-hidden">
@@ -140,7 +169,7 @@ export default function RolesPermissions() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b border-border">
-                            <th className="text-left py-2 pr-4 text-xs text-muted-foreground font-medium">Module</th>
+                            <th className="text-left py-2 pr-4 text-xs text-muted-foreground font-medium">Module / Action</th>
                             {ALL_PERMISSION_LEVELS.map((l) => (
                               <th key={l.value} className="text-center py-2 px-2 text-xs text-muted-foreground font-medium w-16">
                                 {l.label}
@@ -149,28 +178,32 @@ export default function RolesPermissions() {
                           </tr>
                         </thead>
                         <tbody>
-                          {ALL_MODULES.map((m, idx) => (
-                            <tr key={m.key} className={`border-b border-border/50 ${idx % 2 === 0 ? 'bg-secondary/20' : ''} hover:bg-secondary/40 transition-colors`}>
-                              <td className="py-2.5 pr-4 text-sm">{m.label}</td>
-                              {ALL_PERMISSION_LEVELS.map((l) => (
-                                <td key={l.value} className="text-center py-2.5 px-2">
-                                  <button
-                                    onClick={() => { setRolePermission(role.id, m.key, l.value); toast.success('Permission updated'); }}
-                                    disabled={role.isBuiltin && role.id === 'role_admin'}
-                                    className={`w-5 h-5 rounded-full border-2 transition-colors mx-auto flex items-center justify-center ${
-                                      role.permissions[m.key] === l.value
-                                        ? 'border-accent bg-accent'
-                                        : 'border-border hover:border-muted-foreground'
-                                    } ${role.isBuiltin && role.id === 'role_admin' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                  >
-                                    {role.permissions[m.key] === l.value && (
-                                      <div className="w-2 h-2 rounded-full bg-accent-foreground" />
-                                    )}
-                                  </button>
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
+                          {ALL_MODULES.map((mod) => {
+                            const moduleCompositeKey = `${role.id}:${mod.key}`;
+                            const isModuleOpen = expandedModules.has(moduleCompositeKey);
+                            const highestLevel = getModuleHighestLevel(role, mod.key);
+                            const summary = getModuleSummary(role, mod.key);
+
+                            return (
+                              <ModuleRow
+                                key={mod.key}
+                                mod={mod}
+                                role={role}
+                                isOpen={isModuleOpen}
+                                onToggle={() => toggleModule(role.id, mod.key)}
+                                highestLevel={highestLevel}
+                                summary={summary}
+                                locked={locked}
+                                onSetModuleLevel={(level) => {
+                                  setModulePermissions(role.id, mod.key, level);
+                                  toast.success(`All ${mod.label} permissions set to ${level}`);
+                                }}
+                                onSetSubActionLevel={(actionKey, level) => {
+                                  setRolePermission(role.id, permKey(mod.key, actionKey), level);
+                                }}
+                              />
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -183,4 +216,87 @@ export default function RolesPermissions() {
       </div>
     </div>
   );
+}
+
+// Sub-component for module row + sub-action rows
+function ModuleRow({
+  mod, role, isOpen, onToggle, highestLevel, summary, locked,
+  onSetModuleLevel, onSetSubActionLevel,
+}: {
+  mod: (typeof ALL_MODULES)[0];
+  role: AppRole;
+  isOpen: boolean;
+  onToggle: () => void;
+  highestLevel: PermissionLevel;
+  summary: string;
+  locked: boolean;
+  onSetModuleLevel: (level: PermissionLevel) => void;
+  onSetSubActionLevel: (actionKey: string, level: PermissionLevel) => void;
+}) {
+  return (
+    <>
+      {/* Module header row */}
+      <tr className="border-b border-border bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer" onClick={onToggle}>
+        <td className="py-2.5 pr-4">
+          <div className="flex items-center gap-2 font-medium">
+            {isOpen ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+            <span>{mod.label}</span>
+            <span className="text-[10px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-full">{summary}</span>
+          </div>
+        </td>
+        {ALL_PERMISSION_LEVELS.map((l) => (
+          <td key={l.value} className="text-center py-2.5 px-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); if (!locked) onSetModuleLevel(l.value); }}
+              disabled={locked}
+              title={`Set all ${mod.label} to ${l.label}`}
+              className={`w-5 h-5 rounded-sm border-2 transition-colors mx-auto flex items-center justify-center ${
+                highestLevel === l.value && allSame(role, mod)
+                  ? 'border-accent bg-accent'
+                  : 'border-border/60 hover:border-muted-foreground'
+              } ${locked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            >
+              {highestLevel === l.value && allSame(role, mod) && (
+                <div className="w-2 h-2 rounded-sm bg-accent-foreground" />
+              )}
+            </button>
+          </td>
+        ))}
+      </tr>
+      {/* Sub-action rows */}
+      {isOpen && mod.subActions.map((action, idx) => {
+        const key = permKey(mod.key, action.key);
+        const currentLevel = role.permissions[key] ?? 'none';
+        return (
+          <tr key={action.key} className={`border-b border-border/30 ${idx % 2 === 0 ? 'bg-background' : 'bg-secondary/10'} hover:bg-secondary/20 transition-colors`}>
+            <td className="py-2 pr-4 pl-10 text-sm text-muted-foreground">{action.label}</td>
+            {ALL_PERMISSION_LEVELS.map((l) => (
+              <td key={l.value} className="text-center py-2 px-2">
+                <button
+                  onClick={() => { if (!locked) onSetSubActionLevel(action.key, l.value); }}
+                  disabled={locked}
+                  className={`w-5 h-5 rounded-full border-2 transition-colors mx-auto flex items-center justify-center ${
+                    currentLevel === l.value
+                      ? 'border-accent bg-accent'
+                      : 'border-border hover:border-muted-foreground'
+                  } ${locked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  {currentLevel === l.value && (
+                    <div className="w-2 h-2 rounded-full bg-accent-foreground" />
+                  )}
+                </button>
+              </td>
+            ))}
+          </tr>
+        );
+      })}
+    </>
+  );
+}
+
+// Check if all sub-actions in a module share the same permission level
+function allSame(role: AppRole, mod: (typeof ALL_MODULES)[0]): boolean {
+  if (mod.subActions.length === 0) return true;
+  const first = role.permissions[permKey(mod.key, mod.subActions[0].key)] ?? 'none';
+  return mod.subActions.every(a => (role.permissions[permKey(mod.key, a.key)] ?? 'none') === first);
 }

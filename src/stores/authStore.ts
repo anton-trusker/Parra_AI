@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { ALL_MODULES, permKey } from '@/data/referenceData';
 import type { ModuleKey, PermissionLevel } from '@/data/referenceData';
 
 export interface User {
@@ -43,28 +44,56 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => set({ user: null, isAuthenticated: false }),
 }));
 
-// Permission helper — call outside of components or inside them
-export function hasPermission(module: ModuleKey, requiredLevel: PermissionLevel): boolean {
+const HIERARCHY: PermissionLevel[] = ['none', 'view', 'edit', 'full'];
+
+function resolveLevel(role: { permissions: Record<string, PermissionLevel> }, key: string): PermissionLevel {
+  // Direct key match (e.g. "catalog.add_edit_wines")
+  if (role.permissions[key] !== undefined) return role.permissions[key];
+  return 'none';
+}
+
+// Check module-level: returns the highest level across all sub-actions of a module
+function resolveModuleLevel(role: { permissions: Record<string, PermissionLevel> }, moduleKey: ModuleKey): PermissionLevel {
+  const mod = ALL_MODULES.find(m => m.key === moduleKey);
+  if (!mod) return 'none';
+  let best = 0;
+  for (const a of mod.subActions) {
+    const lvl = HIERARCHY.indexOf(resolveLevel(role, permKey(moduleKey, a.key)));
+    if (lvl > best) best = lvl;
+  }
+  return HIERARCHY[best];
+}
+
+/**
+ * Permission helper — supports both:
+ *  - module-level: hasPermission('catalog', 'view') → highest sub-action level
+ *  - sub-action:   hasPermission('catalog.add_edit_wines', 'edit')
+ */
+export function hasPermission(module: string, requiredLevel: PermissionLevel): boolean {
   const user = useAuthStore.getState().user;
   if (!user) return false;
   const roles = useSettingsStore.getState().roles;
   const role = roles.find((r) => r.id === user.roleId);
   if (!role) return false;
-  const userLevel = role.permissions[module];
-  const hierarchy: PermissionLevel[] = ['none', 'view', 'edit', 'full'];
-  return hierarchy.indexOf(userLevel) >= hierarchy.indexOf(requiredLevel);
+
+  const level = module.includes('.')
+    ? resolveLevel(role, module)
+    : resolveModuleLevel(role, module as ModuleKey);
+  return HIERARCHY.indexOf(level) >= HIERARCHY.indexOf(requiredLevel);
 }
 
 // Hook for reactive permission checking
-export function useHasPermission(module: ModuleKey, requiredLevel: PermissionLevel): boolean {
+export function useHasPermission(module: string, requiredLevel: PermissionLevel): boolean {
   const user = useAuthStore((s) => s.user);
   const roles = useSettingsStore((s) => s.roles);
   if (!user) return false;
   const role = roles.find((r) => r.id === user.roleId);
   if (!role) return false;
-  const userLevel = role.permissions[module];
-  const hierarchy: PermissionLevel[] = ['none', 'view', 'edit', 'full'];
-  return hierarchy.indexOf(userLevel) >= hierarchy.indexOf(requiredLevel);
+
+  const level = module.includes('.')
+    ? resolveLevel(role, module)
+    : resolveModuleLevel(role, module as ModuleKey);
+  return HIERARCHY.indexOf(level) >= HIERARCHY.indexOf(requiredLevel);
 }
 
 // Get user's role object

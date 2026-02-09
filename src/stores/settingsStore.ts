@@ -5,12 +5,13 @@ import {
   SubLocation,
   VolumeOption,
   AppRole,
-  ModuleKey,
   PermissionLevel,
   defaultGlassDimensions,
   defaultLocations,
   defaultVolumes,
   defaultRoles,
+  ALL_MODULES,
+  permKey,
 } from '@/data/referenceData';
 
 interface SettingsState {
@@ -34,7 +35,8 @@ interface SettingsState {
   addRole: (r: AppRole) => void;
   updateRole: (id: string, updates: Partial<AppRole>) => void;
   removeRole: (id: string) => void;
-  setRolePermission: (roleId: string, module: ModuleKey, level: PermissionLevel) => void;
+  setRolePermission: (roleId: string, permissionKey: string, level: PermissionLevel) => void;
+  setModulePermissions: (roleId: string, moduleKey: string, level: PermissionLevel) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
@@ -72,9 +74,21 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   removeRole: (id) => set((s) => ({
     roles: s.roles.filter((r) => r.id !== id || r.isBuiltin),
   })),
-  setRolePermission: (roleId, module, level) => set((s) => ({
+  setRolePermission: (roleId, permissionKey, level) => set((s) => ({
     roles: s.roles.map((r) =>
-      r.id === roleId ? { ...r, permissions: { ...r.permissions, [module]: level } } : r
+      r.id === roleId ? { ...r, permissions: { ...r.permissions, [permissionKey]: level } } : r
     ),
   })),
+  setModulePermissions: (roleId, moduleKey, level) => set((s) => {
+    const mod = ALL_MODULES.find(m => m.key === moduleKey);
+    if (!mod) return {};
+    return {
+      roles: s.roles.map((r) => {
+        if (r.id !== roleId) return r;
+        const newPerms = { ...r.permissions };
+        mod.subActions.forEach(a => { newPerms[permKey(mod.key, a.key)] = level; });
+        return { ...r, permissions: newPerms };
+      }),
+    };
+  }),
 }));
