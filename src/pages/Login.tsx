@@ -74,7 +74,7 @@ export default function Login() {
           </div>
 
           <p className="text-xs text-muted-foreground text-center mt-10">
-            © {new Date().getFullYear()} Parra · All rights reserved
+            © {new Date().getFullYear()} Trusker Solutions · All rights reserved
           </p>
         </div>
       </div>
