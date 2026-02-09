@@ -257,34 +257,8 @@ export default function CurrentStock() {
         )}
       </div>
 
-      {/* Mobile Card View */}
-      <div className="lg:hidden space-y-3">
-        {filtered.map(w => {
-          const total = w.stockUnopened + w.stockOpened;
-          const value = total * w.price;
-          return (
-            <div key={w.id} className={`wine-glass-effect rounded-xl p-4 ${getRowBg(w)}`} onClick={() => navigate(`/catalog/${w.id}`)}>
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{w.name}</p>
-                  <p className="text-xs text-muted-foreground">{w.producer} • {w.vintage || 'NV'} • {w.volume}ml</p>
-                  <p className="text-xs text-muted-foreground">{w.region}, {w.country}</p>
-                </div>
-                <StatusBadge total={total} min={w.minStockLevel} />
-              </div>
-              <div className="grid grid-cols-4 gap-2 mt-3">
-                <div className="text-center"><p className="text-xs text-muted-foreground">Closed</p><p className="font-semibold">{w.stockUnopened}</p></div>
-                <div className="text-center"><p className="text-xs text-muted-foreground">Open</p><p className="font-semibold">{w.stockOpened}</p></div>
-                <div className="text-center"><p className="text-xs text-muted-foreground">Total</p><p className="font-bold">{total}</p></div>
-                <div className="text-center"><p className="text-xs text-muted-foreground">Value</p><p className="font-semibold text-accent">${value.toLocaleString()}</p></div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Desktop Table */}
-      <div className="hidden lg:block wine-glass-effect rounded-xl overflow-hidden">
+      {/* Table for all viewports */}
+      <div className="wine-glass-effect rounded-xl overflow-hidden">
         <DataTable
           data={filtered}
           columns={tableColumns}
@@ -295,6 +269,7 @@ export default function CurrentStock() {
           rowClassName={getRowBg}
           onRowClick={w => navigate(`/catalog/${w.id}`)}
           emptyMessage="No wines match your filters"
+          compact
         />
       </div>
 

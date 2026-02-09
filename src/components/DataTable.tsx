@@ -21,6 +21,7 @@ interface DataTableProps<T> {
   rowClassName?: (item: T) => string;
   keyExtractor: (item: T) => string;
   emptyMessage?: string;
+  compact?: boolean;
 }
 
 export default function DataTable<T>({
@@ -33,6 +34,7 @@ export default function DataTable<T>({
   rowClassName,
   keyExtractor,
   emptyMessage = 'No data',
+  compact = false,
 }: DataTableProps<T>) {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -98,10 +100,14 @@ export default function DataTable<T>({
     );
   }
 
+  const cellPad = compact ? 'px-2 py-1.5' : 'p-4';
+  const headerPad = compact ? 'px-2 py-2' : 'p-4';
+  const textSize = compact ? 'text-xs' : 'text-sm';
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
-        <thead>
+    <div className="overflow-x-auto -mx-1">
+      <table className={cn('w-full', textSize)} style={{ tableLayout: 'fixed' }}>
+        <thead className="sticky top-0 z-10 bg-card">
           <tr className="border-b border-border text-muted-foreground">
             {orderedCols.map(col => {
               const w = columnWidths[col.key];
@@ -111,11 +117,11 @@ export default function DataTable<T>({
                 <th
                   key={col.key}
                   className={cn(
-                    'p-4 font-medium relative group select-none',
+                    headerPad, 'font-medium relative group select-none whitespace-nowrap',
                     alignClass(col.align),
                     isSortable && 'cursor-pointer hover:text-foreground transition-colors'
                   )}
-                  style={w ? { width: w, minWidth: col.minWidth || 60 } : { minWidth: col.minWidth || 60 }}
+                  style={w ? { width: w, minWidth: col.minWidth || (compact ? 50 : 60) } : { minWidth: col.minWidth || (compact ? 50 : 60) }}
                   onClick={() => handleSort(col.key)}
                 >
                   <span className="inline-flex items-center gap-1">
@@ -130,10 +136,13 @@ export default function DataTable<T>({
                       </span>
                     )}
                   </span>
-                  {/* Resize handle */}
                   <div
-                    className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-primary/30 transition-colors"
+                    className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-primary/30 transition-colors"
                     onMouseDown={e => handleResizeStart(e, col.key)}
+                    onTouchStart={e => {
+                      const touch = e.touches[0];
+                      handleResizeStart({ preventDefault: () => e.preventDefault(), stopPropagation: () => e.stopPropagation(), clientX: touch.clientX } as React.MouseEvent, col.key);
+                    }}
                     onClick={e => e.stopPropagation()}
                   />
                 </th>
@@ -146,7 +155,7 @@ export default function DataTable<T>({
             <tr
               key={keyExtractor(item)}
               className={cn(
-                'border-b border-border/50 hover:bg-wine-surface-hover transition-colors',
+                'border-b border-border/50 hover:bg-muted/50 transition-colors',
                 onRowClick && 'cursor-pointer',
                 rowClassName?.(item)
               )}
@@ -157,8 +166,8 @@ export default function DataTable<T>({
                 return (
                   <td
                     key={col.key}
-                    className={cn('p-4', alignClass(col.align))}
-                    style={w ? { width: w, maxWidth: w, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : undefined}
+                    className={cn(cellPad, alignClass(col.align))}
+                    style={{ width: w || undefined, maxWidth: w || undefined, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                   >
                     {col.render(item)}
                   </td>
