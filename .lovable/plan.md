@@ -1,106 +1,130 @@
 
 
-# Improvements: Quantity Popup, Location Hierarchy, and Role-Based Access Control
+# Settings UI Overhaul, Inventory Restructure, Filter Config, and Session Review
 
-## 1. QuantityPopup -- Editable Number via Keyboard
+## Overview
 
-**Current:** The counter shows a `<span>` with the number; users can only use +/- buttons.
-
-**Change:** Replace the `<span>` in `BottleCounter` with a clickable number that becomes an `<input type="number">` on click (or tap). Users can type a value directly, then blur or press Enter to confirm.
-
-**Also:** Remove the manual litres `<Input>` field from `PartialBottleRow` -- keep only the glass dimension buttons for quick selection. The user picks a glass size to set the partial amount.
-
-**Also:** Add the wine's label image (if available) in the popup header alongside the wine name/producer.
-
-**Also:** Add a location selector in the popup so the user can tag which location the wine is being counted at.
-
-**File:** `src/components/count/QuantityPopup.tsx`
+This plan covers five major areas: improving all settings pages with collapsible sections, renaming "Current Stock" to "Inventory" and embedding the count button, adding configurable filter preferences, expanding table columns, and building a proper session review/approval workflow with history storage.
 
 ---
 
-## 2. Hierarchical Location System in General Settings
+## 1. Rename "Current Stock" to "Inventory" and Move Count Button
 
-**Current:** Locations are flat: just a name and type (cellar/bar/storage). No sub-locations.
+### Navigation Changes
+- In `AppSidebar.tsx` and `MobileBottomNav.tsx`: rename the "Current Stock" / "Stock" label to "Inventory" (keep path `/stock` or change to `/inventory`)
+- Remove the "Inventory Count" nav item from sidebar and bottom nav entirely
+- Route `/count` remains functional but is no longer a top-level nav entry
 
-**Change:** Add a `subLocations` array to `LocationConfig`. Each sub-location has an `id` and `name` (e.g., "Shelf 1", "Rack 3"). In General Settings, each location card expands to show and manage its sub-locations.
-
-A wine's location becomes `locationId` + optional `subLocationId` referencing this hierarchy (e.g., "Cellar A" > "Shelf 2").
-
-**Files:**
-- `src/data/referenceData.ts` -- update `LocationConfig` interface to include `subLocations: SubLocation[]`
-- `src/stores/settingsStore.ts` -- add `addSubLocation(locationId, subLoc)` and `removeSubLocation(locationId, subLocId)` actions
-- `src/pages/GeneralSettings.tsx` -- show sub-locations under each location with add/remove UI
+### Inventory Page Header
+- In `CurrentStock.tsx` (renamed conceptually to Inventory):
+  - Change heading from "Current Stock" to "Inventory"
+  - Add a "Start Count" button (wine-gradient style) to the left of the Export button in the header actions row
+  - Clicking "Start Count" navigates to `/count`
 
 ---
 
-## 3. Custom Roles and Granular Permissions
+## 2. Settings Pages -- Collapsible Sections with Improved UI
 
-**Current:** Only two hardcoded roles: `admin` and `staff`. Access is checked with `user?.role !== 'admin'`.
+### General Settings (`GeneralSettings.tsx`)
+- Wrap each section (Opened Bottle Measurement, Glass Dimensions, Locations, Bottle Volumes) in a collapsible component using Radix Collapsible
+- Each section header becomes a clickable trigger with a chevron icon that rotates on expand/collapse
+- Default state: all sections collapsed (or first one open)
+- Add a subtle count badge on each collapsed header (e.g., "6 items")
+- Add save confirmation toasts on all add/remove actions (already present, keep consistent)
 
-**Change:** Create a configurable roles and permissions system:
+### Roles & Permissions (`RolesPermissions.tsx`)
+- Make each role card collapsible -- header shows role name, color dot, and permission summary (e.g., "7 modules configured")
+- Collapsed by default except when only 1-2 roles exist
+- Improve the permission grid styling: add alternating row backgrounds, hover states
+- Add a "Save" indicator or auto-save toast when permissions change
 
-### Data Model
-- New interface `AppRole` with `id`, `name`, `color`, and a `permissions` object
-- Permissions are a map of module keys to access levels:
+### App Settings Hub (`AppSettings.tsx`)
+- Keep the card-based layout but add subtle hover animations
+- Add a "User Management" link card pointing to `/users`
 
-```text
-Module keys: dashboard, catalog, stock, count, history, sessions, reports, settings, users
-Access levels: none, view, edit, full
-```
+---
 
-- `none` = no access (hidden from nav)
-- `view` = read-only access
-- `edit` = can create/modify data
-- `full` = all actions including delete/approve
+## 3. Configurable Filter Preferences
 
-### Default Roles
-- **Admin** -- full access to everything
-- **Staff** -- view+edit on count/history, view on catalog, none on settings/users/sessions
+### Filter Configuration Store
+- Add to `columnStore.ts` (or a new `filterStore.ts`):
+  - `stockFilters: string[]` -- which filter controls are visible (e.g., `['status', 'type', 'country', 'region', 'location', 'stockRange']`)
+  - `historyFilters: string[]`
+  - Setter functions for each
 
-### Admin Configuration
-- New section in General Settings (or a dedicated "Roles & Permissions" page linked from Settings hub) where admin can:
-  - Create custom roles (e.g., "Sommelier", "Bar Manager", "Auditor")
-  - Set per-module permission levels via a grid of dropdowns/toggles
-  - Delete custom roles (cannot delete Admin)
+### Filter Config UI
+- Add a gear icon button next to the filter/sliders button on the Inventory and History pages
+- Clicking it opens a popover (similar to ColumnManager) where the user can toggle which filters appear in the advanced filters panel
+- Available filter options for Inventory: Status, Type, Country, Region, Location, Stock Range, Vintage, Price Range, Appellation, Producer
+- Available filter options for History: Method, Date Range, User, Session, Wine Type
 
-### Integration
-- `settingsStore.ts` -- add `roles` array and CRUD actions
-- `authStore.ts` -- user gets a `roleId` instead of a hardcoded string; add a helper `hasPermission(module, level)` that checks the role's permissions
-- `UserFormDialog.tsx` -- role dropdown populated from the settings store's roles list
-- Navigation (`AppSidebar.tsx`, `MobileBottomNav.tsx`) -- filter nav items based on user's permissions (hide modules with `none` access)
-- Page guards -- each page checks `hasPermission` instead of `role !== 'admin'`
+### Implementation
+- Create a `FilterManager` component (similar pattern to `ColumnManager`) that accepts a list of possible filters and which are active
+- In `CurrentStock.tsx` and `InventoryHistory.tsx`, only render filters that are in the active list
 
-**Files:**
-- `src/data/referenceData.ts` -- add `AppRole` interface and `defaultRoles`
-- `src/stores/settingsStore.ts` -- add roles state and CRUD
-- `src/stores/authStore.ts` -- update user model, add `hasPermission` helper
-- `src/pages/RolesPermissions.tsx` -- new page for managing roles with a permission matrix grid
-- `src/pages/AppSettings.tsx` -- add link to Roles & Permissions page
-- `src/App.tsx` -- add route `/settings/roles`
-- `src/components/AppSidebar.tsx` -- filter nav by permissions
-- `src/components/MobileBottomNav.tsx` -- filter nav by permissions
-- `src/components/UserFormDialog.tsx` -- use dynamic roles list
-- All protected pages -- replace `role !== 'admin'` checks with `hasPermission()`
+---
+
+## 4. Expanded Table Columns
+
+### Add More Column Options
+- **Inventory (Stock) table** -- add columns matching Wine detail fields:
+  - `producer`, `appellation`, `subRegion`, `abv`, `grapeVarieties`, `purchasePrice`, `salePrice`, `glassPrice`, `supplier`, `barcode`, `sku`, `body`, `sweetness`, `closureType`, `bottleSize`
+- **History table** -- add: `notes`, `location`
+- **Catalog table** -- add: `region`, `abv`, `barcode`, `location`, `grapeVarieties`, `body`
+
+### Update Column Definitions
+- Update `STOCK_COLUMNS` array in `CurrentStock.tsx` with all new column definitions
+- Update `HISTORY_COLUMNS` in `InventoryHistory.tsx`
+- Update `CATALOG_COLUMNS` in `WineCatalog.tsx`
+- Render new columns conditionally in the table based on `columnStore`
+
+---
+
+## 5. Session Review and Approval (Admin)
+
+### Enhanced Session Review Page (`SessionReview.tsx`)
+- Add more filters: date range, session type, created by user, variance threshold
+- Add column management (reuse ColumnManager)
+- Present sessions as a proper table view (not just expandable cards) with an option to expand for detail
+- Add summary stats at the top: total sessions, pending review count, approved count, flagged count
+
+### Approval Workflow
+- When admin clicks "Approve": update the session's status in mock data to `approved`, record `approvedBy` and `approvedAt`
+- When admin clicks "Flag": show a dialog to enter a reason, update status to `flagged`
+- Store approved/flagged state in a Zustand store (`sessionStore.ts`) so changes persist during the session
+
+### History and Audit Trail
+- Create a `sessionStore.ts` that holds a copy of sessions and items with mutation support:
+  - `approveSession(id, notes)` -- sets status to approved, records timestamp and admin
+  - `flagSession(id, reason)` -- sets status to flagged with reason
+  - `getSessionHistory(id)` -- returns all items and audit entries for a session
+- Each approval/flag action creates an audit entry with timestamp, user, action, and notes
+- Display audit trail in the expanded session view (below the items table)
 
 ---
 
 ## Technical Details
 
-### QuantityPopup Changes
-- `BottleCounter`: replace `<span>` with a component that renders as text by default, switches to `<input>` on click, and commits on blur/Enter
-- `PartialBottleRow`: remove the `<Input type="number">` field; keep only glass dimension buttons
-- Add wine image thumbnail (48x48) in the header if `wine.imageUrl` exists
-- Add a `Select` for location (populated from `settingsStore.locations`) with optional sub-location
+### Files to Create
+- `src/components/FilterManager.tsx` -- filter configuration popover (mirrors ColumnManager pattern)
+- `src/stores/sessionStore.ts` -- session state management with approval/flag/audit actions
 
-### Location Hierarchy
-- `SubLocation` interface: `{ id: string; name: string }`
-- `LocationConfig` gets `subLocations: SubLocation[]` (default `[]`)
-- Default data updated: e.g., Cellar A gets sub-locations ["Rack 1", "Rack 2", "Shelf 1"]
-- Settings UI: each location row becomes expandable (collapsible) showing sub-locations with add/delete
+### Files to Modify
+- `src/pages/CurrentStock.tsx` -- rename header, add Start Count button, add FilterManager, add new column definitions and rendering
+- `src/pages/GeneralSettings.tsx` -- wrap all sections in collapsible components with improved styling
+- `src/pages/RolesPermissions.tsx` -- make role cards collapsible, improve grid styling
+- `src/pages/AppSettings.tsx` -- add User Management card, polish hover states
+- `src/pages/SessionReview.tsx` -- add filters, column management, summary stats, approval workflow with audit trail
+- `src/pages/InventoryHistory.tsx` -- add FilterManager, new column options
+- `src/pages/WineCatalog.tsx` -- add new column options
+- `src/components/AppSidebar.tsx` -- rename "Current Stock" to "Inventory", remove "Inventory Count" nav item
+- `src/components/MobileBottomNav.tsx` -- rename "Stock" to "Inventory", remove "Count" from primary nav (replace with another item or keep 3 primary)
+- `src/stores/columnStore.ts` -- add filter preference arrays, expand default column lists
+- `src/data/referenceData.ts` -- update module label from "Current Stock" to "Inventory"
 
-### Roles & Permissions
-- Permission matrix UI: rows = modules, columns = access levels (none/view/edit/full) as radio buttons
-- Each role card shows name, color badge, and permission summary
-- Cannot delete the built-in Admin role
-- When a role is deleted, users with that role should be flagged (but this is a future DB concern)
+### Component Pattern for Collapsible Sections
+Each settings section will use this pattern:
+- Clickable header row with icon, title, item count badge, and animated chevron
+- Content area that smoothly expands/collapses using Radix Collapsible
+- Consistent spacing and card styling across all settings pages
 
