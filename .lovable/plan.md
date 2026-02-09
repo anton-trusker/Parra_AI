@@ -1,75 +1,80 @@
 
 
-# Detailed Roles & Permissions Management
+# CSV Inventory Import Feature
 
 ## Overview
-Expand the permission system from a single permission level per module to granular sub-actions within each module. Instead of just "Catalog: Edit", admins can control specific capabilities like "Catalog: Add Wine", "Catalog: Delete Wine", "Catalog: Edit Pricing", etc.
+Add a complete CSV import workflow for inventory, accessible to admins. Users can download a pre-formatted CSV template, fill it with their wine inventory data, upload the CSV, map their columns to the system's fields, preview and validate the data, then confirm the import.
 
-## What Changes
+## User Flow
 
-### New Permission Structure
-Each module will have specific actions that can be individually toggled. The permission matrix will show modules as collapsible groups, with sub-actions listed underneath.
+1. **Entry Point** -- New "Import CSV" button on the Wine Catalog page (visible to admins only)
+2. **Step 1: Upload** -- Upload screen with a "Download Template" button and a drag-and-drop / file picker for CSV upload
+3. **Step 2: Column Mapping** -- Interactive mapping screen showing detected CSV headers on the left and system fields on the right via dropdowns; auto-maps matching names
+4. **Step 3: Preview & Validate** -- Data preview table showing parsed rows with validation errors highlighted (missing required fields, invalid types, etc.)
+5. **Step 4: Confirm & Import** -- Summary of how many wines will be imported, then confirm to store them
 
-**Module breakdown:**
+## What Gets Built
 
-- **Dashboard** -- View analytics, View stock alerts, Export reports
-- **Wine Catalog** -- View wines, Add/edit wines, Delete wines, Edit pricing, Manage categories
-- **Inventory (Current Stock)** -- View stock levels, Adjust stock, Transfer between locations, View cost/value
-- **Inventory Count** -- Start count session, Perform count, Edit counted quantities, Submit count
-- **Session Review** -- View sessions, Approve/reject sessions, Reopen sessions, Delete sessions
-- **History & Audit** -- View history logs, Export history
-- **Reports** -- View reports, Export reports, View financial data
-- **Settings** -- View settings, Edit general settings, Manage locations, Manage volumes/glasses
-- **User Management** -- View users, Create/edit users, Delete users, Assign roles
+### New Page: `src/pages/ImportInventory.tsx`
+Multi-step wizard with 4 steps (Upload, Map, Preview, Confirm). Uses local state to hold the parsed CSV data, column mappings, and validation results. On confirm, adds wines to the mock data store (ready for future DB integration).
 
-Each sub-action remains a simple `none | view | edit | full` radio, keeping the existing pattern but applied at a finer level.
+### New Utility: `src/utils/csvParser.ts`
+- `parseCSV(file: File)` -- Parses a CSV file into headers + rows using native browser APIs (no external library needed)
+- `generateTemplate()` -- Creates and triggers download of a CSV template with all mappable columns
+- `validateRow(row, mappings)` -- Validates a single mapped row and returns errors per field
+- Column definitions for mapping targets (name, producer, vintage, type, region, country, volume, price, purchasePrice, sku, barcode, stockUnopened, stockOpened, minStockLevel, location, grapeVarieties, abv, etc.)
+
+### Route Addition
+- Add `/catalog/import` route in `App.tsx`
+
+### Catalog Page Update
+- Add "Import CSV" button next to "Add Wine" on the Wine Catalog page (admin only)
 
 ## Technical Details
 
-### 1. Update `referenceData.ts`
-- Expand `ModuleKey` to include sub-module keys (e.g., `catalog.add`, `catalog.delete`, `catalog.pricing`)
-- Or introduce a new `SubPermission` type with a `moduleSubActions` config that maps each `ModuleKey` to an array of named sub-actions
-- Update `ALL_MODULES` to include a `subActions` array per module
-- Update default roles with the new granular permissions
+### CSV Template Columns
+The downloadable template will include these columns with example data in row 2:
+`Name, Producer, Vintage, Type, Region, Country, Volume (ml), ABV, SKU, Barcode, Price, Purchase Price, Stock Unopened, Stock Opened, Min Stock Level, Location, Grape Varieties`
 
-### 2. Update `AppRole` interface
-- Change `permissions` from `Record<ModuleKey, PermissionLevel>` to `Record<string, PermissionLevel>` where the key is `module.action` (e.g., `"catalog.add"`)
-- Or keep a nested structure: `Record<ModuleKey, Record<string, PermissionLevel>>`
+### Column Mapping Logic
+- Auto-detect: fuzzy match CSV headers to system fields (e.g., "wine name" maps to "Name", "qty" maps to "Stock Unopened")
+- Manual override: each CSV column gets a dropdown to select the target system field or "Skip"
+- Required fields highlighted: Name, Type, and SKU are required
 
-### 3. Update `RolesPermissions.tsx` UI
-- Render modules as collapsible group headers in the permission table
-- Each module row expands to show its sub-actions indented underneath
-- Add "Select All" toggle per module to quickly set all sub-actions to the same level
-- Add a module-level summary showing how many sub-actions are enabled
+### Validation Rules
+- **Name**: required, non-empty string
+- **Type**: must be one of Red, White, Rose, Sparkling, Fortified, Dessert
+- **Vintage**: optional, must be a valid year (1900-2026) or empty for NV
+- **Volume**: must be a positive number (defaults to 750 if empty)
+- **Price / Stock fields**: must be non-negative numbers
+- **Grape Varieties**: comma-separated string, split into array
+- Duplicate SKU detection within the file and against existing inventory
 
-### 4. Update `authStore.ts`
-- Update `hasPermission` and `useHasPermission` to accept both module-level and sub-action-level checks (e.g., `hasPermission('catalog', 'view')` checks the module, `hasPermission('catalog.delete', 'full')` checks a specific action)
-- Maintain backward compatibility so existing permission checks still work
+### Step UI Details
 
-### 5. Update `settingsStore.ts`
-- Update `setRolePermission` to handle the new granular keys
-- Add a `setModulePermissions` helper to bulk-set all sub-actions for a module
+**Step 1 - Upload**
+- Drag-and-drop zone with file icon
+- "Download Template" button
+- File type restricted to .csv
+- Shows file name and row count after parsing
 
-### 6. Update consuming components
-- Review pages that call `useHasPermission` and update them to use more specific sub-action keys where relevant (e.g., hiding the "Delete" button based on `catalog.delete` instead of just `catalog: edit`)
+**Step 2 - Column Mapping**
+- Two-column layout: CSV header on left, system field dropdown on right
+- Green checkmark for mapped columns, yellow warning for unmapped required fields
+- "Auto-detect" button to re-run fuzzy matching
+- Preview of first 3 rows of data for each column
 
-## UI Design
-The permission table will look like:
+**Step 3 - Preview**
+- Scrollable data table showing mapped data
+- Red-highlighted cells for validation errors
+- Error summary banner: "3 rows have errors -- fix or skip"
+- Toggle to show only rows with errors
 
-```text
-Module / Action           None  View  Edit  Full
---------------------------------------------------
-v Dashboard               [select all row]
-    View analytics          o    (o)    o     o
-    View stock alerts       o    (o)    o     o
-    Export reports           o     o     o    (o)
-v Wine Catalog             [select all row]
-    View wines              o    (o)    o     o
-    Add / edit wines         o     o    (o)    o
-    Delete wines             o     o     o    (o)
-    Edit pricing             o     o    (o)    o
-    ...
-```
+**Step 4 - Confirm**
+- Summary card: X wines to import, Y warnings, Z will be skipped
+- "Import All" button
+- On success: toast notification + redirect to catalog
 
-Each module header is clickable to expand/collapse its sub-actions, with a colored indicator showing the overall access level for that module.
+### State Management
+All import state is local to the ImportInventory page (useState) -- no new store needed since this is a one-time operation. On successful import, wines are added to a new Zustand wine store (or appended to mock data for now).
 
