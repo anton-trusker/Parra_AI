@@ -28,34 +28,41 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
   const [progressWine, setProgressWine] = useState<Wine | null>(null);
   const [isCompactQuantity, setIsCompactQuantity] = useState(false);
   const imageVideoRef = useRef<HTMLVideoElement>(null);
-  const imageStreamRef = useRef<MediaStream | null>(null);
+  const sharedStreamRef = useRef<MediaStream | null>(null);
 
-  // Start/stop camera for image mode
+  // Acquire camera once on mount, share across modes
   useEffect(() => {
-    if (mode === 'image' && !showQuantity && !showManualSearch && !showProgress) {
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        .then(stream => {
-          imageStreamRef.current = stream;
-          if (imageVideoRef.current) {
-            imageVideoRef.current.srcObject = stream;
-          }
-        })
-        .catch(() => {
-          toast.error('Camera not available for image mode');
-        });
-    } else {
-      if (imageStreamRef.current) {
-        imageStreamRef.current.getTracks().forEach(t => t.stop());
-        imageStreamRef.current = null;
-      }
-    }
+    let cancelled = false;
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(stream => {
+        if (cancelled) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        sharedStreamRef.current = stream;
+        // Attach to image video if currently in image mode
+        if (imageVideoRef.current) {
+          imageVideoRef.current.srcObject = stream;
+        }
+      })
+      .catch(() => {
+        // Camera will be handled by barcode scanner or show error
+      });
     return () => {
-      if (imageStreamRef.current) {
-        imageStreamRef.current.getTracks().forEach(t => t.stop());
-        imageStreamRef.current = null;
+      cancelled = true;
+      if (sharedStreamRef.current) {
+        sharedStreamRef.current.getTracks().forEach(t => t.stop());
+        sharedStreamRef.current = null;
       }
     };
-  }, [mode, showQuantity, showManualSearch, showProgress]);
+  }, []);
+
+  // Attach shared stream to image video element when switching to image mode
+  useEffect(() => {
+    if (mode === 'image' && imageVideoRef.current && sharedStreamRef.current) {
+      imageVideoRef.current.srcObject = sharedStreamRef.current;
+    }
+  }, [mode]);
 
   // Real barcode detection handler
   const handleBarcodeDetected = useCallback((code: string) => {
