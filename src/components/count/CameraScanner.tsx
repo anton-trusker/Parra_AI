@@ -98,7 +98,7 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-background">
+    <div className="fixed inset-0 z-[60] flex flex-col bg-background">
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-3 bg-card/90 backdrop-blur-md border-b border-border z-10">
         <div>
