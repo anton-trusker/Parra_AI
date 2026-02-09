@@ -6,6 +6,62 @@
 
 @layer base {
   :root {
+    --background: 30 20% 96%;
+    --foreground: 220 15% 15%;
+
+    --card: 30 15% 98%;
+    --card-foreground: 220 15% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 15%;
+
+    --primary: 350 55% 38%;
+    --primary-foreground: 30 25% 98%;
+
+    --secondary: 220 12% 92%;
+    --secondary-foreground: 220 15% 25%;
+
+    --muted: 220 10% 93%;
+    --muted-foreground: 220 10% 42%;
+
+    --accent: 38 55% 48%;
+    --accent-foreground: 220 15% 10%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 12% 88%;
+    --input: 220 12% 88%;
+    --ring: 350 55% 38%;
+
+    --radius: 0.75rem;
+
+    --wine-red: 350 55% 38%;
+    --wine-red-light: 350 50% 50%;
+    --wine-red-dark: 350 60% 28%;
+    --wine-gold: 38 55% 48%;
+    --wine-gold-light: 38 50% 62%;
+    --wine-cream: 30 25% 95%;
+    --wine-burgundy: 340 65% 30%;
+    --wine-success: 145 55% 38%;
+    --wine-warning: 38 85% 50%;
+    --wine-surface: 30 15% 98%;
+    --wine-surface-hover: 30 12% 94%;
+
+    --sidebar-background: 30 15% 97%;
+    --sidebar-foreground: 220 12% 35%;
+    --sidebar-primary: 350 55% 38%;
+    --sidebar-primary-foreground: 30 25% 98%;
+    --sidebar-accent: 220 12% 93%;
+    --sidebar-accent-foreground: 220 15% 15%;
+    --sidebar-border: 220 12% 90%;
+    --sidebar-ring: 350 55% 38%;
+
+    --font-heading: 'Playfair Display', serif;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  .dark {
     --background: 220 15% 8%;
     --foreground: 30 20% 90%;
 
@@ -34,8 +90,6 @@
     --input: 220 12% 18%;
     --ring: 350 55% 32%;
 
-    --radius: 0.75rem;
-
     --wine-red: 350 55% 32%;
     --wine-red-light: 350 50% 42%;
     --wine-red-dark: 350 60% 22%;
@@ -56,9 +110,6 @@
     --sidebar-accent-foreground: 30 20% 90%;
     --sidebar-border: 220 12% 14%;
     --sidebar-ring: 350 55% 32%;
-
-    --font-heading: 'Playfair Display', serif;
-    --font-body: 'Inter', sans-serif;
   }
 }
 
@@ -83,7 +134,7 @@
   }
 
   .wine-glass-effect {
-    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(220 14% 13%) 100%);
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--popover)) 100%);
     border: 1px solid hsl(var(--border));
     backdrop-filter: blur(12px);
   }

@@ -1,6 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import { LayoutDashboard, Wine, Package, Users, History, BarChart3, ClipboardCheck, LogOut, Settings, User } from 'lucide-react';
+import ThemeToggle from './ThemeToggle';
 import type { ModuleKey } from '@/data/referenceData';
 interface NavItemDef {
   label: string;
@@ -70,9 +71,12 @@ export default function AppSidebar() {
           </div>
           <h1 className="font-heading text-base font-semibold text-foreground">​SimplyRest </h1>
         </div>
-        <button onClick={() => navigate('/profile')} className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-xs font-bold text-primary-foreground">
-          {user?.name?.charAt(0)}
-        </button>
+        <div className="flex items-center gap-1">
+          <ThemeToggle className="p-1.5" />
+          <button onClick={() => navigate('/profile')} className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-xs font-bold text-primary-foreground">
+            {user?.name?.charAt(0)}
+          </button>
+        </div>
       </div>
 
       {/* Desktop Sidebar */}
@@ -98,7 +102,8 @@ export default function AppSidebar() {
 
         {/* User section */}
         <div className="p-4 border-t border-sidebar-border">
-          <button onClick={() => navigate('/profile')} className="flex items-center gap-3 mb-3 w-full rounded-lg p-2 -mx-2 hover:bg-sidebar-accent transition-colors">
+          <div className="flex items-center justify-between mb-3">
+            <button onClick={() => navigate('/profile')} className="flex items-center gap-3 flex-1 min-w-0 rounded-lg p-2 -mx-2 hover:bg-sidebar-accent transition-colors">
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-sm font-bold text-primary-foreground shadow-md shadow-primary/20">
               {user?.name?.charAt(0)}
             </div>
@@ -106,7 +111,9 @@ export default function AppSidebar() {
               <p className="text-sm font-medium text-foreground truncate">{user?.name}</p>
               <p className="text-xs text-muted-foreground capitalize">{role?.name}</p>
             </div>
-          </button>
+            </button>
+            <ThemeToggle />
+          </div>
           <button onClick={() => {
           logout();
           navigate('/login');
