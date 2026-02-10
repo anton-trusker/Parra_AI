@@ -14,7 +14,7 @@ export interface SubLocation {
 export interface LocationConfig {
   id: string;
   name: string;
-  type: 'cellar' | 'bar' | 'storage';
+  type: string;
   subLocations: SubLocation[];
 }
 

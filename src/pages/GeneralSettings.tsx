@@ -22,7 +22,7 @@ export default function GeneralSettings() {
   const [newGlassLabel, setNewGlassLabel] = useState('');
   const [newGlassVolume, setNewGlassVolume] = useState('');
   const [newLocName, setNewLocName] = useState('');
-  const [newLocType, setNewLocType] = useState<'cellar' | 'bar' | 'storage'>('cellar');
+  const [newLocType, setNewLocType] = useState('cellar');
   const [newVolMl, setNewVolMl] = useState('');
   const [newVolSize, setNewVolSize] = useState('');
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
@@ -48,7 +48,7 @@ export default function GeneralSettings() {
 
   const handleAddLocation = () => {
     if (!newLocName) { toast.error('Enter a location name'); return; }
-    addLocation({ id: `loc${Date.now()}`, name: newLocName, type: newLocType, subLocations: [] });
+    addLocation({ id: `loc${Date.now()}`, name: newLocName, type: newLocType || 'other', subLocations: [] });
     setNewLocName('');
     toast.success('Location added');
   };
@@ -184,14 +184,7 @@ export default function GeneralSettings() {
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Type</Label>
-            <Select value={newLocType} onValueChange={v => setNewLocType(v as any)}>
-              <SelectTrigger className="bg-secondary border-border w-28"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cellar">Cellar</SelectItem>
-                <SelectItem value="bar">Bar</SelectItem>
-                <SelectItem value="storage">Storage</SelectItem>
-              </SelectContent>
-            </Select>
+            <Input value={newLocType} onChange={e => setNewLocType(e.target.value)} placeholder="e.g. store, warehouse" className="bg-secondary border-border w-32" />
           </div>
           <Button size="sm" onClick={handleAddLocation} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
         </div>

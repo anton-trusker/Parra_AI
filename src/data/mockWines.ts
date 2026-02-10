@@ -25,7 +25,8 @@ export interface Wine {
   availableByGlass?: boolean;
   currency?: string;
   // Stock
-  sku: string;
+  sku?: string;
+  glassPourSizeMl?: number;
   barcode?: string;
   barcodeType?: string;
   grapeVarieties: string[];
