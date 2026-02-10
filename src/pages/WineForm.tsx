@@ -18,7 +18,7 @@ export default function WineForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { volumes } = useSettingsStore();
+  const { volumes, glassDimensions, locations } = useSettingsStore();
   const isEdit = !!id;
   const existing = isEdit ? mockWines.find(w => w.id === id) : null;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +57,8 @@ export default function WineForm() {
     cellarSection: existing?.cellarSection || '',
     rackNumber: existing?.rackNumber || '',
     shelfPosition: existing?.shelfPosition || '',
+    locationId: '',
+    subLocationId: '',
     supplierName: existing?.supplierName || '',
     tastingNotes: existing?.tastingNotes || '',
     body: existing?.body || '',
@@ -64,6 +66,7 @@ export default function WineForm() {
     acidity: existing?.acidity || '',
     tannins: existing?.tannins || '',
     foodPairing: existing?.foodPairing || '',
+    glassPourSizeMl: existing?.glassPourSizeMl?.toString() || '',
   });
 
   if (user?.roleId !== 'role_admin') return <Navigate to="/dashboard" replace />;
@@ -271,6 +274,21 @@ export default function WineForm() {
             <Switch checked={form.availableByGlass} onCheckedChange={v => update('availableByGlass', v)} />
             <Label>Available by Glass</Label>
           </div>
+          {form.availableByGlass && (
+            <div className="space-y-1.5 sm:col-span-3">
+              <Label>Glass Pour Size</Label>
+              <Select value={form.glassPourSizeMl} onValueChange={v => update('glassPourSizeMl', v)}>
+                <SelectTrigger className="bg-secondary border-border w-64"><SelectValue placeholder="Select glass size" /></SelectTrigger>
+                <SelectContent>
+                  {glassDimensions.map(g => (
+                    <SelectItem key={g.id} value={(g.volumeLitres * 1000).toString()}>
+                      {g.label} ({(g.volumeLitres * 1000).toFixed(0)}ml)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </section>
 
@@ -285,10 +303,35 @@ export default function WineForm() {
           <div className="space-y-1.5"><Label>Reorder Point</Label><Input type="number" value={form.reorderPoint} onChange={e => update('reorderPoint', e.target.value)} className="bg-secondary border-border" /></div>
           <div className="space-y-1.5"><Label>Reorder Qty</Label><Input type="number" value={form.reorderQuantity} onChange={e => update('reorderQuantity', e.target.value)} className="bg-secondary border-border" /></div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="space-y-1.5"><Label>Cellar Section</Label><Input value={form.cellarSection} onChange={e => update('cellarSection', e.target.value)} className="bg-secondary border-border" /></div>
-          <div className="space-y-1.5"><Label>Rack Number</Label><Input value={form.rackNumber} onChange={e => update('rackNumber', e.target.value)} className="bg-secondary border-border" /></div>
-          <div className="space-y-1.5"><Label>Shelf Position</Label><Input value={form.shelfPosition} onChange={e => update('shelfPosition', e.target.value)} className="bg-secondary border-border" /></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>Location</Label>
+            <Select value={form.locationId} onValueChange={v => { update('locationId', v); update('subLocationId', ''); }}>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select location" /></SelectTrigger>
+              <SelectContent>
+                {locations.map(l => (
+                  <SelectItem key={l.id} value={l.id}>{l.name} <span className="text-muted-foreground capitalize">({l.type})</span></SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {(() => {
+            const selectedLoc = locations.find(l => l.id === form.locationId);
+            if (!selectedLoc || selectedLoc.subLocations.length === 0) return null;
+            return (
+              <div className="space-y-1.5">
+                <Label>Sub-Location</Label>
+                <Select value={form.subLocationId} onValueChange={v => update('subLocationId', v)}>
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select sub-location" /></SelectTrigger>
+                  <SelectContent>
+                    {selectedLoc.subLocations.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            );
+          })()}
         </div>
         <div className="space-y-1.5"><Label>Supplier</Label><Input value={form.supplierName} onChange={e => update('supplierName', e.target.value)} className="bg-secondary border-border" /></div>
       </section>

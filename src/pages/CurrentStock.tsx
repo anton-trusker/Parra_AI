@@ -26,6 +26,7 @@ const STOCK_COLUMN_DEFS: ColumnDef[] = [
   { key: 'closed', label: 'Closed' },
   { key: 'open', label: 'Open' },
   { key: 'total', label: 'Total' },
+  { key: 'totalLitres', label: 'Total (L)' },
   { key: 'par', label: 'Par Level' },
   { key: 'status', label: 'Status' },
   { key: 'value', label: 'Value' },
@@ -77,6 +78,15 @@ function buildColumns(): DataTableColumn<Wine>[] {
     { key: 'closed', label: 'Closed', align: 'center', render: w => <span className="font-medium">{w.stockUnopened}</span>, sortFn: (a, b) => a.stockUnopened - b.stockUnopened },
     { key: 'open', label: 'Open', align: 'center', render: w => <span className="text-muted-foreground">{w.stockOpened}</span> },
     { key: 'total', label: 'Total', align: 'center', render: w => <span className="font-semibold">{w.stockUnopened + w.stockOpened}</span>, sortFn: (a, b) => (a.stockUnopened + a.stockOpened) - (b.stockUnopened + b.stockOpened) },
+    { key: 'totalLitres', label: 'Total (L)', align: 'right', render: w => {
+      const volL = (w.volume || 750) / 1000;
+      const litres = (w.stockUnopened * volL) + (w.stockOpened * volL);
+      return <span className="font-medium text-accent">{litres.toFixed(2)}L</span>;
+    }, sortFn: (a, b) => {
+      const aL = (a.stockUnopened * (a.volume || 750) / 1000) + (a.stockOpened * (a.volume || 750) / 1000);
+      const bL = (b.stockUnopened * (b.volume || 750) / 1000) + (b.stockOpened * (b.volume || 750) / 1000);
+      return aL - bL;
+    }},
     { key: 'par', label: 'Par', align: 'center', render: w => <span className="text-muted-foreground">{w.minStockLevel}</span> },
     { key: 'status', label: 'Status', render: w => <StatusBadge total={w.stockUnopened + w.stockOpened} min={w.minStockLevel} /> },
     { key: 'value', label: 'Value', align: 'right', render: w => <span className="text-accent">${((w.stockUnopened + w.stockOpened) * w.price).toLocaleString()}</span>, sortFn: (a, b) => ((a.stockUnopened + a.stockOpened) * a.price) - ((b.stockUnopened + b.stockOpened) * b.price) },
@@ -86,7 +96,7 @@ function buildColumns(): DataTableColumn<Wine>[] {
     { key: 'location', label: 'Location', render: w => <span className="text-xs text-muted-foreground">{w.location}</span>, sortFn: (a, b) => a.location.localeCompare(b.location) },
     { key: 'supplier', label: 'Supplier', render: w => <span className="text-xs text-muted-foreground">{w.supplierName || '—'}</span> },
     { key: 'barcode', label: 'Barcode', render: w => <span className="text-xs text-muted-foreground font-mono">{w.barcode || '—'}</span> },
-    { key: 'sku', label: 'SKU', render: w => <span className="text-xs text-muted-foreground font-mono">{w.sku}</span> },
+    { key: 'sku', label: 'SKU', render: w => <span className="text-xs text-muted-foreground font-mono">{w.sku || '—'}</span> },
     { key: 'grapeVarieties', label: 'Grapes', render: w => <span className="text-xs text-muted-foreground">{w.grapeVarieties.join(', ')}</span> },
     { key: 'body', label: 'Body', render: w => <span className="text-xs text-muted-foreground capitalize">{w.body || '—'}</span> },
     { key: 'sweetness', label: 'Sweetness', render: w => <span className="text-xs text-muted-foreground capitalize">{w.sweetness || '—'}</span> },
