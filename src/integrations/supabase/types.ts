@@ -382,6 +382,134 @@ export type Database = {
         }
         Relationships: []
       }
+      inventory_baseline_items: {
+        Row: {
+          created_at: string
+          expected_liters: number | null
+          expected_qty: number
+          id: string
+          product_id: string
+          raw_stock_payload: Json | null
+          session_id: string
+          variant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          expected_liters?: number | null
+          expected_qty?: number
+          id?: string
+          product_id: string
+          raw_stock_payload?: Json | null
+          session_id: string
+          variant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          expected_liters?: number | null
+          expected_qty?: number
+          id?: string
+          product_id?: string
+          raw_stock_payload?: Json | null
+          session_id?: string
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_baseline_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "wines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_baseline_items_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_baseline_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "wine_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_count_events: {
+        Row: {
+          bottle_qty: number
+          confidence: number | null
+          created_at: string
+          derived_liters: number | null
+          id: string
+          metadata: Json | null
+          notes: string | null
+          open_ml: number | null
+          photo_url: string | null
+          product_id: string
+          session_id: string
+          source: string
+          user_id: string
+          variant_id: string | null
+        }
+        Insert: {
+          bottle_qty?: number
+          confidence?: number | null
+          created_at?: string
+          derived_liters?: number | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          open_ml?: number | null
+          photo_url?: string | null
+          product_id: string
+          session_id: string
+          source?: string
+          user_id: string
+          variant_id?: string | null
+        }
+        Update: {
+          bottle_qty?: number
+          confidence?: number | null
+          created_at?: string
+          derived_liters?: number | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          open_ml?: number | null
+          photo_url?: string | null
+          product_id?: string
+          session_id?: string
+          source?: string
+          user_id?: string
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_count_events_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "wines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_count_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_count_events_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "wine_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inventory_items: {
         Row: {
           confidence: number | null
@@ -573,6 +701,61 @@ export type Database = {
             columns: ["wine_id"]
             isOneToOne: false
             referencedRelation: "wines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_product_aggregates: {
+        Row: {
+          counted_liters_total: number
+          counted_qty_total: number
+          event_count: number
+          id: string
+          last_updated_at: string
+          product_id: string
+          session_id: string
+          variant_id: string | null
+        }
+        Insert: {
+          counted_liters_total?: number
+          counted_qty_total?: number
+          event_count?: number
+          id?: string
+          last_updated_at?: string
+          product_id: string
+          session_id: string
+          variant_id?: string | null
+        }
+        Update: {
+          counted_liters_total?: number
+          counted_qty_total?: number
+          event_count?: number
+          id?: string
+          last_updated_at?: string
+          product_id?: string
+          session_id?: string
+          variant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_product_aggregates_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "wines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_product_aggregates_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_product_aggregates_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "wine_variants"
             referencedColumns: ["id"]
           },
         ]

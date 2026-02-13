@@ -107,17 +107,32 @@ serve(async (req) => {
           const syrveIds = stockItems.map((s: any) => s.product_id).filter(Boolean);
           const { data: variants } = await adminClient
             .from("wine_variants")
-            .select("id, syrve_product_id, base_wine_id, current_stock")
+            .select("id, syrve_product_id, base_wine_id, volume_ml")
             .in("syrve_product_id", syrveIds);
 
           const variantLookup = new Map((variants || []).map((v: any) => [v.syrve_product_id, v]));
 
+          // Insert into inventory_baseline_items (immutable) AND legacy inventory_items
           for (const item of stockItems) {
             const variant = variantLookup.get(item.product_id);
             if (!variant) continue;
 
             const expectedQty = Math.floor(item.amount || 0);
+            const expectedLiters = variant.volume_ml
+              ? (expectedQty * variant.volume_ml) / 1000
+              : 0;
 
+            // Event-sourced baseline (immutable)
+            await adminClient.from("inventory_baseline_items").insert({
+              session_id,
+              product_id: variant.base_wine_id,
+              variant_id: variant.id,
+              expected_qty: expectedQty,
+              expected_liters: expectedLiters,
+              raw_stock_payload: item,
+            });
+
+            // Legacy inventory_items for backward compat
             await adminClient.from("inventory_items").insert({
               session_id,
               wine_id: variant.base_wine_id,
@@ -126,6 +141,7 @@ serve(async (req) => {
               expected_quantity_opened: 0,
               count_status: "pending",
             });
+
             itemsLoaded++;
           }
 
@@ -152,7 +168,7 @@ serve(async (req) => {
       // Load baseline from local wines table (current stock)
       let wineQuery = adminClient
         .from("wines")
-        .select("id, current_stock_unopened, current_stock_opened")
+        .select("id, current_stock_unopened, current_stock_opened, volume_ml")
         .eq("is_active", true);
 
       if (session.location_filter) {
@@ -162,6 +178,20 @@ serve(async (req) => {
       const { data: wines } = await wineQuery;
 
       for (const wine of (wines || [])) {
+        const totalQty = (wine.current_stock_unopened || 0) + (wine.current_stock_opened || 0);
+        const expectedLiters = wine.volume_ml
+          ? (totalQty * wine.volume_ml) / 1000
+          : 0;
+
+        // Event-sourced baseline (immutable)
+        await adminClient.from("inventory_baseline_items").insert({
+          session_id,
+          product_id: wine.id,
+          expected_qty: totalQty,
+          expected_liters: expectedLiters,
+        });
+
+        // Legacy inventory_items
         await adminClient.from("inventory_items").insert({
           session_id,
           wine_id: wine.id,
