@@ -1,0 +1,165 @@
+import { useState, useEffect } from 'react';
+import { useAuthStore } from '@/stores/authStore';
+import { Navigate, Link } from 'react-router-dom';
+import { ArrowLeft, ClipboardCheck, ShieldCheck, Ruler, AlertTriangle, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
+import CollapsibleSection from '@/components/CollapsibleSection';
+import { useAppSetting, useUpdateAppSetting } from '@/hooks/useAppSettings';
+
+export default function InventorySettings() {
+  const { user } = useAuthStore();
+  const { data: approvalRequired = true, isLoading: l1 } = useAppSetting<boolean>('inventory_approval_required', true);
+  const { data: allowCountingAfterEnd = false, isLoading: l2 } = useAppSetting<boolean>('inventory_allow_counting_after_end', false);
+  const { data: allowStaffCorrections = true, isLoading: l3 } = useAppSetting<boolean>('inventory_allow_staff_corrections', true);
+  const { data: requireReasonForAdjustment = false, isLoading: l4 } = useAppSetting<boolean>('inventory_require_adjustment_reason', false);
+  const { data: varianceThresholdLitres = 0, isLoading: l5 } = useAppSetting<number>('inventory_variance_threshold_litres', 0);
+  const { data: requireEvidenceForHighVariance = false, isLoading: l6 } = useAppSetting<boolean>('inventory_require_evidence_high_variance', false);
+  const { data: maxUnopenedPerEntry = 50, isLoading: l7 } = useAppSetting<number>('inventory_max_unopened_per_entry', 50);
+  const { data: autoTimeoutHours = 0, isLoading: l8 } = useAppSetting<number>('inventory_auto_timeout_hours', 0);
+
+  const update = useUpdateAppSetting();
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8;
+
+  const [form, setForm] = useState({
+    approval_required: true,
+    allow_counting_after_end: false,
+    allow_staff_corrections: true,
+    require_adjustment_reason: false,
+    variance_threshold_litres: 0,
+    require_evidence_high_variance: false,
+    max_unopened_per_entry: 50,
+    auto_timeout_hours: 0,
+  });
+
+  useEffect(() => {
+    if (!isLoading) {
+      setForm({
+        approval_required: approvalRequired,
+        allow_counting_after_end: allowCountingAfterEnd,
+        allow_staff_corrections: allowStaffCorrections,
+        require_adjustment_reason: requireReasonForAdjustment,
+        variance_threshold_litres: varianceThresholdLitres,
+        require_evidence_high_variance: requireEvidenceForHighVariance,
+        max_unopened_per_entry: maxUnopenedPerEntry,
+        auto_timeout_hours: autoTimeoutHours,
+      });
+    }
+  }, [isLoading, approvalRequired, allowCountingAfterEnd, allowStaffCorrections, requireReasonForAdjustment, varianceThresholdLitres, requireEvidenceForHighVariance, maxUnopenedPerEntry, autoTimeoutHours]);
+
+  const [saving, setSaving] = useState(false);
+
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const mapping: Record<string, any> = {
+        inventory_approval_required: form.approval_required,
+        inventory_allow_counting_after_end: form.allow_counting_after_end,
+        inventory_allow_staff_corrections: form.allow_staff_corrections,
+        inventory_require_adjustment_reason: form.require_adjustment_reason,
+        inventory_variance_threshold_litres: form.variance_threshold_litres,
+        inventory_require_evidence_high_variance: form.require_evidence_high_variance,
+        inventory_max_unopened_per_entry: form.max_unopened_per_entry,
+        inventory_auto_timeout_hours: form.auto_timeout_hours,
+      };
+      for (const [key, value] of Object.entries(mapping)) {
+        await update.mutateAsync({ key, value });
+      }
+      toast.success('Inventory rules saved');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-4 animate-fade-in">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-4 animate-fade-in">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Link to="/settings" className="hover:text-foreground transition-colors flex items-center gap-1">
+          <ArrowLeft className="w-4 h-4" /> Settings
+        </Link>
+        <span>/</span>
+        <span className="text-foreground">Inventory Rules</span>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl lg:text-3xl font-heading font-bold">Inventory Rules</h1>
+        <Button onClick={handleSave} disabled={saving}>
+          {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+          Save Changes
+        </Button>
+      </div>
+
+      <p className="text-sm text-muted-foreground">Changes apply to future sessions only. Active sessions keep their current rules.</p>
+
+      <CollapsibleSection icon={ClipboardCheck} title="Session Rules" defaultOpen>
+        <div className="space-y-4">
+          <ToggleRow label="Approval required before submission" description="Manager must approve inventory before it's sent to Syrve" checked={form.approval_required} onChange={v => setForm(f => ({ ...f, approval_required: v }))} />
+          <ToggleRow label="Allow counting after 'End Counting'" description="Staff can still add counts after manager ends counting phase" checked={form.allow_counting_after_end} onChange={v => setForm(f => ({ ...f, allow_counting_after_end: v }))} />
+          <ToggleRow label="Allow staff corrections" description="Staff can add negative correction events to fix mistakes" checked={form.allow_staff_corrections} onChange={v => setForm(f => ({ ...f, allow_staff_corrections: v }))} />
+          <ToggleRow label="Require reason for manager adjustments" description="Manager must provide a comment when adding adjustment events" checked={form.require_adjustment_reason} onChange={v => setForm(f => ({ ...f, require_adjustment_reason: v }))} />
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection icon={AlertTriangle} title="Variance & Safety">
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <Label className="text-xs">Variance threshold (litres)</Label>
+            <p className="text-xs text-muted-foreground mb-1">Require manager review if total variance exceeds this value. Set to 0 to disable.</p>
+            <Input type="number" step="0.1" min="0" value={form.variance_threshold_litres} onChange={e => setForm(f => ({ ...f, variance_threshold_litres: parseFloat(e.target.value) || 0 }))} className="bg-secondary border-border w-32" />
+          </div>
+          <ToggleRow label="Require evidence for high-variance items" description="Staff must attach a photo for items exceeding the variance threshold" checked={form.require_evidence_high_variance} onChange={v => setForm(f => ({ ...f, require_evidence_high_variance: v }))} />
+          <div className="space-y-1">
+            <Label className="text-xs">Max unopened bottles per entry</Label>
+            <p className="text-xs text-muted-foreground mb-1">Prevents fat-finger errors during counting</p>
+            <Input type="number" min="1" max="999" value={form.max_unopened_per_entry} onChange={e => setForm(f => ({ ...f, max_unopened_per_entry: parseInt(e.target.value) || 50 }))} className="bg-secondary border-border w-32" />
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection icon={ShieldCheck} title="Session Lifecycle">
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <Label className="text-xs">Auto-timeout (hours)</Label>
+            <p className="text-xs text-muted-foreground mb-1">Automatically end counting after this many hours. Set to 0 to disable.</p>
+            <Input type="number" min="0" max="48" value={form.auto_timeout_hours} onChange={e => setForm(f => ({ ...f, auto_timeout_hours: parseInt(e.target.value) || 0 }))} className="bg-secondary border-border w-32" />
+          </div>
+          <div className="rounded-lg bg-muted/50 p-3">
+            <p className="text-xs text-muted-foreground">
+              <strong>Baseline source:</strong> Always pulled from Syrve at session start. Baseline is immutable once session begins.
+            </p>
+          </div>
+        </div>
+      </CollapsibleSection>
+    </div>
+  );
+}
+
+function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
