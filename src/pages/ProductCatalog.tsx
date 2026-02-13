@@ -220,24 +220,44 @@ export default function ProductCatalog() {
     });
   }, []);
 
+  // IDs of filtered products for quick lookup
+  const filteredIds = useMemo(() => new Set(filteredProducts.map(p => p.id)), [filteredProducts]);
+
+  // Only count selected items that are currently visible
+  const visibleSelectedIds = useMemo(() => {
+    const vis = new Set<string>();
+    selectedIds.forEach(id => { if (filteredIds.has(id)) vis.add(id); });
+    return vis;
+  }, [selectedIds, filteredIds]);
+
   const toggleSelectAll = useCallback(() => {
-    if (selectedIds.size === filteredProducts.length) {
-      setSelectedIds(new Set());
+    if (visibleSelectedIds.size === filteredProducts.length && filteredProducts.length > 0) {
+      // Deselect only visible ones, keep any hidden selections
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.delete(id));
+        return next;
+      });
     } else {
-      setSelectedIds(new Set(filteredProducts.map(p => p.id)));
+      // Select all visible ones, keep existing hidden selections
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        filteredIds.forEach(id => next.add(id));
+        return next;
+      });
     }
-  }, [filteredProducts, selectedIds.size]);
+  }, [filteredProducts.length, visibleSelectedIds.size, filteredIds]);
 
   const handleBulkAction = useCallback((field: 'is_marked' | 'is_by_glass', value: boolean) => {
-    const ids = Array.from(selectedIds);
+    const ids = Array.from(visibleSelectedIds);
     if (ids.length === 0) return;
     bulkToggle.mutate({ ids, field, value }, {
       onSuccess: () => setSelectedIds(new Set()),
     });
-  }, [selectedIds, bulkToggle]);
+  }, [visibleSelectedIds, bulkToggle]);
 
-  const allSelected = filteredProducts.length > 0 && selectedIds.size === filteredProducts.length;
-  const someSelected = selectedIds.size > 0 && selectedIds.size < filteredProducts.length;
+  const allSelected = filteredProducts.length > 0 && visibleSelectedIds.size === filteredProducts.length;
+  const someSelected = visibleSelectedIds.size > 0 && visibleSelectedIds.size < filteredProducts.length;
 
   const tableColumns = useMemo((): DataTableColumn<Product>[] => [
     {
@@ -302,11 +322,11 @@ export default function ProductCatalog() {
       </div>
 
       {/* Bulk action toolbar */}
-      {selectedIds.size > 0 && (
+      {visibleSelectedIds.size > 0 && (
         <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20 animate-fade-in">
           <div className="flex items-center gap-2">
             <CheckSquare className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+            <span className="text-sm font-medium">{visibleSelectedIds.size} selected</span>
           </div>
           <div className="h-4 w-px bg-border" />
           <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_marked', true)}>
