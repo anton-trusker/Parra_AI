@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Wine } from '@/data/mockWines';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useGlassDimensions } from '@/hooks/useGlassDimensions';
+import { useLocations } from '@/hooks/useLocations';
 import { useState, useEffect, useRef } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -119,7 +120,11 @@ function PartialBottleRow({
 }
 
 export default function QuantityPopup({ wine, compact, onConfirm, onCancel }: QuantityPopupProps) {
-  const { glassDimensions, locations } = useSettingsStore();
+  const { data: glassDimensionsRaw = [] } = useGlassDimensions();
+  const { data: locationsRaw = [] } = useLocations();
+  // Map DB rows to the shape expected by the component
+  const glassDimensions = glassDimensionsRaw.map(g => ({ id: g.id, label: g.label, volumeLitres: g.volume_litres }));
+  const locations = locationsRaw.map(l => ({ ...l, subLocations: l.sub_locations }));
   const [unopened, setUnopened] = useState(0);
   const [openedCount, setOpenedCount] = useState(0);
   const [partialLitres, setPartialLitres] = useState<number[]>([]);

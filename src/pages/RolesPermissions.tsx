@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { useHasPermission } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, Shield, ChevronDown, ChevronRight } from 'lucide-react';
@@ -8,22 +7,35 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   ALL_MODULES,
   ALL_PERMISSION_LEVELS,
   buildPermissions,
   permKey,
-  type AppRole,
   type ModuleKey,
   type PermissionLevel,
 } from '@/data/referenceData';
+import {
+  useRolesConfig,
+  useAddRoleConfig,
+  useRemoveRoleConfig,
+  useSetRolePermission,
+  useSetModulePermissions,
+  type RoleConfigRow,
+} from '@/hooks/useRolesConfig';
 
 export default function RolesPermissions() {
   const canAccess = useHasPermission('settings', 'full');
-  const { roles, addRole, removeRole, setRolePermission, setModulePermissions } = useSettingsStore();
+  const { data: roles = [], isLoading } = useRolesConfig();
+  const addRole = useAddRoleConfig();
+  const removeRole = useRemoveRoleConfig();
+  const setPermission = useSetRolePermission();
+  const setModulePerms = useSetModulePermissions();
+
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleColor, setNewRoleColor] = useState('#22c55e');
-  const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set(roles.length <= 2 ? roles.map(r => r.id) : []));
+  const [expandedRoles, setExpandedRoles] = useState<Set<string>>(new Set());
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
 
   if (!canAccess) return <Navigate to="/dashboard" replace />;
@@ -45,34 +57,32 @@ export default function RolesPermissions() {
     });
   };
 
-  const handleAddRole = () => {
+  const handleAddRole = async () => {
     if (!newRoleName.trim()) { toast.error('Enter a role name'); return; }
-    const newRole: AppRole = {
-      id: `role_${Date.now()}`,
-      name: newRoleName.trim(),
-      color: newRoleColor,
-      isBuiltin: false,
-      permissions: { ...buildPermissions('none'), 'dashboard.view_analytics': 'view' },
-    };
-    addRole(newRole);
-    setNewRoleName('');
-    setExpandedRoles(prev => new Set([...prev, newRole.id]));
-    toast.success(`Role "${newRole.name}" created`);
+    try {
+      await addRole.mutateAsync({
+        role_name: newRoleName.trim(),
+        color: newRoleColor,
+        permissions: { ...buildPermissions('none'), 'dashboard.view_analytics': 'view' },
+      });
+      setNewRoleName('');
+      toast.success(`Role "${newRoleName.trim()}" created`);
+    } catch (e: any) { toast.error(e.message); }
   };
 
-  const getPermSummary = (role: AppRole) => {
+  const getPermSummary = (role: RoleConfigRow) => {
     const active = Object.values(role.permissions).filter(v => v !== 'none').length;
     const total = Object.keys(role.permissions).length;
     return `${active}/${total} permissions`;
   };
 
-  const getModuleSummary = (role: AppRole, moduleKey: ModuleKey) => {
+  const getModuleSummary = (role: RoleConfigRow, moduleKey: ModuleKey) => {
     const mod = ALL_MODULES.find(m => m.key === moduleKey)!;
     const active = mod.subActions.filter(a => (role.permissions[permKey(moduleKey, a.key)] ?? 'none') !== 'none').length;
     return `${active}/${mod.subActions.length}`;
   };
 
-  const getModuleHighestLevel = (role: AppRole, moduleKey: ModuleKey): PermissionLevel => {
+  const getModuleHighestLevel = (role: RoleConfigRow, moduleKey: ModuleKey): PermissionLevel => {
     const mod = ALL_MODULES.find(m => m.key === moduleKey)!;
     const hierarchy: PermissionLevel[] = ['none', 'view', 'edit', 'full'];
     let best = 0;
@@ -83,7 +93,17 @@ export default function RolesPermissions() {
     return hierarchy[best];
   };
 
-  const isAdminLocked = (role: AppRole) => role.isBuiltin && role.id === 'role_admin';
+  const isAdminLocked = (role: RoleConfigRow) => role.is_builtin && role.role_name === 'Super Admin';
+
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4 animate-fade-in">
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 animate-fade-in">
@@ -125,7 +145,7 @@ export default function RolesPermissions() {
               className="w-10 h-10 rounded-lg border border-border cursor-pointer bg-secondary"
             />
           </div>
-          <Button size="sm" onClick={handleAddRole} className="wine-gradient text-primary-foreground">
+          <Button size="sm" onClick={handleAddRole} disabled={addRole.isPending} className="wine-gradient text-primary-foreground">
             <Plus className="w-4 h-4 mr-1" /> Add Role
           </Button>
         </div>
@@ -142,19 +162,20 @@ export default function RolesPermissions() {
                 <CollapsibleTrigger asChild>
                   <button className="w-full flex items-center justify-between p-5 text-left hover:bg-secondary/30 transition-colors">
                     <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: role.color }} />
-                      <h3 className="font-heading font-semibold text-lg">{role.name}</h3>
-                      {role.isBuiltin && (
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: role.color || '#6b7280' }} />
+                      <h3 className="font-heading font-semibold text-lg">{role.role_name}</h3>
+                      {role.is_builtin && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground">Built-in</span>
                       )}
                       <span className="text-xs text-muted-foreground">{getPermSummary(role)}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      {!role.isBuiltin && (
+                      {!role.is_builtin && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={(e) => { e.stopPropagation(); removeRole(role.id); toast.success('Role deleted'); }}
+                          disabled={removeRole.isPending}
+                          onClick={(e) => { e.stopPropagation(); removeRole.mutate(role.id, { onSuccess: () => toast.success('Role deleted') }); }}
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
@@ -195,11 +216,20 @@ export default function RolesPermissions() {
                                 summary={summary}
                                 locked={locked}
                                 onSetModuleLevel={(level) => {
-                                  setModulePermissions(role.id, mod.key, level);
-                                  toast.success(`All ${mod.label} permissions set to ${level}`);
+                                  setModulePerms.mutate({
+                                    roleId: role.id,
+                                    currentPermissions: role.permissions,
+                                    moduleKey: mod.key,
+                                    level,
+                                  }, { onSuccess: () => toast.success(`All ${mod.label} permissions set to ${level}`) });
                                 }}
                                 onSetSubActionLevel={(actionKey, level) => {
-                                  setRolePermission(role.id, permKey(mod.key, actionKey), level);
+                                  setPermission.mutate({
+                                    roleId: role.id,
+                                    currentPermissions: role.permissions,
+                                    permissionKey: permKey(mod.key, actionKey),
+                                    level,
+                                  });
                                 }}
                               />
                             );
@@ -218,13 +248,12 @@ export default function RolesPermissions() {
   );
 }
 
-// Sub-component for module row + sub-action rows
 function ModuleRow({
   mod, role, isOpen, onToggle, highestLevel, summary, locked,
   onSetModuleLevel, onSetSubActionLevel,
 }: {
   mod: (typeof ALL_MODULES)[0];
-  role: AppRole;
+  role: RoleConfigRow;
   isOpen: boolean;
   onToggle: () => void;
   highestLevel: PermissionLevel;
@@ -235,7 +264,6 @@ function ModuleRow({
 }) {
   return (
     <>
-      {/* Module header row */}
       <tr className="border-b border-border bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-pointer" onClick={onToggle}>
         <td className="py-2.5 pr-4">
           <div className="flex items-center gap-2 font-medium">
@@ -263,7 +291,6 @@ function ModuleRow({
           </td>
         ))}
       </tr>
-      {/* Sub-action rows */}
       {isOpen && mod.subActions.map((action, idx) => {
         const key = permKey(mod.key, action.key);
         const currentLevel = role.permissions[key] ?? 'none';
@@ -294,8 +321,7 @@ function ModuleRow({
   );
 }
 
-// Check if all sub-actions in a module share the same permission level
-function allSame(role: AppRole, mod: (typeof ALL_MODULES)[0]): boolean {
+function allSame(role: RoleConfigRow, mod: (typeof ALL_MODULES)[0]): boolean {
   if (mod.subActions.length === 0) return true;
   const first = role.permissions[permKey(mod.key, mod.subActions[0].key)] ?? 'none';
   return mod.subActions.every(a => (role.permissions[permKey(mod.key, a.key)] ?? 'none') === first);
