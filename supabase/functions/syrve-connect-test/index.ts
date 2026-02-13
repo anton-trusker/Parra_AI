@@ -39,11 +39,17 @@ serve(async (req) => {
       });
     }
 
-    const { server_url, api_login, api_password } = await req.json();
-    if (!server_url || !api_login || !api_password) {
+    const { server_url: rawServerUrl, api_login, api_password } = await req.json();
+    if (!rawServerUrl || !api_login || !api_password) {
       return new Response(JSON.stringify({ error: "server_url, api_login, and api_password are required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Normalize server_url: ensure it ends with /api
+    let server_url = rawServerUrl.replace(/\/+$/, '');
+    if (!server_url.endsWith('/api')) {
+      server_url = server_url + '/api';
     }
 
     // 1. Compute SHA1 hash of password
