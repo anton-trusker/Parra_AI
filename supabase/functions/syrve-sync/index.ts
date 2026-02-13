@@ -161,8 +161,12 @@ serve(async (req) => {
 
       // Wine enrichment stage: auto-create wines from wine-category products
       if (runType === "bootstrap" || runType === "products" || runType === "prices_stock") {
-        await updateProgress('enriching_wines', 93);
+        await updateProgress('enriching_wines', 90);
         await enrichWinesFromProducts(adminClient, config, stats);
+
+        // AI enrichment: detect country, region, grape variety, wine type
+        await updateProgress('ai_enriching', 95);
+        await aiEnrichNewWines(adminClient, stats);
       }
 
       // Update sync run as success
@@ -897,6 +901,149 @@ async function enrichWinesFromProducts(client: any, config: any, stats: any) {
   stats.wines_created = created;
   stats.wines_updated = updated;
   console.log(`Wine enrichment: created ${created}, updated ${updated} from ${eligibleProducts.length} eligible products`);
+}
+
+// ─── AI Enrichment Engine ───
+
+async function aiEnrichNewWines(client: any, stats: any) {
+  // Find wines that were auto-created but lack country/region/grape data
+  const { data: unenriched } = await client.from("wines")
+    .select("id, name, raw_source_name, producer, vintage, volume_ml")
+    .eq("enrichment_source", "syrve_auto")
+    .is("country", null)
+    .eq("is_active", true)
+    .limit(50); // process up to 50 per sync run
+
+  if (!unenriched || unenriched.length === 0) {
+    console.log("AI enrichment: no unenriched wines found");
+    return;
+  }
+
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY) {
+    console.log("AI enrichment: LOVABLE_API_KEY not configured, skipping");
+    return;
+  }
+
+  console.log(`AI enrichment: processing ${unenriched.length} wines`);
+
+  // Batch wines into groups of 10 for efficient API usage
+  const BATCH = 10;
+  let totalTokens = 0;
+  let enriched = 0;
+
+  for (let i = 0; i < unenriched.length; i += BATCH) {
+    const batch = unenriched.slice(i, i + BATCH);
+    const wineList = batch.map((w: any, idx: number) =>
+      `${idx + 1}. "${w.raw_source_name || w.name}"${w.vintage ? ` (${w.vintage})` : ''}${w.producer ? ` by ${w.producer}` : ''}`
+    ).join("\n");
+
+    try {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            {
+              role: "system",
+              content: `You are a wine expert. For each wine product name, determine:
+- country: wine-producing country (e.g. "France", "Italy", "Portugal")
+- region: wine region (e.g. "Bordeaux", "Tuscany", "Douro")
+- sub_region: sub-region or appellation if identifiable
+- grape_varieties: array of grape variety names (e.g. ["Cabernet Sauvignon", "Merlot"])
+- wine_type: one of "red", "white", "rosé", "sparkling", "dessert", "fortified", "orange"
+- producer: producer/winery name if identifiable from the product name
+- appellation: official appellation (DOC, AOC, etc.) if identifiable
+
+If you cannot determine a field with reasonable confidence, use null.
+Respond ONLY with the JSON array, no markdown.`
+            },
+            {
+              role: "user",
+              content: `Analyze these wine product names and return a JSON array with one object per wine:\n\n${wineList}`
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`AI enrichment API error ${response.status}: ${errText}`);
+        if (response.status === 429 || response.status === 402) break; // stop on rate limit / payment issues
+        continue;
+      }
+
+      const result = await response.json();
+      const content = result.choices?.[0]?.message?.content || "";
+      const usage = result.usage || {};
+      totalTokens += (usage.total_tokens || usage.prompt_tokens || 0) + (usage.completion_tokens || 0);
+
+      // Parse the JSON array from AI response
+      let parsed: any[];
+      try {
+        // Strip markdown code fences if present
+        const cleaned = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+        parsed = JSON.parse(cleaned);
+        if (!Array.isArray(parsed)) parsed = [parsed];
+      } catch (parseErr) {
+        console.error("AI enrichment: failed to parse response:", content.substring(0, 200));
+        continue;
+      }
+
+      // Update each wine with AI-detected data
+      for (let j = 0; j < batch.length && j < parsed.length; j++) {
+        const wine = batch[j];
+        const ai = parsed[j];
+        if (!ai) continue;
+
+        const updateData: any = {};
+        if (ai.country) updateData.country = ai.country;
+        if (ai.region) updateData.region = ai.region;
+        if (ai.sub_region) updateData.sub_region = ai.sub_region;
+        if (ai.appellation) updateData.appellation = ai.appellation;
+        if (ai.wine_type) {
+          // Map wine_type to body/sweetness or other fields as needed
+          const typeMap: Record<string, string> = {
+            red: "Red", white: "White", "rosé": "Rosé",
+            sparkling: "Sparkling", dessert: "Dessert",
+            fortified: "Fortified", orange: "Orange",
+          };
+          updateData.body = typeMap[ai.wine_type.toLowerCase()] || ai.wine_type;
+        }
+        if (ai.grape_varieties && Array.isArray(ai.grape_varieties) && ai.grape_varieties.length > 0) {
+          updateData.grape_varieties = ai.grape_varieties;
+        }
+        if (ai.producer && !wine.producer) {
+          updateData.producer = ai.producer;
+        }
+
+        // Only update if we got meaningful data
+        if (Object.keys(updateData).length > 0) {
+          updateData.enrichment_status = "ai_enriched";
+          const { error } = await client.from("wines").update(updateData).eq("id", wine.id);
+          if (!error) enriched++;
+          else console.error(`AI enrichment update failed for wine ${wine.id}: ${error.message}`);
+        }
+      }
+    } catch (e) {
+      console.error("AI enrichment batch error:", e);
+    }
+  }
+
+  // Estimate cost: Gemini 2.5 Flash ~ $0.15/1M input tokens, $0.60/1M output tokens
+  // Approximate combined rate ~ $0.30/1M tokens
+  const estimatedCost = (totalTokens / 1_000_000) * 0.30;
+
+  stats.ai_enriched = enriched;
+  stats.ai_tokens_used = totalTokens;
+  stats.ai_estimated_cost_usd = Math.round(estimatedCost * 10000) / 10000; // 4 decimal places
+  console.log(`AI enrichment: enriched ${enriched}/${unenriched.length} wines, ${totalTokens} tokens (~$${estimatedCost.toFixed(4)})`);
 }
 
 function parseXmlItems(xml: string, tagName: string): any[] {
