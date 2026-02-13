@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
@@ -105,7 +106,42 @@ export default function SyrveSettings() {
   // Saving import settings
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
+  const [activeSyncRunId, setActiveSyncRunId] = useState<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState<{ stage: string; progress: number } | null>(null);
+  const [syncFinished, setSyncFinished] = useState(false);
 
+  // Poll sync progress
+  useEffect(() => {
+    if (!activeSyncRunId) return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from('syrve_sync_runs')
+        .select('status, stats, error')
+        .eq('id', activeSyncRunId)
+        .single();
+      if (data) {
+        const s = data.stats as any;
+        setSyncProgress({ stage: s?.stage || 'running', progress: s?.progress || 0 });
+        if (data.status === 'success' || data.status === 'failed') {
+          clearInterval(interval);
+          setActiveSyncRunId(null);
+          setSyncFinished(true);
+          if (data.status === 'success') {
+            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories imported.`);
+          } else {
+            toast.error(`Sync failed: ${data.error || 'Unknown error'}`);
+          }
+          setSyncProgress(null);
+          setSettingsSaved(false);
+          qc.invalidateQueries({ queryKey: ['syrve_sync_runs'] });
+          qc.invalidateQueries({ queryKey: ['syrve_products'] });
+          qc.invalidateQueries({ queryKey: ['syrve_categories'] });
+          qc.invalidateQueries({ queryKey: ['syrve_stores'] });
+        }
+      }
+    }, 1500);
+    return () => clearInterval(interval);
+  }, [activeSyncRunId, qc]);
   useEffect(() => {
     if (config) {
       setServerUrl(config.server_url || '');
@@ -241,6 +277,36 @@ export default function SyrveSettings() {
 
   const updateFieldMapping = (key: string, value: boolean) => {
     setFieldMapping((prev: any) => ({ ...prev, [key]: value }));
+  };
+
+  const SYNC_STAGES = [
+    { key: 'authenticating', label: 'Authenticating' },
+    { key: 'syncing_stores', label: 'Syncing Stores' },
+    { key: 'syncing_categories', label: 'Syncing Categories' },
+    { key: 'deleting_products', label: 'Deleting Products' },
+    { key: 'deleted_products', label: 'Products Deleted' },
+    { key: 'importing_products', label: 'Importing Products' },
+    { key: 'applying_reimport_mode', label: 'Applying Rules' },
+    { key: 'completed', label: 'Completed' },
+  ];
+
+  const getStageLabel = (stage: string) => {
+    return SYNC_STAGES.find(s => s.key === stage)?.label || stage;
+  };
+
+  const renderStageSteps = (currentStage: string) => {
+    const currentIdx = SYNC_STAGES.findIndex(s => s.key === currentStage);
+    return SYNC_STAGES.filter(s => !['deleted_products'].includes(s.key)).map((s) => {
+      const stageIdx = SYNC_STAGES.findIndex(st => st.key === s.key);
+      const isDone = stageIdx < currentIdx;
+      const isCurrent = s.key === currentStage;
+      return (
+        <Badge key={s.key} variant={isDone ? 'default' : isCurrent ? 'secondary' : 'outline'} className="text-xs">
+          {isDone ? <CheckCircle2 className="w-3 h-3 mr-1" /> : isCurrent ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+          {s.label}
+        </Badge>
+      );
+    });
   };
 
   if (configLoading) {
@@ -727,30 +793,56 @@ export default function SyrveSettings() {
 
       {/* Save All Settings & Sync */}
       {isConfigured && (
-        <div className="flex gap-3 items-center">
-          <Button onClick={handleSaveImportSettings} disabled={savingSettings || syncMutation.isPending} size="lg">
-            {savingSettings && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Save All Settings
-          </Button>
-          {settingsSaved && (
-            <Button
-              onClick={() => {
-                syncMutation.mutate('bootstrap', {
-                  onSuccess: () => {
-                    toast.success('Sync completed successfully');
-                    setSettingsSaved(false);
-                  },
-                  onError: (err: any) => toast.error(err.message || 'Sync failed'),
-                });
-              }}
-              disabled={syncMutation.isPending}
-              size="lg"
-              variant="default"
-              className="gap-2"
-            >
-              {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
+        <div className="space-y-4">
+          <div className="flex gap-3 items-center">
+            <Button onClick={handleSaveImportSettings} disabled={savingSettings || !!activeSyncRunId} size="lg">
+              {savingSettings && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save All Settings
             </Button>
+            {(settingsSaved || syncFinished) && !activeSyncRunId && (
+              <Button
+                onClick={() => {
+                  setSyncFinished(false);
+                  syncMutation.mutate('bootstrap', {
+                    onSuccess: (data: any) => {
+                      setActiveSyncRunId(data?.sync_run_id || null);
+                      setSyncProgress({ stage: 'authenticating', progress: 5 });
+                    },
+                    onError: (err: any) => toast.error(err.message || 'Sync failed'),
+                  });
+                }}
+                disabled={syncMutation.isPending}
+                size="lg"
+                variant="default"
+                className="gap-2"
+              >
+                {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                {syncMutation.isPending ? 'Starting...' : 'Sync Now'}
+              </Button>
+            )}
+          </div>
+
+          {/* Sync Progress Bar */}
+          {(activeSyncRunId || syncMutation.isPending) && (
+            <Card>
+              <CardContent className="pt-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    <span className="text-sm font-medium">
+                      {getStageLabel(syncProgress?.stage || 'authenticating')}
+                    </span>
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {syncProgress?.progress || 0}%
+                  </span>
+                </div>
+                <Progress value={syncProgress?.progress || 0} className="h-2" />
+                <div className="flex gap-2 flex-wrap">
+                  {syncProgress?.stage && renderStageSteps(syncProgress.stage)}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
       )}
