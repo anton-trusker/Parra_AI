@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
-import { ArrowLeft, Brain, Eye, Sliders, Image, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Brain, Eye, Sliders, Image, Loader2, RefreshCw, Key } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -194,6 +194,9 @@ export default function AiSettings() {
           </div>
           <div className="rounded-lg bg-muted/50 p-3 flex items-center gap-2">
             <Badge variant="outline">{form.model_name}</Badge>
+            <span className="text-xs text-muted-foreground">
+              {form.settings.custom_api_key ? 'using custom key' : 'built-in'}
+            </span>
           </div>
         </div>
       </CollapsibleSection>
@@ -231,6 +234,40 @@ export default function AiSettings() {
               onChange={e => setForm(f => ({ ...f, max_image_size_mb: parseInt(e.target.value) || 4 }))}
               className="bg-secondary border-border w-28" />
           </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection icon={Key} title="API Key">
+        <div className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            By default, the built-in AI gateway is used. You can optionally provide your own API key for direct access to Google Gemini or OpenAI models.
+          </p>
+          <div className="space-y-1">
+            <Label className="text-xs">Custom API Key</Label>
+            <Input
+              type="password"
+              placeholder="Leave empty to use built-in gateway"
+              value={form.settings.custom_api_key || ''}
+              onChange={e => setForm(f => ({ ...f, settings: { ...f.settings, custom_api_key: e.target.value || undefined } }))}
+              className="bg-secondary border-border font-mono text-xs"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Custom Gateway URL</Label>
+            <Input
+              type="url"
+              placeholder="https://ai.gateway.lovable.dev/v1/chat/completions"
+              value={form.settings.custom_gateway_url || ''}
+              onChange={e => setForm(f => ({ ...f, settings: { ...f.settings, custom_gateway_url: e.target.value || undefined } }))}
+              className="bg-secondary border-border font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">OpenAI-compatible endpoint. Leave empty for default.</p>
+          </div>
+          {form.settings.custom_api_key && (
+            <Button variant="outline" size="sm" onClick={() => setForm(f => ({ ...f, settings: { ...f.settings, custom_api_key: undefined, custom_gateway_url: undefined } }))}>
+              Clear Custom Key
+            </Button>
+          )}
         </div>
       </CollapsibleSection>
 

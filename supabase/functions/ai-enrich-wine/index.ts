@@ -56,12 +56,26 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    // Read AI config for custom API key
+    const { data: aiConfig } = await adminClient
+      .from("ai_config")
+      .select("settings, model_name")
+      .limit(1)
+      .maybeSingle();
+
+    const settings = (aiConfig?.settings as Record<string, any>) || {};
+    const customApiKey = settings.custom_api_key;
+    const customGatewayUrl = settings.custom_gateway_url;
+    const modelName = aiConfig?.model_name || "google/gemini-2.5-flash";
+
+    const apiKey = customApiKey || Deno.env.get("LOVABLE_API_KEY");
+    if (!apiKey) {
       return new Response(JSON.stringify({ error: "AI not configured" }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const gatewayUrl = customGatewayUrl || "https://ai.gateway.lovable.dev/v1/chat/completions";
 
     // Build context about the wine
     const wineContext = [
@@ -73,14 +87,14 @@ serve(async (req) => {
       wine.country ? `Country: ${wine.country}` : null,
     ].filter(Boolean).join("\n");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(gatewayUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
+        model: modelName,
         messages: [
           {
             role: "system",

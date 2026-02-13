@@ -50,12 +50,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
-
-    if (!lovableApiKey) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
     const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
@@ -81,13 +76,31 @@ serve(async (req) => {
       });
     }
 
+    // Read AI config for custom API key
+    const { data: aiConfig } = await supabaseAdmin
+      .from("ai_config")
+      .select("settings, model_name")
+      .limit(1)
+      .maybeSingle();
+
+    const aiSettings = (aiConfig?.settings as Record<string, any>) || {};
+    const customApiKey = aiSettings.custom_api_key;
+    const customGatewayUrl = aiSettings.custom_gateway_url;
+    const modelName = aiConfig?.model_name || "google/gemini-2.5-flash";
+
+    const apiKey = customApiKey || Deno.env.get("LOVABLE_API_KEY");
+    if (!apiKey) {
+      throw new Error("AI not configured: no API key available");
+    }
+    const gatewayUrl = customGatewayUrl || "https://ai.gateway.lovable.dev/v1/chat/completions";
+
     // Create AI attempt record
     const { data: attempt, error: attemptErr } = await supabaseAdmin
       .from("ai_recognition_attempts")
       .insert({
         user_id: userId,
         session_id: session_id || null,
-        model_used: "google/gemini-2.5-flash",
+        model_used: modelName,
         prompt_version: "v2-pgvector",
         status: "processing",
       })
@@ -99,33 +112,30 @@ serve(async (req) => {
       throw new Error("Failed to create recognition attempt");
     }
 
-    // Step 1: Vision extraction via Lovable AI Gateway
-    const aiResponse = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: VISION_PROMPT },
-                {
-                  type: "image_url",
-                  image_url: { url: `data:image/jpeg;base64,${image_base64}` },
-                },
-              ],
-            },
-          ],
-          max_tokens: 500,
-        }),
-      }
-    );
+    // Step 1: Vision extraction via AI Gateway
+    const aiResponse = await fetch(gatewayUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelName,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: VISION_PROMPT },
+              {
+                type: "image_url",
+                image_url: { url: `data:image/jpeg;base64,${image_base64}` },
+              },
+            ],
+          },
+        ],
+        max_tokens: 500,
+      }),
+    });
 
     if (!aiResponse.ok) {
       const errText = await aiResponse.text();
