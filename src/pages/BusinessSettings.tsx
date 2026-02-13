@@ -32,6 +32,7 @@ export default function BusinessSettings() {
   const { data: address = '', isLoading: l3 } = useAppSetting<string>('business_address', '');
   const { data: country = '', isLoading: l4 } = useAppSetting<string>('business_country', '');
   const { data: city = '', isLoading: l5 } = useAppSetting<string>('business_city', '');
+  const { data: taxpayerId = '', isLoading: l5b } = useAppSetting<string>('taxpayer_id', '');
   const { data: language = 'en', isLoading: l6 } = useAppSetting<string>('language', 'en');
   const { data: currency = 'USD', isLoading: l7 } = useAppSetting<string>('currency', 'USD');
   const { data: timezone = 'UTC', isLoading: l8 } = useAppSetting<string>('timezone', 'UTC');
@@ -39,10 +40,10 @@ export default function BusinessSettings() {
   const { data: defaultGlassSize = 150, isLoading: l10 } = useAppSetting<number>('default_glass_size_ml', 150);
 
   const update = useUpdateAppSetting();
-  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8 || l9 || l10;
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l5b || l6 || l7 || l8 || l9 || l10;
 
   const [form, setForm] = useState({
-    business_name: '', legal_name: '', business_address: '', business_country: '', business_city: '',
+    business_name: '', legal_name: '', business_address: '', business_country: '', business_city: '', taxpayer_id: '',
     language: 'en', currency: 'USD', timezone: 'UTC',
     default_bottle_size_ml: 750, default_glass_size_ml: 150,
   });
@@ -51,12 +52,12 @@ export default function BusinessSettings() {
     if (!isLoading) {
       setForm({
         business_name: businessName, legal_name: legalName, business_address: address,
-        business_country: country, business_city: city,
+        business_country: country, business_city: city, taxpayer_id: taxpayerId,
         language, currency, timezone,
         default_bottle_size_ml: defaultBottleSize, default_glass_size_ml: defaultGlassSize,
       });
     }
-  }, [isLoading, businessName, legalName, address, country, city, language, currency, timezone, defaultBottleSize, defaultGlassSize]);
+  }, [isLoading, businessName, legalName, address, country, city, taxpayerId, language, currency, timezone, defaultBottleSize, defaultGlassSize]);
 
   const [saving, setSaving] = useState(false);
 
@@ -127,6 +128,10 @@ export default function BusinessSettings() {
           <div className="space-y-1">
             <Label className="text-xs">City</Label>
             <Input value={form.business_city} onChange={e => setForm(f => ({ ...f, business_city: e.target.value }))} placeholder="e.g. Dubai" className="bg-secondary border-border" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Taxpayer ID</Label>
+            <Input value={form.taxpayer_id} onChange={e => setForm(f => ({ ...f, taxpayer_id: e.target.value }))} placeholder="Tax ID / INN" className="bg-secondary border-border" />
           </div>
         </div>
       </CollapsibleSection>
