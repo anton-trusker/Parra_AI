@@ -2263,7 +2263,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "staff"
+      app_role: "admin" | "staff" | "super_admin"
       bottle_state_enum: "unopened" | "opened"
       counting_method_enum: "manual" | "barcode" | "image_ai"
       movement_type_enum:
@@ -2414,7 +2414,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "staff"],
+      app_role: ["admin", "staff", "super_admin"],
       bottle_state_enum: ["unopened", "opened"],
       counting_method_enum: ["manual", "barcode", "image_ai"],
       movement_type_enum: [
