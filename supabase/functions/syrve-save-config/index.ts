@@ -31,7 +31,7 @@ serve(async (req) => {
       });
     }
 
-    const { server_url, api_login, api_password_hash, default_store_id, default_store_name, selected_category_ids } = await req.json();
+    const { server_url, api_login, api_password_hash, default_store_id, default_store_name, selected_category_ids, selected_store_ids } = await req.json();
 
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -58,6 +58,11 @@ serve(async (req) => {
     // Include selected_category_ids if provided
     if (selected_category_ids !== undefined) {
       configData.selected_category_ids = selected_category_ids;
+    }
+
+    // Include selected_store_ids if provided
+    if (selected_store_ids !== undefined) {
+      configData.selected_store_ids = selected_store_ids;
     }
 
     let result;

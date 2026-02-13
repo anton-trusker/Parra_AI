@@ -1,0 +1,1 @@
+ALTER TABLE public.syrve_config ADD COLUMN selected_store_ids text[] DEFAULT NULL;

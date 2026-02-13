@@ -1298,6 +1298,7 @@ export type Database = {
           product_type_filters: string[] | null
           reimport_mode: string
           selected_category_ids: string[] | null
+          selected_store_ids: string[] | null
           server_url: string
           settings: Json | null
           sync_direction: string | null
@@ -1322,6 +1323,7 @@ export type Database = {
           product_type_filters?: string[] | null
           reimport_mode?: string
           selected_category_ids?: string[] | null
+          selected_store_ids?: string[] | null
           server_url?: string
           settings?: Json | null
           sync_direction?: string | null
@@ -1346,6 +1348,7 @@ export type Database = {
           product_type_filters?: string[] | null
           reimport_mode?: string
           selected_category_ids?: string[] | null
+          selected_store_ids?: string[] | null
           server_url?: string
           settings?: Json | null
           sync_direction?: string | null

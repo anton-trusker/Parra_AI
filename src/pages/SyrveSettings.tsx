@@ -74,6 +74,7 @@ export default function SyrveSettings() {
 
   // Store & category selection
   const [selectedStoreId, setSelectedStoreId] = useState('');
+  const [selectedStoreIds, setSelectedStoreIds] = useState<string[]>([]);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
 
   // Import rules
@@ -157,6 +158,7 @@ export default function SyrveSettings() {
       setServerUrl(config.server_url || '');
       setApiLogin(config.api_login || '');
       setSelectedStoreId(config.default_store_id || '');
+      setSelectedStoreIds((config as any).selected_store_ids || []);
       setSelectedCategoryIds(config.selected_category_ids || []);
       if (config.api_password_hash) setPasswordHash(config.api_password_hash);
       setProductTypeFilters(config.product_type_filters || ['GOODS', 'DISH']);
@@ -242,6 +244,7 @@ export default function SyrveSettings() {
         api_password_hash: passwordHash,
         default_store_id: selectedStoreId || undefined,
         default_store_name: selectedStore?.name || undefined,
+        selected_store_ids: selectedStoreIds.length > 0 ? selectedStoreIds : undefined,
         selected_category_ids: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
       });
       toast.success('Connection configuration saved');
@@ -488,10 +491,10 @@ export default function SyrveSettings() {
         <Card>
           <SectionHeader
             icon={Store}
-            title="Store Selection"
-            subtitle={selectedStoreId ? `Selected: ${availableStores.find(s => s.id === selectedStoreId)?.name || selectedStoreId}` : 'Choose default store for inventory operations'}
+            title="Store Locations"
+            subtitle={selectedStoreIds.length > 0 ? `${selectedStoreIds.length} store${selectedStoreIds.length > 1 ? 's' : ''} selected` : 'Select stores for inventory operations'}
             sectionKey="store"
-            badge={stores && stores.length > 0 ? <Badge variant="outline" className="text-[10px]">{stores.length} stores</Badge> : undefined}
+            badge={stores && stores.length > 0 ? <Badge variant="outline" className="text-[10px]">{stores.length} available</Badge> : undefined}
           />
           <CollapsibleContent>
             <CardContent className="space-y-4 pt-0">
@@ -499,35 +502,61 @@ export default function SyrveSettings() {
                 <p className="text-sm text-muted-foreground">No stores available. Test connection or run a sync first.</p>
               ) : (
                 <>
-                  <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a store for inventory operations" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableStores.map((store) => (
-                        <SelectItem key={store.id} value={store.id}>
-                          {store.name} {store.code ? `(${store.code})` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <p className="text-xs text-muted-foreground">
-                    This store will be used for stock queries and inventory submissions.
+                    Select one or more stores. The default store is used for stock queries and inventory submissions.
                   </p>
-
-                  {/* Synced stores list */}
-                  {stores && stores.length > 0 && (
-                    <div className="space-y-1.5 pt-2">
-                      <p className="text-xs font-medium text-muted-foreground">All synced stores:</p>
-                      {stores.map(store => (
-                        <div key={store.id} className="flex items-center justify-between p-2 rounded bg-muted/50 text-sm">
-                          <span>{store.name} {store.code ? `(${store.code})` : ''}</span>
-                          {config?.default_store_id === store.syrve_store_id && (
-                            <Badge variant="default" className="text-[10px]">Default</Badge>
-                          )}
+                  <div className="space-y-2">
+                    {availableStores.map((store) => {
+                      const isSelected = selectedStoreIds.includes(store.id);
+                      const isDefault = selectedStoreId === store.id;
+                      return (
+                        <div
+                          key={store.id}
+                          className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${isSelected ? 'border-primary/40 bg-primary/5' : 'hover:bg-muted/30'}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  const next = [...selectedStoreIds, store.id];
+                                  setSelectedStoreIds(next);
+                                  // Auto-set default if first selection
+                                  if (next.length === 1) setSelectedStoreId(store.id);
+                                } else {
+                                  const next = selectedStoreIds.filter(id => id !== store.id);
+                                  setSelectedStoreIds(next);
+                                  // If removing the default, pick the first remaining
+                                  if (isDefault) setSelectedStoreId(next[0] || '');
+                                }
+                              }}
+                            />
+                            <div>
+                              <p className="text-sm font-medium">{store.name}</p>
+                              {store.code && <p className="text-xs text-muted-foreground">Code: {store.code}</p>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isSelected && (
+                              <Button
+                                variant={isDefault ? 'default' : 'outline'}
+                                size="sm"
+                                className="text-xs h-7"
+                                onClick={() => setSelectedStoreId(store.id)}
+                                disabled={isDefault}
+                              >
+                                {isDefault ? 'Default' : 'Set Default'}
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
+                  </div>
+                  {selectedStoreIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      Default store: <span className="font-medium text-foreground">{availableStores.find(s => s.id === selectedStoreId)?.name || '—'}</span>
+                    </p>
                   )}
                 </>
               )}
