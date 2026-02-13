@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
-import { ArrowLeft, ClipboardCheck, ShieldCheck, Ruler, AlertTriangle, Loader2, ScanBarcode, Brain, Search, Beaker } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, ShieldCheck, Ruler, AlertTriangle, Loader2, ScanBarcode, Brain, Search, Beaker, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,9 +36,10 @@ export default function InventorySettings() {
   const { data: autoCloseDays = 0, isLoading: l17 } = useAppSetting<number>('inventory_auto_close_days', 0);
   const { data: allowRecount = false, isLoading: l18 } = useAppSetting<boolean>('inventory_allow_recount', false);
   const { data: showLitresEquiv = true, isLoading: l19 } = useAppSetting<boolean>('inventory_show_litres_equivalent', true);
+  const { data: hideScannerDesktop = false, isLoading: l20 } = useAppSetting<boolean>('inventory_hide_scanner_desktop', false);
 
   const update = useUpdateAppSetting();
-  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8 || l9 || l10 || l11 || l12 || l13 || l14 || l15 || l16 || l17 || l18 || l19;
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8 || l9 || l10 || l11 || l12 || l13 || l14 || l15 || l16 || l17 || l18 || l19 || l20;
 
   const [form, setForm] = useState({
     approval_required: true,
@@ -60,6 +61,7 @@ export default function InventorySettings() {
     auto_close_days: 0,
     allow_recount: false,
     show_litres_equivalent: true,
+    hide_scanner_desktop: false,
   });
 
   useEffect(() => {
@@ -84,6 +86,7 @@ export default function InventorySettings() {
         auto_close_days: autoCloseDays,
         allow_recount: allowRecount,
         show_litres_equivalent: showLitresEquiv,
+        hide_scanner_desktop: hideScannerDesktop,
       });
     }
   }, [isLoading, approvalRequired, allowCountingAfterEnd, allowStaffCorrections, requireReasonForAdjustment, varianceThresholdLitres, requireEvidenceForHighVariance, maxUnopenedPerEntry, autoTimeoutHours, barcodeEnabled, aiEnabled, manualSearchEnabled, countingUnit, trackOpened, requireLocation, allowNegativeStock, baselineSource, autoCloseDays, allowRecount, showLitresEquiv]);
@@ -115,6 +118,7 @@ export default function InventorySettings() {
         inventory_auto_close_days: form.auto_close_days,
         inventory_allow_recount: form.allow_recount,
         inventory_show_litres_equivalent: form.show_litres_equivalent,
+        inventory_hide_scanner_desktop: form.hide_scanner_desktop,
       };
       for (const [key, value] of Object.entries(mapping)) {
         await update.mutateAsync({ key, value });
@@ -181,6 +185,7 @@ export default function InventorySettings() {
 
           <ToggleRow label="Track opened bottles" description="Separately track opened bottles with glass-level measurement" checked={form.track_opened_bottles} onChange={v => setForm(f => ({ ...f, track_opened_bottles: v }))} />
           <ToggleRow label="Show litres equivalent" description="Display litre equivalent alongside bottle counts" checked={form.show_litres_equivalent} onChange={v => setForm(f => ({ ...f, show_litres_equivalent: v }))} />
+          <ToggleRow label="Hide scanner on desktop" description="Hide the barcode/AI scanner interface on desktop browsers. Scanning will only be available on mobile devices." checked={form.hide_scanner_desktop} onChange={v => setForm(f => ({ ...f, hide_scanner_desktop: v }))} />
         </div>
       </CollapsibleSection>
 
