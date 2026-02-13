@@ -415,8 +415,9 @@ async function syncProducts(
     if (product.productCategory) metadata.productCategory = product.productCategory;
     if (product.cookingPlaceType) metadata.cookingPlaceType = product.cookingPlaceType;
 
+    const productContainers = product.containers || [];
     const syrveData = { ...product };
-    if (containers.length > 0) syrveData.containers = containers;
+    if (Array.isArray(productContainers) && productContainers.length > 0) syrveData.containers = productContainers;
 
     productBatch.push({
       syrve_product_id: syrveId,
