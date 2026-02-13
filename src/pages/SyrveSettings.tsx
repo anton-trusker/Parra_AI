@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, XCircle, Loader2, Store, FolderTree, Filter, Building2 } from 'lucide-react';
+import { ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, XCircle, Loader2, Store, FolderTree, Filter, Building2, Beaker } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -404,17 +404,30 @@ export default function SyrveSettings() {
 
       {/* Link to Sync page */}
       {isConfigured && (
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/settings/syrve/sync')}>
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="w-12 h-12 rounded-lg bg-primary/15 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <h3 className="font-heading text-lg font-semibold">Sync Management</h3>
-              <p className="text-sm text-muted-foreground">Run sync operations and view sync history</p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/settings/syrve/sync')}>
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="w-12 h-12 rounded-lg bg-primary/15 flex items-center justify-center">
+                <RefreshCw className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-heading text-lg font-semibold">Sync Management</h3>
+                <p className="text-sm text-muted-foreground">Run sync operations and view sync history</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate('/settings/syrve/testing')}>
+            <CardContent className="flex items-center gap-4 p-6">
+              <div className="w-12 h-12 rounded-lg bg-amber-500/15 flex items-center justify-center">
+                <Beaker className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-heading text-lg font-semibold">Integration Testing</h3>
+                <p className="text-sm text-muted-foreground">Test mode, API logs, and per-section import</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

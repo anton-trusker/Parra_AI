@@ -84,13 +84,16 @@ serve(async (req) => {
 
     const results: any[] = [];
     let syrveToken: string | null = null;
+    const isTestingMode = config.testing_mode === true;
 
     try {
-      // Login to Syrve
-      const authUrl = `${config.server_url}/auth?login=${encodeURIComponent(config.api_login)}&pass=${config.api_password_hash}`;
-      const authResp = await fetch(authUrl);
-      if (!authResp.ok) throw new Error(`Syrve auth failed: ${authResp.status}`);
-      syrveToken = (await authResp.text()).trim();
+      if (!isTestingMode) {
+        // Login to Syrve (skip in testing mode)
+        const authUrl = `${config.server_url}/auth?login=${encodeURIComponent(config.api_login)}&pass=${config.api_password_hash}`;
+        const authResp = await fetch(authUrl);
+        if (!authResp.ok) throw new Error(`Syrve auth failed: ${authResp.status}`);
+        syrveToken = (await authResp.text()).trim();
+      }
 
       for (const job of jobs) {
         // Check max attempts
@@ -114,48 +117,69 @@ serve(async (req) => {
 
         try {
           if (job.job_type === "inventory_check" || job.job_type === "inventory_commit") {
-            // Submit inventory document to Syrve
-            const submitUrl = `${config.server_url}/documents/import/incomingInventory?key=${syrveToken}`;
-            const submitResp = await fetch(submitUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/xml" },
-              body: job.payload_xml,
-            });
-
-            const responseXml = await submitResp.text();
-
-            if (submitResp.ok) {
-              // Extract document ID from response if available
-              const docIdMatch = responseXml.match(/<documentNumber>([^<]+)<\/documentNumber>/);
-              const syrveDocId = docIdMatch ? docIdMatch[1] : null;
-
+            if (isTestingMode) {
+              // In testing mode: log what would be sent but don't actually call Syrve
+              const simulatedResponse = `<testMode>true</testMode><status>simulated_success</status><payload_size>${(job.payload_xml || '').length}</payload_size>`;
+              
               await adminClient.from("syrve_outbox_jobs")
                 .update({ 
-                  status: "success", 
-                  response_xml: responseXml,
+                  status: "test_success", 
+                  response_xml: simulatedResponse,
+                  last_error: null,
                   updated_at: new Date().toISOString(),
                 })
                 .eq("id", job.id);
 
-              // Update session status if linked
-              if (job.session_id) {
-                await adminClient.from("inventory_sessions")
-                  .update({ status: "synced" as any })
-                  .eq("id", job.session_id);
-              }
+              results.push({ job_id: job.id, status: "test_success", testing_mode: true });
 
-              results.push({ job_id: job.id, status: "success", syrve_doc_id: syrveDocId });
-
-              // Log success
               await adminClient.from("syrve_api_logs").insert({
-                action_type: `OUTBOX_${job.job_type.toUpperCase()}`,
-                status: "success",
-                request_url: submitUrl,
+                action_type: `OUTBOX_${job.job_type.toUpperCase()}_TEST`,
+                status: "test_success",
+                request_url: `${config.server_url}/documents/import/incomingInventory [TEST MODE - NOT SENT]`,
                 request_method: "POST",
-                response_payload_preview: responseXml.substring(0, 500),
+                response_payload_preview: simulatedResponse,
               });
             } else {
-              throw new Error(`Syrve returned ${submitResp.status}: ${responseXml.substring(0, 200)}`);
+              // Submit inventory document to Syrve
+              const submitUrl = `${config.server_url}/documents/import/incomingInventory?key=${syrveToken}`;
+              const submitResp = await fetch(submitUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/xml" },
+                body: job.payload_xml,
+              });
+
+              const responseXml = await submitResp.text();
+
+              if (submitResp.ok) {
+                const docIdMatch = responseXml.match(/<documentNumber>([^<]+)<\/documentNumber>/);
+                const syrveDocId = docIdMatch ? docIdMatch[1] : null;
+
+                await adminClient.from("syrve_outbox_jobs")
+                  .update({ 
+                    status: "success", 
+                    response_xml: responseXml,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq("id", job.id);
+
+                if (job.session_id) {
+                  await adminClient.from("inventory_sessions")
+                    .update({ status: "synced" as any })
+                    .eq("id", job.session_id);
+                }
+
+                results.push({ job_id: job.id, status: "success", syrve_doc_id: syrveDocId });
+
+                await adminClient.from("syrve_api_logs").insert({
+                  action_type: `OUTBOX_${job.job_type.toUpperCase()}`,
+                  status: "success",
+                  request_url: submitUrl,
+                  request_method: "POST",
+                  response_payload_preview: responseXml.substring(0, 500),
+                });
+              } else {
+                throw new Error(`Syrve returned ${submitResp.status}: ${responseXml.substring(0, 200)}`);
+              }
             }
           } else {
             throw new Error(`Unknown job type: ${job.job_type}`);
@@ -180,7 +204,7 @@ serve(async (req) => {
         }
       }
     } finally {
-      if (syrveToken) {
+      if (syrveToken && !isTestingMode) {
         try {
           await fetch(`${config.server_url}/logout?key=${syrveToken}`);
         } catch { /* ignore */ }
