@@ -22,6 +22,8 @@ interface CategoryTreePickerProps {
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
   onDeleteCategory?: (id: string) => void;
+  title?: string;
+  summaryPrefix?: string;
 }
 
 interface TreeNode {
@@ -115,8 +117,7 @@ function TreeNodeRow({
           checked={isSelected || (allDescendantsSelected && hasChildren)}
           data-state={isIndeterminate ? 'indeterminate' : undefined}
           onCheckedChange={() => {
-            if (hasChildren) onSelectBranch(node, !(isSelected && allDescendantsSelected));
-            else onToggleSelect(node.category.id);
+            onToggleSelect(node.category.id);
           }}
           className={cn("shrink-0", isIndeterminate && "border-accent bg-accent/20")}
         />
@@ -174,7 +175,7 @@ function hasMatch(node: TreeNode, term: string): boolean {
   return node.children.some(c => hasMatch(c, term));
 }
 
-export default function CategoryTreePicker({ categories, selectedIds, onSelectionChange, onDeleteCategory }: CategoryTreePickerProps) {
+export default function CategoryTreePicker({ categories, selectedIds, onSelectionChange, onDeleteCategory, title = 'Category Filter', summaryPrefix = 'Importing' }: CategoryTreePickerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
@@ -210,7 +211,7 @@ export default function CategoryTreePicker({ categories, selectedIds, onSelectio
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <FolderTree className="w-4 h-4 text-muted-foreground shrink-0" />
-        <p className="text-sm font-medium flex-1">Category Filter</p>
+        <p className="text-sm font-medium flex-1">{title}</p>
       </div>
 
       {/* Summary bar */}
@@ -219,7 +220,7 @@ export default function CategoryTreePicker({ categories, selectedIds, onSelectio
         selectedCount === 0 ? "bg-muted/50 text-muted-foreground" : "bg-primary/10 text-primary"
       )}>
         <span>
-          {selectedCount === 0 ? 'Importing: All categories' : `Importing: ${selectedCount} of ${totalCategories} categories`}
+          {selectedCount === 0 ? `${summaryPrefix}: All categories` : `${summaryPrefix}: ${selectedCount} of ${totalCategories} categories`}
         </span>
         {selectedCount > 0 && (
           <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={clearAll}>Clear</Button>
