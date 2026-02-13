@@ -5,3 +5,12 @@ verify_jwt = false
 
 [functions.manage-users]
 verify_jwt = false
+
+[functions.syrve-connect-test]
+verify_jwt = false
+
+[functions.syrve-save-config]
+verify_jwt = false
+
+[functions.syrve-sync]
+verify_jwt = false
