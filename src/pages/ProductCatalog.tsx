@@ -35,6 +35,8 @@ const PRODUCT_FILTER_DEFS: FilterDef[] = [
   { key: 'type', label: 'Product Type' },
   { key: 'category', label: 'Category' },
   { key: 'stock', label: 'Stock Status' },
+  { key: 'volume', label: 'Volume (L)' },
+  { key: 'has_price', label: 'Has Price' },
   { key: 'marked', label: 'Marked' },
   { key: 'by_glass', label: 'By Glass' },
 ];
@@ -129,6 +131,10 @@ export default function ProductCatalog() {
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
+  const [stockStatusFilter, setStockStatusFilter] = useState<string[]>([]);
+  const [volumeFilter, setVolumeFilter] = useState<string[]>([]);
+  const [hasPriceFilter, setHasPriceFilter] = useState(false);
   const [markedFilter, setMarkedFilter] = useState(false);
   const [byGlassFilter, setByGlassFilter] = useState(false);
   const [view, setView] = useState<'cards' | 'table'>('table');
@@ -151,12 +157,51 @@ export default function ProductCatalog() {
   const { data: categories = [] } = useSyrveCategories();
 
   const productTypes = useMemo(() => [...new Set(products.map(p => p.product_type).filter(Boolean) as string[])].sort(), [products]);
+  const categoryOptions = useMemo(() => [...new Set(products.map(p => p.categories?.name).filter(Boolean) as string[])].sort(), [products]);
+  const volumeOptions = useMemo(() => [...new Set(products.map(p => p.unit_capacity != null ? String(p.unit_capacity) : null).filter(Boolean) as string[])].sort((a, b) => Number(a) - Number(b)), [products]);
+  const stockStatusOptions = useMemo(() => {
+    const opts: string[] = [];
+    const hasZero = products.some(p => (p.current_stock ?? 0) <= 0);
+    const hasLow = products.some(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5);
+    const hasOk = products.some(p => (p.current_stock ?? 0) >= 5);
+    if (hasZero) opts.push('Out of Stock');
+    if (hasLow) opts.push('Low Stock');
+    if (hasOk) opts.push('In Stock');
+    return opts;
+  }, [products]);
 
-  const activeFilterCount = [typeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (markedFilter ? 1 : 0) + (byGlassFilter ? 1 : 0);
+  // Client-side filtering for category, stock status, volume, has_price
+  const filteredProducts = useMemo(() => {
+    let result = products;
+    if (categoryFilter.length > 0) {
+      result = result.filter(p => categoryFilter.includes(p.categories?.name || ''));
+    }
+    if (stockStatusFilter.length > 0) {
+      result = result.filter(p => {
+        const s = p.current_stock ?? 0;
+        if (s <= 0) return stockStatusFilter.includes('Out of Stock');
+        if (s < 5) return stockStatusFilter.includes('Low Stock');
+        return stockStatusFilter.includes('In Stock');
+      });
+    }
+    if (volumeFilter.length > 0) {
+      result = result.filter(p => p.unit_capacity != null && volumeFilter.includes(String(p.unit_capacity)));
+    }
+    if (hasPriceFilter) {
+      result = result.filter(p => p.sale_price != null && p.sale_price > 0);
+    }
+    return result;
+  }, [products, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter]);
+
+  const activeFilterCount = [typeFilter, categoryFilter, stockStatusFilter, volumeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (markedFilter ? 1 : 0) + (byGlassFilter ? 1 : 0) + (hasPriceFilter ? 1 : 0);
   const fv = (key: string) => productFilters.includes(key);
 
   const clearFilters = () => {
     setTypeFilter([]);
+    setCategoryFilter([]);
+    setStockStatusFilter([]);
+    setVolumeFilter([]);
+    setHasPriceFilter(false);
     setMarkedFilter(false);
     setByGlassFilter(false);
     if (categoryFromUrl) navigate('/products');
@@ -176,12 +221,12 @@ export default function ProductCatalog() {
   }, []);
 
   const toggleSelectAll = useCallback(() => {
-    if (selectedIds.size === products.length) {
+    if (selectedIds.size === filteredProducts.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(products.map(p => p.id)));
+      setSelectedIds(new Set(filteredProducts.map(p => p.id)));
     }
-  }, [products, selectedIds.size]);
+  }, [filteredProducts, selectedIds.size]);
 
   const handleBulkAction = useCallback((field: 'is_marked' | 'is_by_glass', value: boolean) => {
     const ids = Array.from(selectedIds);
@@ -191,8 +236,8 @@ export default function ProductCatalog() {
     });
   }, [selectedIds, bulkToggle]);
 
-  const allSelected = products.length > 0 && selectedIds.size === products.length;
-  const someSelected = selectedIds.size > 0 && selectedIds.size < products.length;
+  const allSelected = filteredProducts.length > 0 && selectedIds.size === filteredProducts.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < filteredProducts.length;
 
   const tableColumns = useMemo((): DataTableColumn<Product>[] => [
     {
@@ -252,7 +297,7 @@ export default function ProductCatalog() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl lg:text-3xl font-heading font-bold">Product Catalog</h1>
-          <p className="text-muted-foreground mt-1">{products.length} products from Syrve</p>
+          <p className="text-muted-foreground mt-1">{filteredProducts.length} products from Syrve</p>
         </div>
       </div>
 
@@ -321,6 +366,19 @@ export default function ProductCatalog() {
             </div>
             <div className="flex flex-wrap gap-2">
               {fv('type') && <MultiSelectFilter label="Type" options={productTypes} selected={typeFilter} onChange={setTypeFilter} />}
+              {fv('category') && <MultiSelectFilter label="Category" options={categoryOptions} selected={categoryFilter} onChange={setCategoryFilter} />}
+              {fv('stock') && <MultiSelectFilter label="Stock" options={stockStatusOptions} selected={stockStatusFilter} onChange={setStockStatusFilter} />}
+              {fv('volume') && <MultiSelectFilter label="Volume (L)" options={volumeOptions} selected={volumeFilter} onChange={setVolumeFilter} />}
+              {fv('has_price') && (
+                <Button
+                  variant={hasPriceFilter ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => setHasPriceFilter(!hasPriceFilter)}
+                >
+                  Has Price
+                </Button>
+              )}
               {fv('marked') && (
                 <Button
                   variant={markedFilter ? 'default' : 'outline'}
@@ -360,7 +418,7 @@ export default function ProductCatalog() {
         </div>
       ) : view === 'cards' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {products.map(p => (
+          {filteredProducts.map(p => (
             <ProductCard
               key={p.id}
               product={p}
@@ -373,7 +431,7 @@ export default function ProductCatalog() {
       ) : (
         <div className="wine-glass-effect rounded-xl overflow-hidden">
           <DataTable
-            data={products}
+            data={filteredProducts}
             columns={tableColumns}
             visibleColumns={productColumns}
             columnWidths={columnWidths}
@@ -385,7 +443,7 @@ export default function ProductCatalog() {
         </div>
       )}
 
-      {!isLoading && products.length === 0 && (
+      {!isLoading && filteredProducts.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
           <p>No products found. Run a Syrve sync first.</p>
