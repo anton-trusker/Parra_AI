@@ -77,7 +77,7 @@ export default function AppSidebar() {
     items.filter(item => {
       if (!role) return false;
       // Admin sees everything, staff sees non-restricted
-      if (role.id === 'admin') return true;
+      if (role.id === 'admin' || role.id === 'super_admin') return true;
       const restricted: ModuleKey[] = ['settings' as ModuleKey, 'users' as ModuleKey];
       return !restricted.includes(item.module);
     });
