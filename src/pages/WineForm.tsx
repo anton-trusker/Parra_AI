@@ -213,7 +213,7 @@ export default function WineForm() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-1.5"><Label>Vintage</Label><Input type="number" value={form.vintage} onChange={e => update('vintage', e.target.value)} placeholder="e.g. 2020" className="bg-secondary border-border" /></div>
+          <div className="space-y-1.5"><Label>Year</Label><Input type="number" value={form.vintage} onChange={e => update('vintage', e.target.value)} placeholder="e.g. 2020" className="bg-secondary border-border" /></div>
           <div className="sm:col-span-2 space-y-1.5"><Label>Grape Varieties</Label><Input value={form.grapeVarieties} onChange={e => update('grapeVarieties', e.target.value)} placeholder="Comma separated: Cabernet Sauvignon, Merlot" className="bg-secondary border-border" /></div>
         </div>
       </section>
