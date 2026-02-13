@@ -91,7 +91,7 @@ export default function Login() {
     setLoading(false);
   };
 
-  const PasswordInput = () => (
+  const passwordField = (
     <div className="space-y-1.5">
       <Label>Password</Label>
       <div className="relative">
@@ -117,7 +117,7 @@ export default function Login() {
     </div>
   );
 
-  const RememberMe = () => (
+  const rememberMeField = (
     <div className="flex items-center gap-2">
       <Checkbox
         id="remember-me"
@@ -184,8 +184,8 @@ export default function Login() {
                     disabled={loading}
                   />
                 </div>
-                <PasswordInput />
-                <RememberMe />
+                {passwordField}
+                {rememberMeField}
                 <Button
                   type="submit"
                   disabled={loading}
@@ -208,8 +208,8 @@ export default function Login() {
                     disabled={loading}
                   />
                 </div>
-                <PasswordInput />
-                <RememberMe />
+                {passwordField}
+                {rememberMeField}
                 <Button
                   type="submit"
                   disabled={loading}
