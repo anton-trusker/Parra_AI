@@ -55,7 +55,7 @@ export function useProducts(filters?: {
     queryFn: async () => {
       let query = supabase
         .from('products')
-        .select('*, categories!products_category_id_fkey(name)')
+        .select('*, categories!products_category_id_fkey(name, is_active, is_deleted)')
         .eq('is_deleted', false)
         .order('name');
 
@@ -78,7 +78,12 @@ export function useProducts(filters?: {
 
       const { data, error } = await query.limit(500);
       if (error) throw error;
-      return (data || []) as Product[];
+      // Hide products whose category was soft-deleted
+      return ((data || []) as Product[]).filter(p => {
+        if (!p.categories) return true; // uncategorized products are shown
+        const cat = p.categories as any;
+        return cat.is_active !== false && cat.is_deleted !== true;
+      });
     },
   });
 }
