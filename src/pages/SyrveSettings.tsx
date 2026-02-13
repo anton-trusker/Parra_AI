@@ -127,7 +127,7 @@ export default function SyrveSettings() {
           setActiveSyncRunId(null);
           setSyncFinished(true);
           if (data.status === 'success') {
-            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories imported.`);
+            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories, ${s?.prices_updated || 0} prices, ${s?.stock_updated || 0} stock levels.`);
           } else {
             toast.error(`Sync failed: ${data.error || 'Unknown error'}`);
           }
@@ -286,6 +286,8 @@ export default function SyrveSettings() {
     { key: 'deleting_products', label: 'Deleting Products' },
     { key: 'deleted_products', label: 'Products Deleted' },
     { key: 'importing_products', label: 'Importing Products' },
+    { key: 'fetching_prices', label: 'Fetching Prices' },
+    { key: 'fetching_stock', label: 'Fetching Stock' },
     { key: 'applying_reimport_mode', label: 'Applying Rules' },
     { key: 'completed', label: 'Completed' },
   ];
@@ -619,6 +621,40 @@ export default function SyrveSettings() {
                     <Switch
                       checked={fieldMapping.auto_map_category ?? true}
                       onCheckedChange={(v) => updateFieldMapping('auto_map_category', v)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Data Sync Options */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Data Sync Options</Label>
+                <p className="text-xs text-muted-foreground">Control which additional data is fetched from Syrve during sync.</p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-3 rounded-lg border">
+                    <div>
+                      <p className="text-sm font-medium">Sync Prices</p>
+                      <p className="text-xs text-muted-foreground">Fetch sale and purchase prices from Syrve price list (/v2/price)</p>
+                    </div>
+                    <Switch
+                      checked={fieldMapping.sync_prices ?? true}
+                      onCheckedChange={(v) => updateFieldMapping('sync_prices', v)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between p-3 rounded-lg border">
+                    <div>
+                      <p className="text-sm font-medium">Sync Stock Levels</p>
+                      <p className="text-xs text-muted-foreground">
+                        Fetch current stock balances from Syrve.
+                        {!selectedStoreId && <span className="text-destructive ml-1">Requires a default store to be selected.</span>}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={(fieldMapping.sync_stock ?? true) && !!selectedStoreId}
+                      onCheckedChange={(v) => updateFieldMapping('sync_stock', v)}
+                      disabled={!selectedStoreId}
                     />
                   </div>
                 </div>

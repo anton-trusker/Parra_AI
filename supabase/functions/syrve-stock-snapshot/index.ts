@@ -66,10 +66,8 @@ serve(async (req) => {
 
     let stockItems: any[] = [];
     try {
-      // Fetch stock remainders from Syrve
-      // The endpoint returns current stock levels per product for a given store
-      const today = new Date().toISOString().split("T")[0];
-      const stockUrl = `${config.server_url}/reports/balance/stores?key=${syrveToken}&store=${storeId}&timestamp=${today}`;
+      // Fetch stock from correct Server API endpoint
+      const stockUrl = `${config.server_url}/v2/entities/products/stock-and-sales?key=${syrveToken}&storeIds=${storeId}`;
       const stockResp = await fetch(stockUrl);
 
       if (!stockResp.ok) {
@@ -77,18 +75,19 @@ serve(async (req) => {
         throw new Error(`Syrve stock fetch failed (${stockResp.status}): ${errText.substring(0, 200)}`);
       }
 
-      const stockXml = await stockResp.text();
+      const stockText = await stockResp.text();
 
       // Store raw response
+      const today = new Date().toISOString().split("T")[0];
       await adminClient.from("syrve_raw_objects").insert({
         entity_type: "stock_snapshot",
         syrve_id: `snapshot_${storeId}_${today}`,
-        payload: { raw_xml_length: stockXml.length, store_id: storeId, date: today },
+        payload: { raw_length: stockText.length, store_id: storeId, date: today },
         synced_at: new Date().toISOString(),
       });
 
       // Parse stock items from XML
-      stockItems = parseStockXml(stockXml);
+      stockItems = parseStockXml(stockText);
 
       // Map syrve product IDs to our product IDs
       const syrveProductIds = stockItems.map((s: any) => s.product_id).filter(Boolean);
@@ -128,7 +127,7 @@ serve(async (req) => {
       await adminClient.from("syrve_api_logs").insert({
         action_type: "STOCK_SNAPSHOT",
         status: "success",
-        request_url: stockUrl,
+        request_url: `${config.server_url}/v2/entities/products/stock-and-sales?storeIds=${storeId}`,
         request_method: "GET",
         response_payload_preview: `${stockItems.length} items parsed, ${snapshotCount} snapshots created`,
       });
