@@ -137,6 +137,7 @@ export function useSaveSyrveConfig() {
       default_store_id?: string;
       default_store_name?: string;
       selected_category_ids?: string[];
+      selected_store_ids?: string[];
     }) => {
       const { data, error } = await supabase.functions.invoke('syrve-save-config', {
         body: params,
