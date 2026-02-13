@@ -66,8 +66,9 @@ serve(async (req) => {
 
     let stockItems: any[] = [];
     try {
-      // Fetch stock from correct Server API endpoint
-      const stockUrl = `${config.server_url}/v2/entities/products/stock-and-sales?key=${syrveToken}&storeIds=${storeId}`;
+      // Fetch stock from legacy report endpoint (Server API)
+      const today = new Date().toISOString().split("T")[0];
+      const stockUrl = `${config.server_url}/reports/balance/stores?key=${syrveToken}&store=${storeId}&timestamp=${today}`;
       const stockResp = await fetch(stockUrl);
 
       if (!stockResp.ok) {
@@ -127,7 +128,7 @@ serve(async (req) => {
       await adminClient.from("syrve_api_logs").insert({
         action_type: "STOCK_SNAPSHOT",
         status: "success",
-        request_url: `${config.server_url}/v2/entities/products/stock-and-sales?storeIds=${storeId}`,
+        request_url: stockUrl,
         request_method: "GET",
         response_payload_preview: `${stockItems.length} items parsed, ${snapshotCount} snapshots created`,
       });
