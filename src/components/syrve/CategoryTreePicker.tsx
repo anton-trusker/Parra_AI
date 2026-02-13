@@ -1,0 +1,303 @@
+import { useState, useMemo } from 'react';
+import { ChevronRight, ChevronDown, FolderTree, Search } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
+
+interface Category {
+  id: string;
+  name: string;
+  syrve_group_id: string;
+  parent_id: string | null;
+  parent_syrve_id: string | null;
+  is_active: boolean;
+}
+
+interface CategoryTreePickerProps {
+  categories: Category[];
+  selectedIds: string[];
+  onSelectionChange: (ids: string[]) => void;
+}
+
+interface TreeNode {
+  category: Category;
+  children: TreeNode[];
+}
+
+function buildTree(categories: Category[]): TreeNode[] {
+  const lookup = new Map<string, TreeNode>();
+  const roots: TreeNode[] = [];
+
+  // Create nodes
+  for (const cat of categories) {
+    lookup.set(cat.id, { category: cat, children: [] });
+  }
+
+  // Build hierarchy
+  for (const cat of categories) {
+    const node = lookup.get(cat.id)!;
+    if (cat.parent_id && lookup.has(cat.parent_id)) {
+      lookup.get(cat.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  // Sort children by name
+  const sortNodes = (nodes: TreeNode[]) => {
+    nodes.sort((a, b) => a.category.name.localeCompare(b.category.name));
+    nodes.forEach(n => sortNodes(n.children));
+  };
+  sortNodes(roots);
+
+  return roots;
+}
+
+function getDescendantIds(node: TreeNode): string[] {
+  const ids: string[] = [];
+  for (const child of node.children) {
+    ids.push(child.category.id);
+    ids.push(...getDescendantIds(child));
+  }
+  return ids;
+}
+
+function getAllIds(nodes: TreeNode[]): string[] {
+  const ids: string[] = [];
+  for (const node of nodes) {
+    ids.push(node.category.id);
+    ids.push(...getAllIds(node.children));
+  }
+  return ids;
+}
+
+function TreeNodeRow({
+  node,
+  depth,
+  selectedIds,
+  expandedIds,
+  onToggleSelect,
+  onToggleExpand,
+  onSelectBranch,
+  searchTerm,
+}: {
+  node: TreeNode;
+  depth: number;
+  selectedIds: Set<string>;
+  expandedIds: Set<string>;
+  onToggleSelect: (id: string) => void;
+  onToggleExpand: (id: string) => void;
+  onSelectBranch: (node: TreeNode, selected: boolean) => void;
+  searchTerm: string;
+}) {
+  const hasChildren = node.children.length > 0;
+  const isExpanded = expandedIds.has(node.category.id);
+  const isSelected = selectedIds.has(node.category.id);
+  const descendantIds = getDescendantIds(node);
+  const allDescendantsSelected = descendantIds.length > 0 && descendantIds.every(id => selectedIds.has(id));
+  const someDescendantsSelected = descendantIds.some(id => selectedIds.has(id));
+
+  const matchesSearch = searchTerm
+    ? node.category.name.toLowerCase().includes(searchTerm.toLowerCase())
+    : true;
+
+  const hasMatchingDescendant = searchTerm
+    ? node.children.some(child => hasMatch(child, searchTerm))
+    : true;
+
+  if (searchTerm && !matchesSearch && !hasMatchingDescendant) return null;
+
+  const isIndeterminate = someDescendantsSelected && !allDescendantsSelected && !isSelected;
+
+  return (
+    <>
+      <div
+        className={cn(
+          "flex items-center gap-1 py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors group",
+          isSelected && "bg-primary/5"
+        )}
+        style={{ paddingLeft: `${depth * 20 + 8}px` }}
+      >
+        {hasChildren ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 p-0 shrink-0"
+            onClick={() => onToggleExpand(node.category.id)}
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
+          </Button>
+        ) : (
+          <span className="w-5 shrink-0" />
+        )}
+
+        <Checkbox
+          id={`tree-${node.category.id}`}
+          checked={isSelected || (allDescendantsSelected && hasChildren)}
+          // @ts-ignore - indeterminate support
+          data-state={isIndeterminate ? 'indeterminate' : undefined}
+          onCheckedChange={() => {
+            if (hasChildren) {
+              onSelectBranch(node, !(isSelected && allDescendantsSelected));
+            } else {
+              onToggleSelect(node.category.id);
+            }
+          }}
+          className="shrink-0"
+        />
+
+        <label
+          htmlFor={`tree-${node.category.id}`}
+          className="text-sm cursor-pointer flex-1 truncate"
+        >
+          {node.category.name}
+        </label>
+
+        {hasChildren && (
+          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 opacity-60">
+            {node.children.length}
+          </Badge>
+        )}
+      </div>
+
+      {(isExpanded || searchTerm) &&
+        node.children.map(child => (
+          <TreeNodeRow
+            key={child.category.id}
+            node={child}
+            depth={depth + 1}
+            selectedIds={selectedIds}
+            expandedIds={expandedIds}
+            onToggleSelect={onToggleSelect}
+            onToggleExpand={onToggleExpand}
+            onSelectBranch={onSelectBranch}
+            searchTerm={searchTerm}
+          />
+        ))}
+    </>
+  );
+}
+
+function hasMatch(node: TreeNode, term: string): boolean {
+  if (node.category.name.toLowerCase().includes(term.toLowerCase())) return true;
+  return node.children.some(c => hasMatch(c, term));
+}
+
+export default function CategoryTreePicker({
+  categories,
+  selectedIds,
+  onSelectionChange,
+}: CategoryTreePickerProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const tree = useMemo(() => buildTree(categories), [categories]);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const allIds = useMemo(() => getAllIds(tree), [tree]);
+
+  const toggleSelect = (id: string) => {
+    if (selectedSet.has(id)) {
+      onSelectionChange(selectedIds.filter(i => i !== id));
+    } else {
+      onSelectionChange([...selectedIds, id]);
+    }
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectBranch = (node: TreeNode, selected: boolean) => {
+    const branchIds = [node.category.id, ...getDescendantIds(node)];
+    if (selected) {
+      const combined = new Set([...selectedIds, ...branchIds]);
+      onSelectionChange([...combined]);
+    } else {
+      const branchSet = new Set(branchIds);
+      onSelectionChange(selectedIds.filter(id => !branchSet.has(id)));
+    }
+  };
+
+  const selectAll = () => onSelectionChange(allIds);
+  const clearAll = () => onSelectionChange([]);
+  const expandAll = () => setExpandedIds(new Set(allIds));
+  const collapseAll = () => setExpandedIds(new Set());
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <FolderTree className="w-4 h-4 text-muted-foreground shrink-0" />
+        <p className="text-sm font-medium flex-1">
+          Category Filter
+          {selectedIds.length > 0 && (
+            <Badge variant="secondary" className="ml-2">{selectedIds.length} selected</Badge>
+          )}
+        </p>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Select which Syrve categories to import. Leave empty to import all.
+      </p>
+
+      <div className="relative">
+        <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search categories..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          className="pl-8 h-9"
+        />
+      </div>
+
+      <div className="flex gap-1 flex-wrap">
+        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={selectAll}>
+          Select All
+        </Button>
+        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={clearAll}>
+          Clear All
+        </Button>
+        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={expandAll}>
+          Expand All
+        </Button>
+        <Button variant="ghost" size="sm" className="text-xs h-7" onClick={collapseAll}>
+          Collapse All
+        </Button>
+      </div>
+
+      <ScrollArea className="h-64 rounded-md border">
+        <div className="p-1">
+          {tree.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No categories found. Run a sync first.
+            </p>
+          ) : (
+            tree.map(node => (
+              <TreeNodeRow
+                key={node.category.id}
+                node={node}
+                depth={0}
+                selectedIds={selectedSet}
+                expandedIds={expandedIds}
+                onToggleSelect={toggleSelect}
+                onToggleExpand={toggleExpand}
+                onSelectBranch={selectBranch}
+                searchTerm={searchTerm}
+              />
+            ))
+          )}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}

@@ -78,6 +78,9 @@ serve(async (req) => {
     let syrveToken: string | null = null;
     const stats = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0 };
     const selectedCategoryIds: string[] = config.selected_category_ids || [];
+    const productTypeFilters: string[] = config.product_type_filters || ['GOODS', 'DISH'];
+    const importInactive: boolean = config.import_inactive_products || false;
+    const fieldMapping = config.field_mapping || { extract_vintage: true, extract_volume: true, auto_map_category: true };
 
     try {
       // Normalize server_url: ensure it ends with /api
@@ -105,7 +108,7 @@ serve(async (req) => {
       }
 
       if (runType === "bootstrap" || runType === "products") {
-        await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds);
+        await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds, productTypeFilters, importInactive, fieldMapping);
       }
 
       // Update sync run as success
@@ -286,10 +289,12 @@ async function syncCategories(client: any, baseUrl: string, token: string, syncR
 
 async function syncProducts(
   client: any, baseUrl: string, token: string, syncRunId: string | null, 
-  stats: any, selectedCategoryIds: string[]
+  stats: any, selectedCategoryIds: string[], productTypeFilters: string[],
+  importInactive: boolean, fieldMapping: any
 ) {
   const start = Date.now();
-  const url = `${baseUrl}/v2/entities/products/list?includeDeleted=false&key=${token}`;
+  const includeDeleted = importInactive ? 'true' : 'false';
+  const url = `${baseUrl}/v2/entities/products/list?includeDeleted=${includeDeleted}&key=${token}`;
   const resp = await fetch(url);
   if (!resp.ok) {
     await logApi(client, syncRunId, "FETCH_PRODUCTS", "error", url, `HTTP ${resp.status}`, Date.now() - start);
@@ -348,6 +353,19 @@ async function syncProducts(
       continue;
     }
 
+    // Product type filter
+    const pType = (product.type || product.productType || '').toUpperCase();
+    if (productTypeFilters.length > 0 && pType && !productTypeFilters.includes(pType)) {
+      stats.skipped = (stats.skipped || 0) + 1;
+      continue;
+    }
+
+    // Skip inactive unless configured
+    if (!importInactive && (product.deleted === true || product.isDeleted === true)) {
+      stats.skipped = (stats.skipped || 0) + 1;
+      continue;
+    }
+
     const payloadHash = await sha1(JSON.stringify(product));
 
     if (existingHashMap.get(syrveId) === payloadHash) {
@@ -363,18 +381,26 @@ async function syncProducts(
       synced_at: new Date().toISOString(),
     });
 
-    const categoryId = parentGroupId ? catLookup.get(parentGroupId) : null;
-    const vintageMatch = product.name?.match(/(19|20)\d{2}/);
-    const vintage = vintageMatch ? parseInt(vintageMatch[0]) : null;
-
-    let unitCapacity = product.unitCapacity || null;
-    const containers = product.containers || [];
-    if (Array.isArray(containers) && containers.length > 0 && !unitCapacity) {
-      const firstContainer = containers[0];
-      if (firstContainer.count) unitCapacity = parseFloat(firstContainer.count);
+    const categoryId = (fieldMapping.auto_map_category !== false && parentGroupId) ? catLookup.get(parentGroupId) : null;
+    
+    // Extract vintage based on field_mapping
+    let vintage: number | null = null;
+    if (fieldMapping.extract_vintage !== false) {
+      const vintageMatch = product.name?.match(/(19|20)\d{2}/);
+      vintage = vintageMatch ? parseInt(vintageMatch[0]) : null;
     }
 
-    const metadata: any = { vintage, extracted_at: new Date().toISOString() };
+    // Extract volume based on field_mapping
+    let unitCapacity = product.unitCapacity || null;
+    if (fieldMapping.extract_volume !== false) {
+      const containers = product.containers || [];
+      if (Array.isArray(containers) && containers.length > 0 && !unitCapacity) {
+        const firstContainer = containers[0];
+        if (firstContainer.count) unitCapacity = parseFloat(firstContainer.count);
+      }
+    }
+
+    const metadata: any = { vintage, extracted_at: new Date().toISOString(), product_type: pType };
     if (product.productCategory) metadata.productCategory = product.productCategory;
     if (product.cookingPlaceType) metadata.cookingPlaceType = product.cookingPlaceType;
 

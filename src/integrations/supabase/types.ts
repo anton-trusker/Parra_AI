@@ -1270,15 +1270,21 @@ export type Database = {
         Row: {
           api_login: string
           api_password_hash: string | null
+          auto_create_wines: boolean | null
+          auto_sync_enabled: boolean | null
           connection_status: string | null
           connection_tested_at: string | null
           created_at: string | null
           default_store_id: string | null
           default_store_name: string | null
+          field_mapping: Json | null
           id: string
+          import_inactive_products: boolean | null
+          product_type_filters: string[] | null
           selected_category_ids: string[] | null
           server_url: string
           settings: Json | null
+          sync_direction: string | null
           sync_interval_minutes: number | null
           sync_lock_until: string | null
           testing_mode: boolean
@@ -1287,15 +1293,21 @@ export type Database = {
         Insert: {
           api_login?: string
           api_password_hash?: string | null
+          auto_create_wines?: boolean | null
+          auto_sync_enabled?: boolean | null
           connection_status?: string | null
           connection_tested_at?: string | null
           created_at?: string | null
           default_store_id?: string | null
           default_store_name?: string | null
+          field_mapping?: Json | null
           id?: string
+          import_inactive_products?: boolean | null
+          product_type_filters?: string[] | null
           selected_category_ids?: string[] | null
           server_url?: string
           settings?: Json | null
+          sync_direction?: string | null
           sync_interval_minutes?: number | null
           sync_lock_until?: string | null
           testing_mode?: boolean
@@ -1304,15 +1316,21 @@ export type Database = {
         Update: {
           api_login?: string
           api_password_hash?: string | null
+          auto_create_wines?: boolean | null
+          auto_sync_enabled?: boolean | null
           connection_status?: string | null
           connection_tested_at?: string | null
           created_at?: string | null
           default_store_id?: string | null
           default_store_name?: string | null
+          field_mapping?: Json | null
           id?: string
+          import_inactive_products?: boolean | null
+          product_type_filters?: string[] | null
           selected_category_ids?: string[] | null
           server_url?: string
           settings?: Json | null
+          sync_direction?: string | null
           sync_interval_minutes?: number | null
           sync_lock_until?: string | null
           testing_mode?: boolean

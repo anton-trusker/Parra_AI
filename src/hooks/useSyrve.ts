@@ -15,6 +15,12 @@ export interface SyrveConfig {
   selected_category_ids: string[] | null;
   testing_mode: boolean;
   settings: any;
+  product_type_filters: string[] | null;
+  field_mapping: any;
+  auto_create_wines: boolean;
+  auto_sync_enabled: boolean;
+  sync_direction: string;
+  import_inactive_products: boolean;
 }
 
 export interface SyrveStore {
