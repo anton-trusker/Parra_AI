@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { mockUsers, MockUser } from '@/data/mockWines';
-import { useSettingsStore } from '@/stores/settingsStore';
+import { useRolesConfig } from '@/hooks/useRolesConfig';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +16,7 @@ interface UserFormDialogProps {
 }
 
 export default function UserFormDialog({ user, open, onClose }: UserFormDialogProps) {
-  const { roles } = useSettingsStore();
+  const { data: roles = [] } = useRolesConfig();
   const isEdit = !!user;
 
   const [form, setForm] = useState({
@@ -91,8 +91,8 @@ export default function UserFormDialog({ user, open, onClose }: UserFormDialogPr
                   {roles.map((r) => (
                     <SelectItem key={r.id} value={r.id}>
                       <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: r.color }} />
-                        {r.name}
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: r.color || '#6b7280' }} />
+                        {r.role_name}
                       </div>
                     </SelectItem>
                   ))}

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { Navigate, Link } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2, GlassWater, MapPin, Wine, Ruler, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,26 +8,44 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import CollapsibleSection from '@/components/CollapsibleSection';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useGlassDimensions, useAddGlassDimension, useRemoveGlassDimension } from '@/hooks/useGlassDimensions';
+import { useLocations, useAddLocation, useRemoveLocation, useAddSubLocation, useRemoveSubLocation } from '@/hooks/useLocations';
+import { useVolumes, useAddVolume, useRemoveVolume } from '@/hooks/useVolumes';
+import { useAppSetting, useUpdateAppSetting } from '@/hooks/useAppSettings';
 
 export default function GeneralSettings() {
   const { user } = useAuthStore();
-  const {
-    glassDimensions, addGlassDimension, removeGlassDimension,
-    locations, addLocation, removeLocation, addSubLocation, removeSubLocation,
-    volumes, addVolume, removeVolume,
-    openedBottleUnit, setOpenedBottleUnit,
-  } = useSettingsStore();
+
+  const { data: glassDimensions = [], isLoading: loadingGlass } = useGlassDimensions();
+  const addGlass = useAddGlassDimension();
+  const removeGlass = useRemoveGlassDimension();
+
+  const { data: locations = [], isLoading: loadingLocs } = useLocations();
+  const addLoc = useAddLocation();
+  const removeLoc = useRemoveLocation();
+  const addSubLoc = useAddSubLocation();
+  const removeSubLoc = useRemoveSubLocation();
+
+  const { data: volumes = [], isLoading: loadingVols } = useVolumes();
+  const addVol = useAddVolume();
+  const removeVol = useRemoveVolume();
+
+  const { data: openedBottleUnit = 'fraction', isLoading: loadingUnit } = useAppSetting<string>('opened_bottle_unit', 'fraction');
+  const updateSetting = useUpdateAppSetting();
 
   const [newGlassLabel, setNewGlassLabel] = useState('');
   const [newGlassVolume, setNewGlassVolume] = useState('');
   const [newLocName, setNewLocName] = useState('');
-  const [newLocType, setNewLocType] = useState('cellar');
+  const [newLocType, setNewLocType] = useState('');
   const [newVolMl, setNewVolMl] = useState('');
   const [newVolSize, setNewVolSize] = useState('');
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const [newSubLocNames, setNewSubLocNames] = useState<Record<string, string>>({});
 
   if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+
+  const isLoading = loadingGlass || loadingLocs || loadingVols || loadingUnit;
 
   const toggleExpanded = (id: string) => {
     setExpandedLocations((prev) => {
@@ -38,36 +55,55 @@ export default function GeneralSettings() {
     });
   };
 
-  const handleAddGlass = () => {
+  const handleAddGlass = async () => {
     const vol = parseFloat(newGlassVolume);
     if (!newGlassLabel || isNaN(vol) || vol <= 0) { toast.error('Enter a valid label and volume'); return; }
-    addGlassDimension({ id: `g${Date.now()}`, label: newGlassLabel, volumeLitres: vol });
-    setNewGlassLabel(''); setNewGlassVolume('');
-    toast.success('Glass dimension added');
+    try {
+      await addGlass.mutateAsync({ label: newGlassLabel, volume_litres: vol });
+      setNewGlassLabel(''); setNewGlassVolume('');
+      toast.success('Glass dimension added');
+    } catch (e: any) { toast.error(e.message); }
   };
 
-  const handleAddLocation = () => {
+  const handleAddLocation = async () => {
     if (!newLocName) { toast.error('Enter a location name'); return; }
-    addLocation({ id: `loc${Date.now()}`, name: newLocName, type: newLocType || 'other', subLocations: [] });
-    setNewLocName('');
-    toast.success('Location added');
+    try {
+      await addLoc.mutateAsync({ name: newLocName, type: newLocType || 'other' });
+      setNewLocName(''); setNewLocType('');
+      toast.success('Location added');
+    } catch (e: any) { toast.error(e.message); }
   };
 
-  const handleAddSubLocation = (locId: string) => {
+  const handleAddSubLocation = async (locId: string) => {
     const name = newSubLocNames[locId]?.trim();
     if (!name) { toast.error('Enter a sub-location name'); return; }
-    addSubLocation(locId, { id: `sub${Date.now()}`, name });
-    setNewSubLocNames((prev) => ({ ...prev, [locId]: '' }));
-    toast.success('Sub-location added');
+    try {
+      await addSubLoc.mutateAsync({ location_id: locId, name });
+      setNewSubLocNames((prev) => ({ ...prev, [locId]: '' }));
+      toast.success('Sub-location added');
+    } catch (e: any) { toast.error(e.message); }
   };
 
-  const handleAddVolume = () => {
+  const handleAddVolume = async () => {
     const ml = parseInt(newVolMl);
     if (isNaN(ml) || ml <= 0 || !newVolSize) { toast.error('Enter valid volume and size name'); return; }
-    addVolume({ id: `v${Date.now()}`, ml, label: `${(ml / 1000).toFixed(3)}L`, bottleSize: newVolSize });
-    setNewVolMl(''); setNewVolSize('');
-    toast.success('Volume option added');
+    try {
+      await addVol.mutateAsync({ ml, label: `${(ml / 1000).toFixed(3)}L`, bottle_size: newVolSize });
+      setNewVolMl(''); setNewVolSize('');
+      toast.success('Volume option added');
+    } catch (e: any) { toast.error(e.message); }
   };
+
+  if (isLoading) {
+    return (
+      <div className="max-w-3xl mx-auto space-y-4 animate-fade-in">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-4 animate-fade-in">
@@ -84,7 +120,15 @@ export default function GeneralSettings() {
       {/* Opened bottle unit */}
       <CollapsibleSection icon={Ruler} title="Opened Bottle Measurement" defaultOpen>
         <p className="text-sm text-muted-foreground mb-3">How opened bottles are measured during inventory counts</p>
-        <Select value={openedBottleUnit} onValueChange={(v) => { setOpenedBottleUnit(v as any); toast.success('Measurement unit saved'); }}>
+        <Select
+          value={openedBottleUnit}
+          onValueChange={(v) => {
+            updateSetting.mutate({ key: 'opened_bottle_unit', value: v }, {
+              onSuccess: () => toast.success('Measurement unit saved'),
+              onError: (e: any) => toast.error(e.message),
+            });
+          }}
+        >
           <SelectTrigger className="bg-secondary border-border w-64"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="fraction">Fraction of bottle (e.g. 0.3)</SelectItem>
@@ -101,9 +145,9 @@ export default function GeneralSettings() {
             <div key={g.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
               <div>
                 <span className="font-medium">{g.label}</span>
-                <span className="text-sm text-muted-foreground ml-2">({g.volumeLitres}L)</span>
+                <span className="text-sm text-muted-foreground ml-2">({g.volume_litres}L)</span>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => { removeGlassDimension(g.id); toast.success('Removed'); }}>
+              <Button variant="ghost" size="sm" disabled={removeGlass.isPending} onClick={() => removeGlass.mutate(g.id, { onSuccess: () => toast.success('Removed') })}>
                 <Trash2 className="w-4 h-4 text-destructive" />
               </Button>
             </div>
@@ -118,7 +162,7 @@ export default function GeneralSettings() {
             <Label className="text-xs">Volume (L)</Label>
             <Input type="number" step="0.001" value={newGlassVolume} onChange={e => setNewGlassVolume(e.target.value)} placeholder="0.125" className="bg-secondary border-border w-24" />
           </div>
-          <Button size="sm" onClick={handleAddGlass} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
+          <Button size="sm" onClick={handleAddGlass} disabled={addGlass.isPending} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
         </div>
       </CollapsibleSection>
 
@@ -131,30 +175,27 @@ export default function GeneralSettings() {
             return (
               <div key={l.id} className="rounded-lg bg-secondary/50 overflow-hidden">
                 <div className="flex items-center justify-between p-3">
-                  <button
-                    onClick={() => toggleExpanded(l.id)}
-                    className="flex items-center gap-2 text-left flex-1"
-                  >
+                  <button onClick={() => toggleExpanded(l.id)} className="flex items-center gap-2 text-left flex-1">
                     {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
                     <span className="font-medium">{l.name}</span>
-                    <span className="text-xs text-muted-foreground capitalize">({l.type})</span>
-                    {l.subLocations.length > 0 && (
+                    <span className="text-xs text-muted-foreground capitalize">({l.type || 'other'})</span>
+                    {l.sub_locations.length > 0 && (
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary">
-                        {l.subLocations.length} sub
+                        {l.sub_locations.length} sub
                       </span>
                     )}
                   </button>
-                  <Button variant="ghost" size="sm" onClick={() => { removeLocation(l.id); toast.success('Removed'); }}>
+                  <Button variant="ghost" size="sm" disabled={removeLoc.isPending} onClick={() => removeLoc.mutate(l.id, { onSuccess: () => toast.success('Removed') })}>
                     <Trash2 className="w-4 h-4 text-destructive" />
                   </Button>
                 </div>
 
                 {isExpanded && (
                   <div className="px-3 pb-3 pl-9 space-y-2">
-                    {l.subLocations.map((sub) => (
+                    {l.sub_locations.map((sub) => (
                       <div key={sub.id} className="flex items-center justify-between p-2 rounded-md bg-background/50">
                         <span className="text-sm">{sub.name}</span>
-                        <Button variant="ghost" size="sm" onClick={() => { removeSubLocation(l.id, sub.id); toast.success('Removed'); }}>
+                        <Button variant="ghost" size="sm" disabled={removeSubLoc.isPending} onClick={() => removeSubLoc.mutate(sub.id, { onSuccess: () => toast.success('Removed') })}>
                           <Trash2 className="w-3.5 h-3.5 text-destructive" />
                         </Button>
                       </div>
@@ -167,7 +208,7 @@ export default function GeneralSettings() {
                         className="bg-background border-border w-36 h-8 text-sm"
                         onKeyDown={(e) => { if (e.key === 'Enter') handleAddSubLocation(l.id); }}
                       />
-                      <Button size="sm" variant="outline" className="h-8 border-border" onClick={() => handleAddSubLocation(l.id)}>
+                      <Button size="sm" variant="outline" className="h-8 border-border" disabled={addSubLoc.isPending} onClick={() => handleAddSubLocation(l.id)}>
                         <Plus className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -186,7 +227,7 @@ export default function GeneralSettings() {
             <Label className="text-xs">Type</Label>
             <Input value={newLocType} onChange={e => setNewLocType(e.target.value)} placeholder="e.g. store, warehouse" className="bg-secondary border-border w-32" />
           </div>
-          <Button size="sm" onClick={handleAddLocation} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
+          <Button size="sm" onClick={handleAddLocation} disabled={addLoc.isPending} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
         </div>
       </CollapsibleSection>
 
@@ -198,9 +239,9 @@ export default function GeneralSettings() {
             <div key={v.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/50">
               <div>
                 <span className="font-medium">{v.label}</span>
-                <span className="text-sm text-muted-foreground ml-2">({v.ml}ml · {v.bottleSize})</span>
+                <span className="text-sm text-muted-foreground ml-2">({v.ml}ml · {v.bottle_size || '—'})</span>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => { removeVolume(v.id); toast.success('Removed'); }}>
+              <Button variant="ghost" size="sm" disabled={removeVol.isPending} onClick={() => removeVol.mutate(v.id, { onSuccess: () => toast.success('Removed') })}>
                 <Trash2 className="w-4 h-4 text-destructive" />
               </Button>
             </div>
@@ -215,7 +256,7 @@ export default function GeneralSettings() {
             <Label className="text-xs">Size Name</Label>
             <Input value={newVolSize} onChange={e => setNewVolSize(e.target.value)} placeholder="Standard" className="bg-secondary border-border w-28" />
           </div>
-          <Button size="sm" onClick={handleAddVolume} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
+          <Button size="sm" onClick={handleAddVolume} disabled={addVol.isPending} className="wine-gradient text-primary-foreground"><Plus className="w-4 h-4 mr-1" /> Add</Button>
         </div>
       </CollapsibleSection>
     </div>

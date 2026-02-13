@@ -2,8 +2,10 @@ import { useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { mockWines, Wine } from '@/data/mockWines';
 import { useAuthStore } from '@/stores/authStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { getCountries, getRegionsForCountry, getSubRegionsForRegion, getAppellationsForRegion } from '@/data/referenceData';
+import { useVolumes } from '@/hooks/useVolumes';
+import { useGlassDimensions } from '@/hooks/useGlassDimensions';
+import { useLocations } from '@/hooks/useLocations';
 import { ArrowLeft, Save, Trash2, Upload, X, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +20,9 @@ export default function WineForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { volumes, glassDimensions, locations } = useSettingsStore();
+  const { data: volumes = [] } = useVolumes();
+  const { data: glassDimensions = [] } = useGlassDimensions();
+  const { data: locations = [] } = useLocations();
   const isEdit = !!id;
   const existing = isEdit ? mockWines.find(w => w.id === id) : null;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -97,7 +101,7 @@ export default function WineForm() {
   const handleVolumeSelect = (volId: string) => {
     const vol = volumes.find(v => v.id === volId);
     if (vol) {
-      setForm(f => ({ ...f, volume: vol.ml.toString(), bottleSize: vol.bottleSize }));
+      setForm(f => ({ ...f, volume: vol.ml.toString(), bottleSize: vol.bottle_size || '' }));
     }
   };
 
@@ -244,7 +248,7 @@ export default function WineForm() {
             <Select onValueChange={handleVolumeSelect} value={volumes.find(v => v.ml === parseInt(form.volume))?.id || ''}>
               <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select volume" /></SelectTrigger>
               <SelectContent>
-                {volumes.map(v => <SelectItem key={v.id} value={v.id}>{v.label} ({v.bottleSize})</SelectItem>)}
+                {volumes.map(v => <SelectItem key={v.id} value={v.id}>{v.label} ({v.bottle_size || '—'})</SelectItem>)}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">{form.volume}ml = {volumeLitres}L</p>
@@ -281,8 +285,8 @@ export default function WineForm() {
                 <SelectTrigger className="bg-secondary border-border w-64"><SelectValue placeholder="Select glass size" /></SelectTrigger>
                 <SelectContent>
                   {glassDimensions.map(g => (
-                    <SelectItem key={g.id} value={(g.volumeLitres * 1000).toString()}>
-                      {g.label} ({(g.volumeLitres * 1000).toFixed(0)}ml)
+                    <SelectItem key={g.id} value={(g.volume_litres * 1000).toString()}>
+                      {g.label} ({(g.volume_litres * 1000).toFixed(0)}ml)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -317,14 +321,14 @@ export default function WineForm() {
           </div>
           {(() => {
             const selectedLoc = locations.find(l => l.id === form.locationId);
-            if (!selectedLoc || selectedLoc.subLocations.length === 0) return null;
+            if (!selectedLoc || selectedLoc.sub_locations.length === 0) return null;
             return (
               <div className="space-y-1.5">
                 <Label>Sub-Location</Label>
                 <Select value={form.subLocationId} onValueChange={v => update('subLocationId', v)}>
                   <SelectTrigger className="bg-secondary border-border"><SelectValue placeholder="Select sub-location" /></SelectTrigger>
                   <SelectContent>
-                    {selectedLoc.subLocations.map(s => (
+                    {selectedLoc.sub_locations.map(s => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
                   </SelectContent>
