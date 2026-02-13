@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, XCircle, Loader2, Store } from 'lucide-react';
+import { ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, XCircle, Loader2, Store, FolderTree, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,17 +9,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   useSyrveConfig,
   useTestSyrveConnection,
   useSaveSyrveConfig,
   useSyrveStores,
+  useSyrveCategories,
 } from '@/hooks/useSyrve';
 
 export default function SyrveSettings() {
   const navigate = useNavigate();
   const { data: config, isLoading: configLoading } = useSyrveConfig();
   const { data: stores } = useSyrveStores();
+  const { data: categories } = useSyrveCategories();
   const testConnection = useTestSyrveConnection();
   const saveConfig = useSaveSyrveConfig();
 
@@ -27,11 +31,25 @@ export default function SyrveSettings() {
   const [apiLogin, setApiLogin] = useState('');
   const [apiPassword, setApiPassword] = useState('');
   const [selectedStoreId, setSelectedStoreId] = useState('');
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [testStores, setTestStores] = useState<any[]>([]);
   const [passwordHash, setPasswordHash] = useState('');
   const [tested, setTested] = useState(false);
+  const [serverVersion, setServerVersion] = useState('');
 
-  // Initialize from config
+  // Pre-fill form from existing config
+  useEffect(() => {
+    if (config) {
+      setServerUrl(config.server_url || '');
+      setApiLogin(config.api_login || '');
+      setSelectedStoreId(config.default_store_id || '');
+      setSelectedCategoryIds(config.selected_category_ids || []);
+      if (config.api_password_hash) {
+        setPasswordHash(config.api_password_hash);
+      }
+    }
+  }, [config]);
+
   const isConfigured = config?.connection_status === 'connected';
 
   const handleTestConnection = async () => {
@@ -47,8 +65,9 @@ export default function SyrveSettings() {
       });
       setTestStores(result.stores || []);
       setPasswordHash(result.password_hash);
+      setServerVersion(result.server_version || '');
       setTested(true);
-      toast.success(`Connection successful! Found ${result.stores?.length || 0} stores.`);
+      toast.success(`Connection successful! Found ${result.stores?.length || 0} stores. Server: ${result.server_version || 'unknown'}`);
     } catch (err: any) {
       toast.error(err.message || 'Connection failed');
       setTested(false);
@@ -60,7 +79,8 @@ export default function SyrveSettings() {
       toast.error('Test connection first');
       return;
     }
-    const selectedStore = testStores.find(s => s.id === selectedStoreId);
+    const selectedStore = testStores.find(s => s.id === selectedStoreId) 
+      || stores?.find(s => s.syrve_store_id === selectedStoreId);
     try {
       await saveConfig.mutateAsync({
         server_url: serverUrl.replace(/\/$/, ''),
@@ -68,11 +88,20 @@ export default function SyrveSettings() {
         api_password_hash: passwordHash,
         default_store_id: selectedStoreId || undefined,
         default_store_name: selectedStore?.name || undefined,
+        selected_category_ids: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
       });
       toast.success('Syrve configuration saved');
     } catch (err: any) {
       toast.error(err.message || 'Failed to save');
     }
+  };
+
+  const toggleCategory = (categoryId: string) => {
+    setSelectedCategoryIds(prev => 
+      prev.includes(categoryId)
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId]
+    );
   };
 
   if (configLoading) {
@@ -83,6 +112,11 @@ export default function SyrveSettings() {
       </div>
     );
   }
+
+  // Use test stores or synced stores for dropdown
+  const availableStores = tested && testStores.length > 0 
+    ? testStores.map(s => ({ id: s.id, name: s.name, code: s.code }))
+    : (stores || []).map(s => ({ id: s.syrve_store_id, name: s.name, code: s.code }));
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -113,6 +147,14 @@ export default function SyrveSettings() {
                     ? `Connected to ${config?.server_url} • Store: ${config?.default_store_name || 'Not selected'}`
                     : 'Not configured'}
                 </CardDescription>
+                {isConfigured && config?.connection_tested_at && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Last tested: {new Date(config.connection_tested_at).toLocaleString()}
+                    {config.selected_category_ids && config.selected_category_ids.length > 0 && (
+                      <> • {config.selected_category_ids.length} categories selected</>
+                    )}
+                  </p>
+                )}
               </div>
             </div>
             <Badge variant={isConfigured ? 'default' : 'secondary'}>
@@ -138,7 +180,7 @@ export default function SyrveSettings() {
             <Label htmlFor="server_url">Server URL</Label>
             <Input
               id="server_url"
-              placeholder={config?.server_url || 'https://your-server.syrve.online:443/resto/api'}
+              placeholder="https://your-server.syrve.online:443/resto/api"
               value={serverUrl}
               onChange={(e) => { setServerUrl(e.target.value); setTested(false); }}
             />
@@ -150,7 +192,7 @@ export default function SyrveSettings() {
               <Label htmlFor="api_login">API Login</Label>
               <Input
                 id="api_login"
-                placeholder={config?.api_login || 'admin'}
+                placeholder="admin"
                 value={apiLogin}
                 onChange={(e) => { setApiLogin(e.target.value); setTested(false); }}
               />
@@ -160,7 +202,7 @@ export default function SyrveSettings() {
               <Input
                 id="api_password"
                 type="password"
-                placeholder="Enter password"
+                placeholder={isConfigured ? '••••••••' : 'Enter password'}
                 value={apiPassword}
                 onChange={(e) => { setApiPassword(e.target.value); setTested(false); }}
               />
@@ -176,16 +218,21 @@ export default function SyrveSettings() {
               {testConnection.isPending ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : tested ? (
-              <CheckCircle2 className="w-4 h-4 mr-2 text-primary" />
+                <CheckCircle2 className="w-4 h-4 mr-2 text-primary" />
               ) : (
                 <RefreshCw className="w-4 h-4 mr-2" />
               )}
               Test Connection
             </Button>
+            {serverVersion && (
+              <Badge variant="outline" className="self-center">
+                Server v{serverVersion}
+              </Badge>
+            )}
           </div>
 
           {/* Store Selection */}
-          {tested && testStores.length > 0 && (
+          {(tested || isConfigured) && availableStores.length > 0 && (
             <div className="space-y-2 pt-4 border-t">
               <Label className="flex items-center gap-2">
                 <Store className="w-4 h-4" />
@@ -196,7 +243,7 @@ export default function SyrveSettings() {
                   <SelectValue placeholder="Select a store for inventory operations" />
                 </SelectTrigger>
                 <SelectContent>
-                  {testStores.map((store) => (
+                  {availableStores.map((store) => (
                     <SelectItem key={store.id} value={store.id}>
                       {store.name} {store.code ? `(${store.code})` : ''}
                     </SelectItem>
@@ -209,7 +256,49 @@ export default function SyrveSettings() {
             </div>
           )}
 
-          {tested && (
+          {/* Category Filter */}
+          {(tested || isConfigured) && categories && categories.length > 0 && (
+            <div className="space-y-2 pt-4 border-t">
+              <Label className="flex items-center gap-2">
+                <Filter className="w-4 h-4" />
+                Category Filter
+                {selectedCategoryIds.length > 0 && (
+                  <Badge variant="secondary" className="ml-1">{selectedCategoryIds.length} selected</Badge>
+                )}
+              </Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Select which Syrve categories to sync. Leave empty to sync all.
+              </p>
+              <ScrollArea className="h-48 rounded-md border p-3">
+                <div className="space-y-2">
+                  {categories.map((cat: any) => (
+                    <div key={cat.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`cat-${cat.id}`}
+                        checked={selectedCategoryIds.includes(cat.id)}
+                        onCheckedChange={() => toggleCategory(cat.id)}
+                      />
+                      <label htmlFor={`cat-${cat.id}`} className="text-sm cursor-pointer flex-1">
+                        {cat.name}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+              {selectedCategoryIds.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedCategoryIds([])}
+                  className="text-xs"
+                >
+                  Clear selection (sync all)
+                </Button>
+              )}
+            </div>
+          )}
+
+          {(tested || (isConfigured && apiPassword)) && (
             <div className="flex gap-3 pt-4">
               <Button onClick={handleSave} disabled={saveConfig.isPending}>
                 {saveConfig.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

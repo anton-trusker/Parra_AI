@@ -24,17 +24,15 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsErr } = await supabase.auth.getClaims(token);
-    if (claimsErr || !claims?.claims) {
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { server_url, api_login, api_password_hash, default_store_id, default_store_name } = await req.json();
+    const { server_url, api_login, api_password_hash, default_store_id, default_store_name, selected_category_ids } = await req.json();
 
-    // Use service role to write config (bypasses RLS for upsert)
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -47,7 +45,7 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    const configData = {
+    const configData: Record<string, any> = {
       server_url,
       api_login,
       api_password_hash,
@@ -56,6 +54,11 @@ serve(async (req) => {
       connection_status: "connected",
       connection_tested_at: new Date().toISOString(),
     };
+
+    // Include selected_category_ids if provided
+    if (selected_category_ids !== undefined) {
+      configData.selected_category_ids = selected_category_ids;
+    }
 
     let result;
     if (existing) {
