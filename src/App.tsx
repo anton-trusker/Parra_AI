@@ -24,6 +24,7 @@ import RolesPermissions from "./pages/RolesPermissions";
 import Profile from "./pages/Profile";
 import SyrveSettings from "./pages/SyrveSettings";
 import SyrveSyncPage from "./pages/SyrveSyncPage";
+import SyrveTestingPage from "./pages/SyrveTestingPage";
 import BusinessSettings from "./pages/BusinessSettings";
 import InventorySettings from "./pages/InventorySettings";
 import AiSettings from "./pages/AiSettings";
@@ -71,6 +72,7 @@ const App = () => (
                 <Route path="/settings/roles" element={<RolesPermissions />} />
                 <Route path="/settings/syrve" element={<SyrveSettings />} />
                 <Route path="/settings/syrve/sync" element={<SyrveSyncPage />} />
+                <Route path="/settings/syrve/testing" element={<SyrveTestingPage />} />
                 <Route path="/settings/business" element={<BusinessSettings />} />
                 <Route path="/settings/inventory" element={<InventorySettings />} />
                 <Route path="/settings/ai" element={<AiSettings />} />

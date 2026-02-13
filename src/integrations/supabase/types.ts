@@ -1281,6 +1281,7 @@ export type Database = {
           settings: Json | null
           sync_interval_minutes: number | null
           sync_lock_until: string | null
+          testing_mode: boolean
           updated_at: string | null
         }
         Insert: {
@@ -1297,6 +1298,7 @@ export type Database = {
           settings?: Json | null
           sync_interval_minutes?: number | null
           sync_lock_until?: string | null
+          testing_mode?: boolean
           updated_at?: string | null
         }
         Update: {
@@ -1313,6 +1315,7 @@ export type Database = {
           settings?: Json | null
           sync_interval_minutes?: number | null
           sync_lock_until?: string | null
+          testing_mode?: boolean
           updated_at?: string | null
         }
         Relationships: []

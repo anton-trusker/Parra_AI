@@ -13,6 +13,7 @@ export interface SyrveConfig {
   connection_tested_at: string | null;
   sync_lock_until: string | null;
   selected_category_ids: string[] | null;
+  testing_mode: boolean;
   settings: any;
 }
 
@@ -226,6 +227,57 @@ export function useSyrveBarcodeCount() {
         .select('*', { count: 'exact', head: true });
       if (error) throw error;
       return count || 0;
+    },
+  });
+}
+
+export interface SyrveApiLog {
+  id: string;
+  action_type: string;
+  status: string;
+  request_url: string | null;
+  request_method: string | null;
+  error_message: string | null;
+  duration_ms: number | null;
+  response_payload_preview: string | null;
+  sync_run_id: string | null;
+  created_at: string;
+}
+
+export function useSyrveApiLogs(limit = 50) {
+  return useQuery({
+    queryKey: ['syrve_api_logs', limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('syrve_api_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data || []) as SyrveApiLog[];
+    },
+    refetchInterval: 5000,
+  });
+}
+
+export function useToggleTestingMode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const { data: config } = await supabase
+        .from('syrve_config')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+      if (!config) throw new Error('Syrve not configured');
+      const { error } = await supabase
+        .from('syrve_config')
+        .update({ testing_mode: enabled } as any)
+        .eq('id', config.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['syrve_config'] });
     },
   });
 }
