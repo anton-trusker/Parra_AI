@@ -542,6 +542,13 @@ export default function SyrveSettings() {
                   categories={categories as any}
                   selectedIds={selectedCategoryIds}
                   onSelectionChange={setSelectedCategoryIds}
+                  onDeleteCategory={async (id) => {
+                    const { supabase } = await import('@/integrations/supabase/client');
+                    const { data: children } = await supabase.from('categories').select('id').eq('parent_id', id);
+                    const ids = [id, ...(children || []).map(c => c.id)];
+                    await supabase.from('categories').update({ is_active: false, is_deleted: true } as any).in('id', ids);
+                    toast.success('Category deleted');
+                  }}
                 />
               ) : (
                 <p className="text-sm text-muted-foreground">No categories synced yet. Run a sync first to see categories.</p>

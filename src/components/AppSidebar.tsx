@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import {
   LayoutDashboard, Wine, Package, History, BarChart3, ClipboardCheck,
-  LogOut, Settings, User, Plus, ScanLine, Truck
+  LogOut, Settings, User, Plus, ScanLine, Truck, FolderTree
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import type { ModuleKey } from '@/data/referenceData';
@@ -38,6 +38,8 @@ const navGroups: NavGroup[] = [
     title: 'Catalog',
     items: [
       { label: 'Wine Catalog', icon: Wine, path: '/catalog', module: 'catalog' },
+      { label: 'Products', icon: Package, path: '/products', module: 'catalog' },
+      { label: 'Categories', icon: FolderTree, path: '/categories', module: 'catalog' },
     ],
   },
   {

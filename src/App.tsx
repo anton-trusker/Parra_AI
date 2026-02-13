@@ -28,6 +28,9 @@ import SyrveTestingPage from "./pages/SyrveTestingPage";
 import BusinessSettings from "./pages/BusinessSettings";
 import InventorySettings from "./pages/InventorySettings";
 import AiSettings from "./pages/AiSettings";
+import ProductCatalog from "./pages/ProductCatalog";
+import ProductDetail from "./pages/ProductDetail";
+import CategoriesPage from "./pages/CategoriesPage";
 import NotFound from "./pages/NotFound";
 import { useThemeStore } from "./stores/themeStore";
 
@@ -61,6 +64,9 @@ const App = () => (
                 <Route path="/catalog/:id" element={<WineDetail />} />
                 <Route path="/catalog/:id/edit" element={<WineForm />} />
                 <Route path="/catalog/import" element={<ImportInventory />} />
+                <Route path="/products" element={<ProductCatalog />} />
+                <Route path="/products/:id" element={<ProductDetail />} />
+                <Route path="/categories" element={<CategoriesPage />} />
                 <Route path="/count" element={<InventoryCount />} />
                 <Route path="/stock" element={<CurrentStock />} />
                 <Route path="/history" element={<InventoryHistory />} />
