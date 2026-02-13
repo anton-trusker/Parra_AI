@@ -12,6 +12,8 @@ export interface Product {
   category_id: string | null;
   is_active: boolean | null;
   is_deleted: boolean | null;
+  is_marked: boolean;
+  is_by_glass: boolean;
   sale_price: number | null;
   purchase_price: number | null;
   default_sale_price: number | null;
@@ -45,6 +47,8 @@ export function useProducts(filters?: {
   productType?: string[];
   categoryId?: string;
   stockStatus?: string;
+  isMarked?: boolean;
+  isByGlass?: boolean;
 }) {
   return useQuery({
     queryKey: ['products', filters],
@@ -65,11 +69,39 @@ export function useProducts(filters?: {
       if (filters?.categoryId) {
         query = query.eq('category_id', filters.categoryId);
       }
+      if (filters?.isMarked === true) {
+        query = query.eq('is_marked', true);
+      }
+      if (filters?.isByGlass === true) {
+        query = query.eq('is_by_glass', true);
+      }
 
       const { data, error } = await query.limit(500);
       if (error) throw error;
       return (data || []) as Product[];
     },
+  });
+}
+
+export function useToggleProductFlag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, field, value }: { id: string; field: 'is_marked' | 'is_by_glass'; value: boolean }) => {
+      const { error } = await supabase.from('products').update({ [field]: value }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
+  });
+}
+
+export function useBulkToggleProductFlag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ ids, field, value }: { ids: string[]; field: 'is_marked' | 'is_by_glass'; value: boolean }) => {
+      const { error } = await supabase.from('products').update({ [field]: value }).in('id', ids);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
   });
 }
 

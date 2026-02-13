@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useColumnStore } from '@/stores/columnStore';
-import { useProducts, Product } from '@/hooks/useProducts';
+import { useProducts, useToggleProductFlag, useBulkToggleProductFlag, Product } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
-import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, Loader2 } from 'lucide-react';
+import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, Wine, Star } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
 import FilterManager, { FilterDef } from '@/components/FilterManager';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
@@ -14,6 +15,8 @@ import DataTable, { DataTableColumn } from '@/components/DataTable';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const PRODUCT_COLUMN_DEFS: ColumnDef[] = [
+  { key: 'marked', label: 'Marked' },
+  { key: 'by_glass', label: 'By Glass' },
   { key: 'name', label: 'Name' },
   { key: 'sku', label: 'SKU' },
   { key: 'code', label: 'Code' },
@@ -31,6 +34,8 @@ const PRODUCT_FILTER_DEFS: FilterDef[] = [
   { key: 'type', label: 'Product Type' },
   { key: 'category', label: 'Category' },
   { key: 'stock', label: 'Stock Status' },
+  { key: 'marked', label: 'Marked' },
+  { key: 'by_glass', label: 'By Glass' },
 ];
 
 function TypeBadge({ type }: { type: string | null }) {
@@ -72,7 +77,11 @@ function ProductCard({ product, onClick }: { product: Product; onClick: () => vo
     <div onClick={onClick} className="wine-glass-effect rounded-xl overflow-hidden group transition-all duration-300 hover:border-accent/30 hover:shadow-lg cursor-pointer">
       <div className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <h3 className="font-heading font-semibold text-sm line-clamp-2">{product.name}</h3>
+          <div className="flex items-center gap-1.5">
+            {product.is_marked && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />}
+            {product.is_by_glass && <Wine className="w-3.5 h-3.5 text-primary shrink-0" />}
+            <h3 className="font-heading font-semibold text-sm line-clamp-2">{product.name}</h3>
+          </div>
           <TypeBadge type={product.product_type} />
         </div>
         <p className="text-xs text-muted-foreground truncate">{product.categories?.name || 'Uncategorized'}</p>
@@ -80,7 +89,6 @@ function ProductCard({ product, onClick }: { product: Product; onClick: () => vo
           {product.sku && <span>SKU: {product.sku}</span>}
           {product.code && <><span className="text-border">•</span><span>{product.code}</span></>}
         </div>
-        {/* Container & volume info */}
         {(product.unit_capacity || (Array.isArray(containers) && containers.length > 0)) && (
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
             {product.unit_capacity != null && <span>{product.unit_capacity}L</span>}
@@ -110,8 +118,77 @@ function ProductCard({ product, onClick }: { product: Product; onClick: () => vo
   );
 }
 
-function buildProductColumns(): DataTableColumn<Product>[] {
-  return [
+export default function ProductCatalog() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { productColumns, setProductColumns, productFilters, setProductFilters, columnWidths, setColumnWidth } = useColumnStore();
+
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string[]>([]);
+  const [markedFilter, setMarkedFilter] = useState(false);
+  const [byGlassFilter, setByGlassFilter] = useState(false);
+  const [view, setView] = useState<'cards' | 'table'>('table');
+  const [showFilters, setShowFilters] = useState(false);
+
+  const categoryFromUrl = searchParams.get('category') || undefined;
+
+  const toggleFlag = useToggleProductFlag();
+  const bulkToggle = useBulkToggleProductFlag();
+
+  const { data: products = [], isLoading } = useProducts({
+    search: search || undefined,
+    productType: typeFilter.length ? typeFilter : undefined,
+    categoryId: categoryFromUrl,
+    isMarked: markedFilter || undefined,
+    isByGlass: byGlassFilter || undefined,
+  });
+
+  const { data: categories = [] } = useSyrveCategories();
+
+  const productTypes = useMemo(() => [...new Set(products.map(p => p.product_type).filter(Boolean) as string[])].sort(), [products]);
+
+  const activeFilterCount = [typeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (markedFilter ? 1 : 0) + (byGlassFilter ? 1 : 0);
+  const fv = (key: string) => productFilters.includes(key);
+
+  const clearFilters = () => {
+    setTypeFilter([]);
+    setMarkedFilter(false);
+    setByGlassFilter(false);
+    if (categoryFromUrl) navigate('/products');
+  };
+
+  const handleCheckboxClick = (e: React.MouseEvent, productId: string, field: 'is_marked' | 'is_by_glass', current: boolean) => {
+    e.stopPropagation();
+    toggleFlag.mutate({ id: productId, field, value: !current });
+  };
+
+  const tableColumns = useMemo((): DataTableColumn<Product>[] => [
+    {
+      key: 'marked',
+      label: '★',
+      align: 'center',
+      render: p => (
+        <div onClick={e => handleCheckboxClick(e, p.id, 'is_marked', p.is_marked)}>
+          <Checkbox
+            checked={p.is_marked}
+            className="border-border data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'by_glass',
+      label: 'By Glass',
+      align: 'center',
+      render: p => (
+        <div onClick={e => handleCheckboxClick(e, p.id, 'is_by_glass', p.is_by_glass)}>
+          <Checkbox
+            checked={p.is_by_glass}
+            className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+          />
+        </div>
+      ),
+    },
     { key: 'name', label: 'Name', minWidth: 180, render: p => <span className="font-medium">{p.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
     { key: 'sku', label: 'SKU', render: p => <span className="text-muted-foreground font-mono text-xs">{p.sku || '—'}</span> },
     { key: 'code', label: 'Code', render: p => <span className="text-muted-foreground text-xs">{p.code || '—'}</span> },
@@ -123,40 +200,7 @@ function buildProductColumns(): DataTableColumn<Product>[] {
     { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
-  ];
-}
-
-export default function ProductCatalog() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { productColumns, setProductColumns, productFilters, setProductFilters, columnWidths, setColumnWidth } = useColumnStore();
-
-  const [search, setSearch] = useState('');
-  const [typeFilter, setTypeFilter] = useState<string[]>([]);
-  const [view, setView] = useState<'cards' | 'table'>('table');
-  const [showFilters, setShowFilters] = useState(false);
-
-  const categoryFromUrl = searchParams.get('category') || undefined;
-
-  const { data: products = [], isLoading } = useProducts({
-    search: search || undefined,
-    productType: typeFilter.length ? typeFilter : undefined,
-    categoryId: categoryFromUrl,
-  });
-
-  const { data: categories = [] } = useSyrveCategories();
-
-  const productTypes = useMemo(() => [...new Set(products.map(p => p.product_type).filter(Boolean) as string[])].sort(), [products]);
-
-  const activeFilterCount = [typeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0);
-  const fv = (key: string) => productFilters.includes(key);
-
-  const clearFilters = () => {
-    setTypeFilter([]);
-    if (categoryFromUrl) navigate('/products');
-  };
-
-  const tableColumns = useMemo(() => buildProductColumns(), []);
+  ], []);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -196,6 +240,28 @@ export default function ProductCatalog() {
             </div>
             <div className="flex flex-wrap gap-2">
               {fv('type') && <MultiSelectFilter label="Type" options={productTypes} selected={typeFilter} onChange={setTypeFilter} />}
+              {fv('marked') && (
+                <Button
+                  variant={markedFilter ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => setMarkedFilter(!markedFilter)}
+                >
+                  <Star className={`w-3.5 h-3.5 ${markedFilter ? 'fill-primary-foreground' : ''}`} />
+                  Marked
+                </Button>
+              )}
+              {fv('by_glass') && (
+                <Button
+                  variant={byGlassFilter ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => setByGlassFilter(!byGlassFilter)}
+                >
+                  <Wine className="w-3.5 h-3.5" />
+                  By Glass
+                </Button>
+              )}
               {categoryFromUrl && (
                 <Badge variant="secondary" className="gap-1 cursor-pointer" onClick={() => navigate('/products')}>
                   Category: {categories.find(c => c.id === categoryFromUrl)?.name || categoryFromUrl}

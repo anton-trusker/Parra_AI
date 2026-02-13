@@ -904,7 +904,9 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean | null
+          is_by_glass: boolean
           is_deleted: boolean | null
+          is_marked: boolean
           main_unit_id: string | null
           metadata: Json | null
           name: string
@@ -930,7 +932,9 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          is_by_glass?: boolean
           is_deleted?: boolean | null
+          is_marked?: boolean
           main_unit_id?: string | null
           metadata?: Json | null
           name: string
@@ -956,7 +960,9 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          is_by_glass?: boolean
           is_deleted?: boolean | null
+          is_marked?: boolean
           main_unit_id?: string | null
           metadata?: Json | null
           name?: string
