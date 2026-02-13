@@ -14,7 +14,22 @@ export type Wine = Tables<'wines'> & {
 export type WineInsert = TablesInsert<'wines'>;
 export type WineUpdate = TablesUpdate<'wines'>;
 
-export function useWines(filters?: { search?: string; type?: string[]; country?: string[]; region?: string[]; stockStatus?: string[] }) {
+interface WineFilters {
+  search?: string;
+  type?: string[];
+  country?: string[];
+  region?: string[];
+  stockStatus?: string[];
+  producer?: string[];
+  appellation?: string[];
+  subRegion?: string[];
+  body?: string[];
+  sweetness?: string[];
+  byGlass?: string;
+  source?: string[];
+}
+
+export function useWines(filters?: WineFilters) {
   return useQuery({
     queryKey: ['wines', filters],
     queryFn: async () => {
@@ -29,12 +44,16 @@ export function useWines(filters?: { search?: string; type?: string[]; country?:
         const mapped = filters.type.map(t => t.toLowerCase().replace('é', 'e') as WineTypeEnum);
         query = query.in('wine_type', mapped);
       }
-      if (filters?.country?.length) {
-        query = query.in('country', filters.country);
-      }
-      if (filters?.region?.length) {
-        query = query.in('region', filters.region);
-      }
+      if (filters?.country?.length) query = query.in('country', filters.country);
+      if (filters?.region?.length) query = query.in('region', filters.region);
+      if (filters?.producer?.length) query = query.in('producer', filters.producer);
+      if (filters?.appellation?.length) query = query.in('appellation', filters.appellation);
+      if (filters?.subRegion?.length) query = query.in('sub_region', filters.subRegion);
+      if (filters?.body?.length) query = query.in('body', filters.body);
+      if (filters?.sweetness?.length) query = query.in('sweetness', filters.sweetness);
+      if (filters?.source?.length) query = query.in('enrichment_source', filters.source);
+      if (filters?.byGlass === 'Yes') query = query.eq('available_by_glass', true);
+      if (filters?.byGlass === 'No') query = query.eq('available_by_glass', false);
       if (filters?.stockStatus?.length) {
         const mapped = filters.stockStatus.map(s => {
           if (s === 'In Stock') return 'in_stock';
