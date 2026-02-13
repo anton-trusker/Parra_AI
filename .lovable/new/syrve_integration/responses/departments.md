@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<corporateItemDtoes>
+    <corporateItemDto>
+        <id>e264de03-5c52-ba50-018e-38de4f34000f</id>
+        <name>My corporation</name>
+        <type>CORPORATION</type>
+    </corporateItemDto>
+    <corporateItemDto>
+        <id>e264de03-5c52-ba50-018e-38de4f340011</id>
+        <parentId>e264de03-5c52-ba50-018e-38de4f340010</parentId>
+        <code>01</code>
+        <name>Parra</name>
+        <type>DEPARTMENT</type>
+        <taxpayerIdNumber>516520776</taxpayerIdNumber>
+        <vatAccount>
+            <id>805e7788-17e7-a46d-f220-a42fdaa7a8fb</id>
+            <deleted>false</deleted>
+            <code>2.07</code>
+            <name>НДС</name>
+            <type>OTHER_CURRENT_LIABILITY</type>
+            <system>false</system>
+            <customTransactionsAllowed>true</customTransactionsAllowed>
+        </vatAccount>
+    </corporateItemDto>
+    <corporateItemDto>
+        <id>e264de03-5c52-ba50-018e-38de4f340010</id>
+        <parentId>e264de03-5c52-ba50-018e-38de4f34000f</parentId>
+        <name>Planaltos Elegantes, Lda</name>
+        <type>JURPERSON</type>
+        <jurPersonAdditionalPropertiesDto>
+            <taxpayerId>516520776</taxpayerId>
+            <accountingReasonCode></accountingReasonCode>
+            <businessClassificationCode>516520776</businessClassificationCode>
+            <economicActivityClassificationCode></economicActivityClassificationCode>
+            <swiftBic></swiftBic>
+            <registrationNumber>516520776</registrationNumber>
+            <address>1200-658 Portugal, Lisboa, Rua da Esperança, 72</address>
+            <settlementAccount></settlementAccount>
+            <bik></bik>
+            <bank></bank>
+            <bankCity></bankCity>
+            <correspondentAccount></correspondentAccount>
+            <phone></phone>
+            <description></description>
+            <legalAddressDto>
+                <zipCode>1200-658</zipCode>
+                <country>Portugal</country>
+                <region>Lisboa</region>
+                <district>Lisboa</district>
+                <city>Lisboa</city>
+                <community>Lisboa</community>
+                <street>Rua da Esperança</street>
+                <house>72</house>
+                <building></building>
+                <office></office>
+            </legalAddressDto>
+            <officialEmployees>
+                <officialEmployeeDto>
+                    <name></name>
+                    <role>WORKS_MANAGER</role>
+                </officialEmployeeDto>
+                <officialEmployeeDto>
+                    <name></name>
+                    <role>LEADER</role>
+                </officialEmployeeDto>
+                <officialEmployeeDto>
+                    <name></name>
+                    <role>TECHNOLOGIST</role>
+                </officialEmployeeDto>
+                <officialEmployeeDto>
+                    <name></name>
+                    <role>ACCOUNTANT</role>
+                </officialEmployeeDto>
+            </officialEmployees>
+        </jurPersonAdditionalPropertiesDto>
+    </corporateItemDto>
+</corporateItemDtoes>

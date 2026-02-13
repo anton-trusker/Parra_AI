@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<groupDtoes>
+    <groupDto>
+        <id>e264de03-5c52-ba50-018e-38de4f340064</id>
+        <name>Main group</name>
+        <departmentId>e264de03-5c52-ba50-018e-38de4f340011</departmentId>
+        <groupServiceMode>TABLE_SERVICE</groupServiceMode>
+        <pointOfSaleDtoes>
+            <pointOfSaleDto>
+                <id>2d6dafd4-668d-454f-90bc-e55af18b270b</id>
+                <name>BAR</name>
+                <main>true</main>
+                <cashRegisterInfo>
+                    <id>bbfc7a02-ff59-493c-9abf-89039a931029</id>
+                    <name>EFSTA</name>
+                </cashRegisterInfo>
+            </pointOfSaleDto>
+            <pointOfSaleDto>
+                <id>c34e390d-7914-4ce6-a254-6e36cb367f64</id>
+                <name>KDS</name>
+                <main>false</main>
+            </pointOfSaleDto>
+            <pointOfSaleDto>
+                <id>edbb69e1-fac4-4fb8-bd1e-d497d569019a</id>
+                <name>KDS</name>
+                <main>false</main>
+                <cashRegisterInfo>
+                    <id>77048271-6b63-49bf-9a65-2623dd15e65c</id>
+                    <name>KDS</name>
+                </cashRegisterInfo>
+            </pointOfSaleDto>
+            <pointOfSaleDto>
+                <id>f3bc02d9-664e-4ba6-87c8-aabe93ce451f</id>
+                <name>KDSN</name>
+                <main>false</main>
+                <cashRegisterInfo>
+                    <id>0b0440e6-019c-4ac0-ae85-f8bd8e20ccd2</id>
+                    <name>KDSN</name>
+                </cashRegisterInfo>
+            </pointOfSaleDto>
+        </pointOfSaleDtoes>
+        <restaurantSectionInfos>
+            <restaurantSectionInfo>
+                <id>e264de03-5c52-ba50-018e-38de4f340066</id>
+                <name>Bar</name>
+            </restaurantSectionInfo>
+            <restaurantSectionInfo>
+                <id>e264de03-5c52-ba50-018e-38de4f340067</id>
+                <name>Kitchen</name>
+            </restaurantSectionInfo>
+            <restaurantSectionInfo>
+                <id>dd34dee8-1e60-4ae1-a4a6-1ac18ddc4a78</id>
+                <name>Terrace</name>
+            </restaurantSectionInfo>
+        </restaurantSectionInfos>
+    </groupDto>
+</groupDtoes>
