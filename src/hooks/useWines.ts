@@ -4,7 +4,13 @@ import type { Database, Tables, TablesInsert, TablesUpdate } from '@/integration
 
 type WineTypeEnum = Database['public']['Enums']['wine_type_enum'];
 
-export type Wine = Tables<'wines'>;
+export type Wine = Tables<'wines'> & {
+  product_id?: string | null;
+  syrve_product_id?: string | null;
+  enrichment_source?: string | null;
+  enrichment_status?: string | null;
+  raw_source_name?: string | null;
+};
 export type WineInsert = TablesInsert<'wines'>;
 export type WineUpdate = TablesUpdate<'wines'>;
 

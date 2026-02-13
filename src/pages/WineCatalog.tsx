@@ -26,6 +26,7 @@ const CATALOG_COLUMN_DEFS: ColumnDef[] = [
   { key: 'abv', label: 'ABV' },
   { key: 'barcode', label: 'Barcode' },
   { key: 'body', label: 'Body' },
+  { key: 'source', label: 'Source' },
 ];
 
 const CATALOG_FILTER_DEFS: FilterDef[] = [
@@ -38,6 +39,19 @@ const CATALOG_FILTER_DEFS: FilterDef[] = [
 const TYPE_DISPLAY: Record<string, string> = {
   red: 'Red', white: 'White', rose: 'Rosé', sparkling: 'Sparkling', fortified: 'Fortified', dessert: 'Dessert',
 };
+
+function EnrichmentBadge({ source }: { source: string | null | undefined }) {
+  if (!source || source === 'manual') return null;
+  const colors: Record<string, string> = {
+    syrve_auto: 'bg-sky-500/20 text-sky-400',
+    ai: 'bg-purple-500/20 text-purple-400',
+    csv: 'bg-emerald-500/20 text-emerald-400',
+  };
+  const labels: Record<string, string> = {
+    syrve_auto: 'Auto', ai: 'AI', csv: 'CSV',
+  };
+  return <span className={`wine-badge ${colors[source] || 'bg-secondary text-secondary-foreground'}`}>{labels[source] || source}</span>;
+}
 
 function StockBadge({ wine }: { wine: Wine }) {
   if (wine.stock_status === 'out_of_stock') return <span className="wine-badge stock-out">Out of Stock</span>;
@@ -66,7 +80,8 @@ function WineCard({ wine, onClick, hideStock }: { wine: Wine; onClick: () => voi
         <div className="flex flex-col items-center text-muted-foreground">
           <WineIcon className="w-10 h-10 text-accent/30 group-hover:text-accent/50 transition-colors" />
         </div>
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 flex gap-1">
+          <EnrichmentBadge source={wine.enrichment_source} />
           <TypeBadge type={wine.wine_type} />
         </div>
       </div>
@@ -108,6 +123,7 @@ function buildCatalogColumns(isAdmin: boolean, hideStock: boolean): DataTableCol
     ...(isAdmin ? [{ key: 'price', label: 'Price', align: 'right' as const, render: (w: Wine) => <span className="text-accent">{w.currency || 'AED'} {w.sale_price ?? '—'}</span>, sortFn: (a: Wine, b: Wine) => (a.sale_price || 0) - (b.sale_price || 0) }] : []),
     { key: 'barcode', label: 'Barcode', render: w => <span className="text-xs text-muted-foreground font-mono">{w.primary_barcode || '—'}</span> },
     { key: 'body', label: 'Body', render: w => <span className="text-xs text-muted-foreground capitalize">{w.body || '—'}</span> },
+    { key: 'source', label: 'Source', render: w => <EnrichmentBadge source={w.enrichment_source} /> },
   ];
 }
 

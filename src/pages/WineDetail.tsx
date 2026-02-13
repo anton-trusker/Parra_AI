@@ -130,7 +130,15 @@ export default function WineDetail() {
             <span className={`wine-badge ${stockStatusCls}`}>{stockStatusLabel}</span>
             {wine.appellation && <span className="wine-badge bg-secondary text-secondary-foreground">{wine.appellation}</span>}
             {wine.available_by_glass && <span className="wine-badge bg-accent/15 text-accent">By Glass</span>}
+            {wine.enrichment_source && wine.enrichment_source !== 'manual' && (
+              <span className={`wine-badge ${wine.enrichment_source === 'syrve_auto' ? 'bg-sky-500/20 text-sky-400' : wine.enrichment_source === 'ai' ? 'bg-purple-500/20 text-purple-400' : 'bg-secondary text-secondary-foreground'}`}>
+                {wine.enrichment_source === 'syrve_auto' ? 'Auto-enriched' : wine.enrichment_source === 'ai' ? 'AI Enriched' : wine.enrichment_source}
+              </span>
+            )}
           </div>
+          {wine.raw_source_name && (
+            <p className="text-xs text-muted-foreground">Original name: <span className="font-mono">{wine.raw_source_name}</span></p>
+          )}
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="wine-glass-effect rounded-lg p-3 text-center">

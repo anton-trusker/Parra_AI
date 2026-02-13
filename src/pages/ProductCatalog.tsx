@@ -1,9 +1,10 @@
 import { useState, useMemo, useCallback } from 'react';
+import { useWineProductLinks } from '@/hooks/useWineProductLinks';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useColumnStore } from '@/stores/columnStore';
 import { useProducts, useToggleProductFlag, useBulkToggleProductFlag, Product } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
-import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, Wine, Star, CheckSquare } from 'lucide-react';
+import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, Wine, Star, CheckSquare, GlassWater } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -151,6 +152,8 @@ export default function ProductCatalog() {
     productType: typeFilter.length ? typeFilter : undefined,
     categoryId: categoryFromUrl,
   });
+
+  const { data: wineLinks } = useWineProductLinks();
 
   const { data: categories = [] } = useSyrveCategories();
 
@@ -321,7 +324,14 @@ export default function ProductCatalog() {
         </div>
       ),
     },
-    { key: 'name', label: 'Name', minWidth: 180, render: p => <span className="font-medium">{p.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
+    { key: 'name', label: 'Name', minWidth: 180, render: p => (
+      <span className="font-medium flex items-center gap-1.5">
+        {p.name}
+        {wineLinks?.has(p.id) && (
+          <GlassWater className="w-3.5 h-3.5 text-primary shrink-0" />
+        )}
+      </span>
+    ), sortFn: (a, b) => a.name.localeCompare(b.name) },
     { key: 'sku', label: 'SKU', render: p => <span className="text-muted-foreground font-mono text-xs">{p.sku || '—'}</span> },
     { key: 'code', label: 'Code', render: p => <span className="text-muted-foreground text-xs">{p.code || '—'}</span> },
     { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{p.categories?.name || '—'}</span> },
@@ -332,7 +342,7 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
-  ], [selectedIds, toggleSelect, allSelected, someSelected, toggleSelectAll, toggleFlag]);
+  ], [selectedIds, toggleSelect, allSelected, someSelected, toggleSelectAll, toggleFlag, wineLinks]);
 
   return (
     <div className="space-y-6 animate-fade-in">

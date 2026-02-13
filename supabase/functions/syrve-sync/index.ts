@@ -159,6 +159,12 @@ serve(async (req) => {
         }
       }
 
+      // Wine enrichment stage: auto-create wines from wine-category products
+      if (runType === "bootstrap" || runType === "products" || runType === "prices_stock") {
+        await updateProgress('enriching_wines', 93);
+        await enrichWinesFromProducts(adminClient, config, stats);
+      }
+
       // Update sync run as success
       stats.stage = 'completed';
       stats.progress = 100;
@@ -708,6 +714,180 @@ async function deleteAllProducts(client: any, stats: any) {
   const { count } = await client.from("products").select("*", { count: "exact", head: true });
   await client.from("products").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   stats.deleted = (stats.deleted || 0) + (count || 0);
+}
+
+// ─── Wine Enrichment Engine ───
+
+function parseWineName(rawName: string, syrveData: any): {
+  name: string; volume_ml: number | null; vintage: number | null;
+  available_by_glass: boolean; raw_source_name: string;
+} {
+  const result = {
+    name: '', volume_ml: null as number | null, vintage: null as number | null,
+    available_by_glass: false, raw_source_name: rawName,
+  };
+
+  let text = rawName;
+
+  // Extract "by glass" indicators (EN + RU)
+  if (/by\s*glass|бокал|по\s*бокал/i.test(text)) {
+    result.available_by_glass = true;
+    text = text.replace(/\s*(by\s*glass|бокал\w*|по\s*бокал\w*)\s*/gi, ' ');
+  }
+
+  // Extract volume patterns: "0.75", "0,75", "750ml", "1.5L"
+  const volMatch = text.match(/\b(\d{1,2})[.,](\d{1,3})\s*(l|lt|ltr|л)?\b/i);
+  if (volMatch) {
+    const litres = parseFloat(`${volMatch[1]}.${volMatch[2]}`);
+    result.volume_ml = Math.round(litres * 1000);
+    text = text.replace(volMatch[0], ' ');
+  } else {
+    const mlMatch = text.match(/\b(\d{3,4})\s*(ml|мл)\b/i);
+    if (mlMatch) {
+      result.volume_ml = parseInt(mlMatch[1]);
+      text = text.replace(mlMatch[0], ' ');
+    }
+  }
+
+  // Extract volume from syrve_data containers if not found in name
+  if (!result.volume_ml && syrveData?.containers) {
+    const containers = Array.isArray(syrveData.containers) ? syrveData.containers : [];
+    for (const c of containers) {
+      const cName = (c.name || '').toLowerCase();
+      if ((cName.includes('btl') || cName.includes('bottle') || cName.includes('бут')) && c.count) {
+        result.volume_ml = Math.round(parseFloat(c.count) * 1000);
+        break;
+      }
+    }
+    // Fallback: unitCapacity if not 1.0
+    if (!result.volume_ml && syrveData.unitCapacity && parseFloat(syrveData.unitCapacity) !== 1.0) {
+      result.volume_ml = Math.round(parseFloat(syrveData.unitCapacity) * 1000);
+    }
+  }
+
+  // Extract vintage (4-digit year 1900-2099)
+  const vintageMatch = text.match(/\b(19|20)\d{2}\b/);
+  if (vintageMatch) {
+    const yr = parseInt(vintageMatch[0]);
+    if (yr >= 1900 && yr <= 2099) {
+      result.vintage = yr;
+      text = text.replace(vintageMatch[0], ' ');
+    }
+  }
+
+  // Clean name: trim, collapse spaces, Title Case
+  text = text.replace(/\s+/g, ' ').trim();
+  result.name = text.split(' ').map(w => {
+    if (w.length <= 2) return w.toLowerCase();
+    return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+  }).join(' ');
+
+  return result;
+}
+
+async function enrichWinesFromProducts(client: any, config: any, stats: any) {
+  const wineCategoryIds: string[] = config.settings?.wine_category_ids || [];
+  if (wineCategoryIds.length === 0) {
+    console.log('Wine enrichment: no wine_category_ids configured, skipping');
+    return;
+  }
+
+  // Get syrve_group_ids for wine categories
+  const { data: wineCats } = await client.from("categories")
+    .select("syrve_group_id")
+    .in("id", wineCategoryIds);
+  if (!wineCats || wineCats.length === 0) return;
+  const wineSyrveGroupIds = new Set(wineCats.map((c: any) => c.syrve_group_id));
+
+  // Get products in wine categories
+  const { data: wineProducts } = await client.from("products")
+    .select("id, syrve_product_id, name, sku, code, sale_price, purchase_price, default_sale_price, unit_capacity, syrve_data, current_stock, category_id, is_by_glass, primary_barcode:product_barcodes(barcode)")
+    .eq("is_active", true)
+    .eq("is_deleted", false);
+
+  if (!wineProducts || wineProducts.length === 0) return;
+
+  // Get categories to check which products are in wine categories
+  const { data: allCats } = await client.from("categories").select("id, syrve_group_id");
+  const catToSyrve = new Map((allCats || []).map((c: any) => [c.id, c.syrve_group_id]));
+
+  // Filter to products in wine categories
+  const eligibleProducts = wineProducts.filter((p: any) =>
+    p.category_id && wineSyrveGroupIds.has(catToSyrve.get(p.category_id))
+  );
+
+  if (eligibleProducts.length === 0) return;
+
+  // Get already-linked wines
+  const productIds = eligibleProducts.map((p: any) => p.id);
+  const { data: existingWines } = await client.from("wines")
+    .select("id, product_id")
+    .in("product_id", productIds);
+  const linkedProductIds = new Set((existingWines || []).map((w: any) => w.product_id));
+
+  let created = 0;
+  let updated = 0;
+  const BATCH = 50;
+
+  // Create new wines for unlinked products
+  const newWines: any[] = [];
+  for (const product of eligibleProducts) {
+    if (linkedProductIds.has(product.id)) continue;
+
+    const parsed = parseWineName(product.name, product.syrve_data);
+    const barcode = Array.isArray(product.primary_barcode) && product.primary_barcode.length > 0
+      ? product.primary_barcode[0].barcode : null;
+
+    newWines.push({
+      name: parsed.name,
+      raw_source_name: parsed.raw_source_name,
+      product_id: product.id,
+      syrve_product_id: product.syrve_product_id,
+      enrichment_source: 'syrve_auto',
+      enrichment_status: 'enriched',
+      volume_ml: parsed.volume_ml || 750,
+      vintage: parsed.vintage,
+      available_by_glass: parsed.available_by_glass || product.is_by_glass || false,
+      sale_price: product.sale_price || product.default_sale_price || null,
+      purchase_price: product.purchase_price || null,
+      sku: product.sku || null,
+      primary_barcode: barcode,
+      current_stock_unopened: Math.max(0, Math.floor(product.current_stock || 0)),
+      current_stock_opened: 0,
+      is_active: true,
+      is_archived: false,
+    });
+  }
+
+  for (let i = 0; i < newWines.length; i += BATCH) {
+    const { error } = await client.from("wines").insert(newWines.slice(i, i + BATCH));
+    if (error) {
+      console.error('Wine enrichment insert error:', error.message);
+      // Try one-by-one for the batch that failed
+      for (const wine of newWines.slice(i, i + BATCH)) {
+        const { error: singleErr } = await client.from("wines").insert(wine);
+        if (!singleErr) created++;
+        else console.error(`Failed to create wine for product ${wine.product_id}: ${singleErr.message}`);
+      }
+    } else {
+      created += newWines.slice(i, i + BATCH).length;
+    }
+  }
+
+  // Update stock & prices for already-linked wines (don't touch name/metadata)
+  for (const product of eligibleProducts) {
+    if (!linkedProductIds.has(product.id)) continue;
+    const { error } = await client.from("wines").update({
+      current_stock_unopened: Math.max(0, Math.floor(product.current_stock || 0)),
+      sale_price: product.sale_price || product.default_sale_price || null,
+      purchase_price: product.purchase_price || null,
+    }).eq("product_id", product.id);
+    if (!error) updated++;
+  }
+
+  stats.wines_created = created;
+  stats.wines_updated = updated;
+  console.log(`Wine enrichment: created ${created}, updated ${updated} from ${eligibleProducts.length} eligible products`);
 }
 
 function parseXmlItems(xml: string, tagName: string): any[] {
