@@ -519,131 +519,137 @@ async function syncProducts(
   return productSyrveIdOrder;
 }
 
-async function syncPrices(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
-  // Use the XML /products endpoint which returns <price> per product item
+async function syncPrices(client: any, _baseUrl: string, _token: string, syncRunId: string | null, stats: any) {
+  // Extract defaultSalePrice from already-stored raw product objects instead of a separate API call
   const start = Date.now();
-  const url = `${baseUrl}/products?key=${token}&includeDeleted=false`;
   try {
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      await logApi(client, syncRunId, "FETCH_PRICES", "error", url, `HTTP ${resp.status}`, Date.now() - start);
-      console.error(`Price fetch from /products XML failed: ${resp.status}`);
-      return;
-    }
+    // Fetch all raw product objects that have defaultSalePrice > 0
+    let offset = 0;
+    const BATCH = 200;
+    let totalUpdated = 0;
 
-    const xml = await resp.text();
-    await logApi(client, syncRunId, "FETCH_PRICES", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
+    while (true) {
+      const { data: rawProducts, error } = await client.from("syrve_raw_objects")
+        .select("syrve_id, payload")
+        .eq("entity_type", "product")
+        .eq("is_deleted", false)
+        .range(offset, offset + BATCH - 1);
 
-    // Parse <productDto> items from XML, each has <id>, <price>, <defaultSalePrice>
-    const priceItems: { productId: string; salePrice: number; purchasePrice: number }[] = [];
-    const itemRegex = /<productDto>([\s\S]*?)<\/productDto>/g;
-    let match;
-    while ((match = itemRegex.exec(xml)) !== null) {
-      const content = match[1];
-      const getField = (tag: string): string | null => {
-        const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
-        return m ? m[1].trim() : null;
-      };
-      const productId = getField("id");
-      const salePrice = parseFloat(getField("price") || getField("defaultSalePrice") || "0");
-      const purchasePrice = parseFloat(getField("purchasePrice") || getField("costPrice") || "0");
-      if (productId && (salePrice > 0 || purchasePrice > 0)) {
-        priceItems.push({ productId, salePrice, purchasePrice });
-      }
-    }
+      if (error || !rawProducts || rawProducts.length === 0) break;
 
-    // Batch update products
-    const BATCH = 50;
-    for (let i = 0; i < priceItems.length; i += BATCH) {
-      const batch = priceItems.slice(i, i + BATCH);
-      for (const item of batch) {
-        const updateData: any = { price_updated_at: new Date().toISOString() };
-        if (item.salePrice > 0) {
-          updateData.sale_price = item.salePrice;
-          updateData.default_sale_price = item.salePrice;
+      for (const raw of rawProducts) {
+        const payload = raw.payload as any;
+        const defaultSalePrice = parseFloat(payload?.defaultSalePrice || "0");
+        const purchasePrice = parseFloat(payload?.purchasePrice || payload?.costPrice || "0");
+
+        if (defaultSalePrice > 0 || purchasePrice > 0) {
+          const updateData: any = { price_updated_at: new Date().toISOString() };
+          if (defaultSalePrice > 0) {
+            updateData.sale_price = defaultSalePrice;
+            updateData.default_sale_price = defaultSalePrice;
+          }
+          if (purchasePrice > 0) {
+            updateData.purchase_price = purchasePrice;
+          }
+          const { error: upErr } = await client.from("products")
+            .update(updateData)
+            .eq("syrve_product_id", raw.syrve_id);
+          if (!upErr) totalUpdated++;
         }
-        if (item.purchasePrice > 0) {
-          updateData.purchase_price = item.purchasePrice;
-        }
-        const { error } = await client.from("products")
-          .update(updateData)
-          .eq("syrve_product_id", item.productId);
-        if (!error) stats.prices_updated++;
       }
+
+      offset += BATCH;
+      if (rawProducts.length < BATCH) break;
     }
-    console.log(`Prices: parsed ${priceItems.length} items, updated ${stats.prices_updated}`);
+
+    stats.prices_updated = totalUpdated;
+    await logApi(client, syncRunId, "SYNC_PRICES", "success", "syrve_raw_objects", undefined, Date.now() - start, `Updated ${totalUpdated} prices from stored data`);
+    console.log(`Prices: updated ${totalUpdated} from raw objects`);
   } catch (e) {
     console.error("syncPrices error:", e);
-    await logApi(client, syncRunId, "FETCH_PRICES", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
+    await logApi(client, syncRunId, "SYNC_PRICES", "error", "syrve_raw_objects", e instanceof Error ? e.message : "Unknown", Date.now() - start);
   }
 }
 
 async function syncStock(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any, storeId: string) {
-  // Use the legacy report endpoint which works on Server API
+  // Use OLAP STOCK report which is reliable across Syrve Server versions
   const start = Date.now();
-  const today = new Date().toISOString().split("T")[0];
-  const url = `${baseUrl}/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${today}`;
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const yyyy = now.getFullYear();
+  const dateStr = `${dd}.${mm}.${yyyy}`;
+
+  const url = `${baseUrl}/reports/olap?key=${token}&report=STOCK&groupRow=Product.Num&groupRow=Product.Name&agr=FinalBalance.Amount&from=${dateStr}&to=${dateStr}&store=${storeId}`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) {
       await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `HTTP ${resp.status}`, Date.now() - start);
-      console.error(`Stock fetch failed: ${resp.status}`);
+      console.error(`Stock OLAP fetch failed: ${resp.status}`);
       return;
     }
 
     const xml = await resp.text();
     await logApi(client, syncRunId, "FETCH_STOCK", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
 
-    // Parse stock items from XML report
-    // Format: <item> with <product>, <store>, <amount>/<endStore> fields
-    const stockItems: { productId: string; balance: number }[] = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    // Parse OLAP report rows. Format varies but typically:
+    // <r><c>ProductNum</c><c>ProductName</c><c>Amount</c></r>
+    // or <row><cell>...</cell></row> etc.
+    const stockItems: { sku: string; balance: number }[] = [];
+
+    // Try <r><c>...</c></r> format first
+    const rowRegex = /<r>([\s\S]*?)<\/r>/g;
     let match;
-    while ((match = itemRegex.exec(xml)) !== null) {
-      const content = match[1];
-      const getField = (tag: string): string | null => {
-        const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
-        return m ? m[1].trim() : null;
-      };
-      const productId = getField("product") || getField("productId");
-      const balance = parseFloat(getField("endStore") || getField("amount") || getField("balance") || "0");
-      if (productId) {
-        stockItems.push({ productId, balance });
+    while ((match = rowRegex.exec(xml)) !== null) {
+      const cells: string[] = [];
+      const cellRegex = /<c>([^<]*)<\/c>/g;
+      let cellMatch;
+      while ((cellMatch = cellRegex.exec(match[1])) !== null) {
+        cells.push(cellMatch[1].trim());
+      }
+      // cells[0] = Product.Num, cells[1] = Product.Name, cells[2] = FinalBalance.Amount
+      if (cells.length >= 3) {
+        const sku = cells[0];
+        const balance = parseFloat(cells[2]) || 0;
+        if (sku) stockItems.push({ sku, balance });
+      } else if (cells.length === 2) {
+        // Maybe only Product.Num + Amount
+        const sku = cells[0];
+        const balance = parseFloat(cells[1]) || 0;
+        if (sku) stockItems.push({ sku, balance });
       }
     }
 
-    // Also try record-based format
+    // Fallback: try <row> format
     if (stockItems.length === 0) {
-      const recordRegex = /<record>([\s\S]*?)<\/record>/g;
-      while ((match = recordRegex.exec(xml)) !== null) {
-        const content = match[1];
-        const getField = (tag: string): string | null => {
-          const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
-          return m ? m[1].trim() : null;
-        };
-        const productId = getField("product") || getField("productId");
-        const balance = parseFloat(getField("endStore") || getField("amount") || getField("balance") || "0");
-        if (productId) {
-          stockItems.push({ productId, balance });
+      const altRowRegex = /<row>([\s\S]*?)<\/row>/g;
+      while ((match = altRowRegex.exec(xml)) !== null) {
+        const cells: string[] = [];
+        const cellRegex = /<cell>([^<]*)<\/cell>/g;
+        let cellMatch;
+        while ((cellMatch = cellRegex.exec(match[1])) !== null) {
+          cells.push(cellMatch[1].trim());
+        }
+        if (cells.length >= 2) {
+          const sku = cells[0];
+          const balance = parseFloat(cells[cells.length - 1]) || 0;
+          if (sku) stockItems.push({ sku, balance });
         }
       }
     }
 
-    // Update products
-    const BATCH = 50;
-    for (let i = 0; i < stockItems.length; i += BATCH) {
-      const batch = stockItems.slice(i, i + BATCH);
-      for (const item of batch) {
-        const { error } = await client.from("products")
-          .update({
-            current_stock: item.balance,
-            stock_updated_at: new Date().toISOString(),
-          })
-          .eq("syrve_product_id", item.productId);
-        if (!error) stats.stock_updated++;
-      }
+    // Match by SKU and update products
+    for (const item of stockItems) {
+      const { error } = await client.from("products")
+        .update({
+          current_stock: item.balance,
+          stock_updated_at: new Date().toISOString(),
+        })
+        .eq("sku", item.sku);
+      if (!error) stats.stock_updated++;
     }
-    console.log(`Stock: parsed ${stockItems.length} items, updated ${stats.stock_updated}`);
+
+    console.log(`Stock OLAP: parsed ${stockItems.length} items, updated ${stats.stock_updated}`);
   } catch (e) {
     console.error("syncStock error:", e);
     await logApi(client, syncRunId, "FETCH_STOCK", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);

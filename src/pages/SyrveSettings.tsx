@@ -83,7 +83,7 @@ export default function SyrveSettings() {
     extract_volume: true,
     auto_map_category: true,
   });
-  const [autoCreateWines, setAutoCreateWines] = useState(false);
+  // autoCreateWines replaced by fieldMapping.wine_category_ids
   const [importInactive, setImportInactive] = useState(false);
 
   // Sync schedule
@@ -151,7 +151,7 @@ export default function SyrveSettings() {
       if (config.api_password_hash) setPasswordHash(config.api_password_hash);
       setProductTypeFilters(config.product_type_filters || ['GOODS', 'DISH']);
       setFieldMapping(config.field_mapping || { extract_vintage: true, extract_volume: true, auto_map_category: true });
-      setAutoCreateWines(config.auto_create_wines ?? false);
+      // autoCreateWines now derived from fieldMapping.wine_category_ids
       setImportInactive(config.import_inactive_products ?? false);
       setAutoSyncEnabled(config.auto_sync_enabled ?? false);
       setSyncInterval(config.sync_interval_minutes || 60);
@@ -250,7 +250,7 @@ export default function SyrveSettings() {
           selected_category_ids: selectedCategoryIds.length > 0 ? selectedCategoryIds : null,
           product_type_filters: productTypeFilters,
           field_mapping: fieldMapping,
-          auto_create_wines: autoCreateWines,
+          auto_create_wines: (fieldMapping.wine_category_ids?.length || 0) > 0,
           import_inactive_products: importInactive,
           auto_sync_enabled: autoSyncEnabled,
           sync_interval_minutes: syncInterval,
@@ -669,20 +669,31 @@ export default function SyrveSettings() {
 
               <Separator />
 
-              {/* Auto-create wines */}
+              {/* Wine Category Mapping */}
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Wine Catalog Integration</Label>
-                <div className="flex items-center justify-between p-3 rounded-lg border">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Wine className="w-4 h-4 text-primary" />
-                      <p className="text-sm font-medium">Auto-create Wine Entries</p>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Automatically create entries in the wine catalog from synced Syrve products
-                    </p>
+                <div className="p-3 rounded-lg border space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Wine className="w-4 h-4 text-primary" />
+                    <p className="text-sm font-medium">Wine Categories</p>
                   </div>
-                  <Switch checked={autoCreateWines} onCheckedChange={setAutoCreateWines} />
+                  <p className="text-xs text-muted-foreground">
+                    Select which Syrve categories contain wines. Products in these categories will be auto-linked to the Wine Catalog during sync.
+                  </p>
+                  {categories && categories.length > 0 ? (
+                    <CategoryTreePicker
+                      categories={categories as any}
+                      selectedIds={fieldMapping.wine_category_ids || []}
+                      onSelectionChange={(ids) => setFieldMapping((prev: any) => ({ ...prev, wine_category_ids: ids }))}
+                    />
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No categories synced yet. Run a sync first.</p>
+                  )}
+                  {(fieldMapping.wine_category_ids?.length > 0) && (
+                    <Badge variant="secondary" className="text-xs">
+                      {fieldMapping.wine_category_ids.length} wine {fieldMapping.wine_category_ids.length === 1 ? 'category' : 'categories'} selected
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-lg border">
                   <div>
