@@ -94,6 +94,16 @@ export default function SyrveSettings() {
   // Reimport mode
   const [reimportMode, setReimportMode] = useState('merge');
 
+  // Prune wine_category_ids when selectedCategoryIds changes
+  useEffect(() => {
+    if (selectedCategoryIds.length > 0 && fieldMapping.wine_category_ids?.length > 0) {
+      const validIds = fieldMapping.wine_category_ids.filter((id: string) => selectedCategoryIds.includes(id));
+      if (validIds.length !== fieldMapping.wine_category_ids.length) {
+        setFieldMapping((prev: any) => ({ ...prev, wine_category_ids: validIds }));
+      }
+    }
+  }, [selectedCategoryIds]);
+
   // Section states
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     connection: true,
@@ -682,9 +692,13 @@ export default function SyrveSettings() {
                   </p>
                   {categories && categories.length > 0 ? (
                     <CategoryTreePicker
-                      categories={categories as any}
+                      categories={(selectedCategoryIds.length > 0
+                        ? (categories as any[]).filter((c: any) => selectedCategoryIds.includes(c.id))
+                        : categories) as any}
                       selectedIds={fieldMapping.wine_category_ids || []}
                       onSelectionChange={(ids) => setFieldMapping((prev: any) => ({ ...prev, wine_category_ids: ids }))}
+                      title="Wine Categories"
+                      summaryPrefix="Selected"
                     />
                   ) : (
                     <p className="text-xs text-muted-foreground italic">No categories synced yet. Run a sync first.</p>
