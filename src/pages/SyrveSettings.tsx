@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, XCircle, Loader2, Store, FolderTree, Filter, Building2, Beaker } from 'lucide-react';
+import { ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, XCircle, Loader2, Store, FolderTree, Filter, Building2, Beaker, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,6 +32,7 @@ export default function SyrveSettings() {
   const [serverUrl, setServerUrl] = useState('');
   const [apiLogin, setApiLogin] = useState('');
   const [apiPassword, setApiPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [testStores, setTestStores] = useState<any[]>([]);
@@ -229,13 +230,26 @@ export default function SyrveSettings() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="api_password">API Password</Label>
-              <Input
-                id="api_password"
-                type="password"
-                placeholder={isConfigured ? '••••••••' : 'Enter password'}
-                value={apiPassword}
-                onChange={(e) => { setApiPassword(e.target.value); setTested(false); }}
-              />
+              <div className="relative">
+                <Input
+                  id="api_password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder={isConfigured ? '••••••••' : 'Enter password'}
+                  value={apiPassword}
+                  onChange={(e) => { setApiPassword(e.target.value); setTested(false); }}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
+                </Button>
+              </div>
             </div>
           </div>
 
