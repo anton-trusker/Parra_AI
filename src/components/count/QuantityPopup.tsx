@@ -2,14 +2,22 @@ import { Plus, Minus, Check, X, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Wine } from '@/data/mockWines';
 import { useGlassDimensions } from '@/hooks/useGlassDimensions';
 import { useLocations } from '@/hooks/useLocations';
 import { useState, useEffect, useRef } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+export interface QuantityWine {
+  id: string;
+  name: string;
+  producer?: string | null;
+  vintage?: number | null;
+  volume: number; // ml
+  imageUrl?: string;
+}
+
 interface QuantityPopupProps {
-  wine: Wine;
+  wine: QuantityWine;
   compact?: boolean;
   onConfirm: (unopened: number, opened: number, notes: string, locationId?: string, subLocationId?: string) => void;
   onCancel: () => void;
@@ -120,6 +128,7 @@ function PartialBottleRow({
 }
 
 export default function QuantityPopup({ wine, compact, onConfirm, onCancel }: QuantityPopupProps) {
+  // wine.producer may be null from DB
   const { data: glassDimensionsRaw = [] } = useGlassDimensions();
   const { data: locationsRaw = [] } = useLocations();
   // Map DB rows to the shape expected by the component
