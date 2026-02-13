@@ -31,15 +31,15 @@ const navGroups: NavGroup[] = [
   {
     title: 'Inventory',
     items: [
+      { label: 'Wine Inventory', icon: Wine, path: '/catalog', module: 'catalog' },
       { label: 'Current Stock', icon: Package, path: '/stock', module: 'stock' },
       { label: 'Start Count', icon: ScanLine, path: '/count', module: 'stock' },
       { label: 'Session Review', icon: ClipboardCheck, path: '/sessions', module: 'sessions' },
     ],
   },
   {
-    title: 'Catalog',
+    title: 'Syrve Data',
     items: [
-      { label: 'Wine Catalog', icon: Wine, path: '/catalog', module: 'catalog' },
       { label: 'Products', icon: Package, path: '/products', module: 'catalog' },
       { label: 'Categories', icon: FolderTree, path: '/categories', module: 'catalog' },
     ],

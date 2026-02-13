@@ -20,7 +20,7 @@ interface NavItem {
 const allNavItems: NavItem[] = [
   { label: 'Home', icon: LayoutDashboard, path: '/dashboard', module: 'dashboard', primary: true },
   { label: 'Inventory', icon: Package, path: '/stock', module: 'stock', primary: true },
-  { label: 'Catalog', icon: Wine, path: '/catalog', module: 'catalog', primary: true },
+  { label: 'Wines', icon: Wine, path: '/catalog', module: 'catalog', primary: true },
   { label: 'History', icon: History, path: '/history', module: 'history', primary: true },
   { label: 'Users', icon: Users, path: '/users', module: 'users' },
   { label: 'Sessions', icon: ClipboardCheck, path: '/sessions', module: 'sessions' },
