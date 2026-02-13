@@ -262,8 +262,16 @@ export default function ProductCatalog() {
   const tableColumns = useMemo((): DataTableColumn<Product>[] => [
     {
       key: 'select',
-      label: '☐',
+      label: '',
       align: 'center',
+      headerRender: () => (
+        <div onClick={e => { e.stopPropagation(); toggleSelectAll(); }}>
+          <Checkbox
+            checked={allSelected}
+            className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+          />
+        </div>
+      ),
       render: p => (
         <div onClick={e => { e.stopPropagation(); toggleSelect(p.id); }}>
           <Checkbox
@@ -310,7 +318,7 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
-  ], [selectedIds, toggleSelect]);
+  ], [selectedIds, toggleSelect, allSelected, toggleSelectAll]);
 
   return (
     <div className="space-y-6 animate-fade-in">
