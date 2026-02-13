@@ -125,6 +125,59 @@ export type Database = {
         }
         Relationships: []
       }
+      categories: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          is_deleted: boolean | null
+          name: string
+          parent_id: string | null
+          parent_syrve_id: string | null
+          sort_order: number | null
+          synced_at: string | null
+          syrve_data: Json | null
+          syrve_group_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_deleted?: boolean | null
+          name: string
+          parent_id?: string | null
+          parent_syrve_id?: string | null
+          sort_order?: number | null
+          synced_at?: string | null
+          syrve_data?: Json | null
+          syrve_group_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_deleted?: boolean | null
+          name?: string
+          parent_id?: string | null
+          parent_syrve_id?: string | null
+          sort_order?: number | null
+          synced_at?: string | null
+          syrve_data?: Json | null
+          syrve_group_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       error_logs: {
         Row: {
           context: Json | null
@@ -497,6 +550,121 @@ export type Database = {
         }
         Relationships: []
       }
+      product_barcodes: {
+        Row: {
+          barcode: string
+          container_name: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          is_primary: boolean | null
+          product_id: string
+          source: string | null
+        }
+        Insert: {
+          barcode: string
+          container_name?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_primary?: boolean | null
+          product_id: string
+          source?: string | null
+        }
+        Update: {
+          barcode?: string
+          container_name?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_primary?: boolean | null
+          product_id?: string
+          source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_barcodes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          category_id: string | null
+          code: string | null
+          created_at: string | null
+          default_sale_price: number | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_deleted: boolean | null
+          main_unit_id: string | null
+          metadata: Json | null
+          name: string
+          not_in_store_movement: boolean | null
+          product_type: string | null
+          sku: string | null
+          synced_at: string | null
+          syrve_data: Json | null
+          syrve_product_id: string
+          unit_capacity: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          category_id?: string | null
+          code?: string | null
+          created_at?: string | null
+          default_sale_price?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_deleted?: boolean | null
+          main_unit_id?: string | null
+          metadata?: Json | null
+          name: string
+          not_in_store_movement?: boolean | null
+          product_type?: string | null
+          sku?: string | null
+          synced_at?: string | null
+          syrve_data?: Json | null
+          syrve_product_id: string
+          unit_capacity?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          category_id?: string | null
+          code?: string | null
+          created_at?: string | null
+          default_sale_price?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_deleted?: boolean | null
+          main_unit_id?: string | null
+          metadata?: Json | null
+          name?: string
+          not_in_store_movement?: boolean | null
+          product_type?: string | null
+          sku?: string | null
+          synced_at?: string | null
+          syrve_data?: Json | null
+          syrve_product_id?: string
+          unit_capacity?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_color: string | null
@@ -632,6 +800,42 @@ export type Database = {
           },
         ]
       }
+      stores: {
+        Row: {
+          code: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          store_type: string | null
+          synced_at: string | null
+          syrve_data: Json | null
+          syrve_store_id: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          store_type?: string | null
+          synced_at?: string | null
+          syrve_data?: Json | null
+          syrve_store_id: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          store_type?: string | null
+          synced_at?: string | null
+          syrve_data?: Json | null
+          syrve_store_id?: string
+        }
+        Relationships: []
+      }
       sub_locations: {
         Row: {
           id: string
@@ -706,6 +910,229 @@ export type Database = {
           phone?: string | null
           updated_at?: string
           website?: string | null
+        }
+        Relationships: []
+      }
+      syrve_api_logs: {
+        Row: {
+          action_type: string
+          created_at: string | null
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          request_method: string | null
+          request_url: string | null
+          response_payload_preview: string | null
+          response_status: number | null
+          status: string
+          sync_run_id: string | null
+        }
+        Insert: {
+          action_type: string
+          created_at?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          request_method?: string | null
+          request_url?: string | null
+          response_payload_preview?: string | null
+          response_status?: number | null
+          status?: string
+          sync_run_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          created_at?: string | null
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          request_method?: string | null
+          request_url?: string | null
+          response_payload_preview?: string | null
+          response_status?: number | null
+          status?: string
+          sync_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "syrve_api_logs_sync_run_id_fkey"
+            columns: ["sync_run_id"]
+            isOneToOne: false
+            referencedRelation: "syrve_sync_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      syrve_config: {
+        Row: {
+          api_login: string
+          api_password_hash: string | null
+          connection_status: string | null
+          connection_tested_at: string | null
+          created_at: string | null
+          default_store_id: string | null
+          default_store_name: string | null
+          id: string
+          selected_category_ids: string[] | null
+          server_url: string
+          settings: Json | null
+          sync_interval_minutes: number | null
+          sync_lock_until: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          api_login?: string
+          api_password_hash?: string | null
+          connection_status?: string | null
+          connection_tested_at?: string | null
+          created_at?: string | null
+          default_store_id?: string | null
+          default_store_name?: string | null
+          id?: string
+          selected_category_ids?: string[] | null
+          server_url?: string
+          settings?: Json | null
+          sync_interval_minutes?: number | null
+          sync_lock_until?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          api_login?: string
+          api_password_hash?: string | null
+          connection_status?: string | null
+          connection_tested_at?: string | null
+          created_at?: string | null
+          default_store_id?: string | null
+          default_store_name?: string | null
+          id?: string
+          selected_category_ids?: string[] | null
+          server_url?: string
+          settings?: Json | null
+          sync_interval_minutes?: number | null
+          sync_lock_until?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      syrve_outbox_jobs: {
+        Row: {
+          attempts: number | null
+          created_at: string | null
+          id: string
+          job_type: string
+          last_attempt_at: string | null
+          last_error: string | null
+          max_attempts: number | null
+          payload_hash: string | null
+          payload_xml: string | null
+          response_xml: string | null
+          session_id: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string | null
+          id?: string
+          job_type: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          max_attempts?: number | null
+          payload_hash?: string | null
+          payload_xml?: string | null
+          response_xml?: string | null
+          session_id?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string | null
+          id?: string
+          job_type?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          max_attempts?: number | null
+          payload_hash?: string | null
+          payload_xml?: string | null
+          response_xml?: string | null
+          session_id?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "syrve_outbox_jobs_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      syrve_raw_objects: {
+        Row: {
+          entity_type: string
+          id: string
+          is_deleted: boolean | null
+          payload: Json
+          payload_hash: string | null
+          synced_at: string | null
+          syrve_id: string
+        }
+        Insert: {
+          entity_type: string
+          id?: string
+          is_deleted?: boolean | null
+          payload: Json
+          payload_hash?: string | null
+          synced_at?: string | null
+          syrve_id: string
+        }
+        Update: {
+          entity_type?: string
+          id?: string
+          is_deleted?: boolean | null
+          payload?: Json
+          payload_hash?: string | null
+          synced_at?: string | null
+          syrve_id?: string
+        }
+        Relationships: []
+      }
+      syrve_sync_runs: {
+        Row: {
+          created_at: string | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          run_type: string
+          started_at: string | null
+          stats: Json | null
+          status: string
+          triggered_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          run_type: string
+          started_at?: string | null
+          stats?: Json | null
+          status?: string
+          triggered_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          run_type?: string
+          started_at?: string | null
+          stats?: Json | null
+          status?: string
+          triggered_by?: string | null
         }
         Relationships: []
       }

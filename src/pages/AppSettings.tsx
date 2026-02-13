@@ -1,6 +1,6 @@
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
-import { Settings, Database, Bell, Shield, SlidersHorizontal, Users } from 'lucide-react';
+import { Settings, Database, Bell, Shield, SlidersHorizontal, Users, RefreshCw } from 'lucide-react';
 
 export default function AppSettings() {
   const { user } = useAuthStore();
@@ -10,6 +10,7 @@ export default function AppSettings() {
     { icon: SlidersHorizontal, title: 'General', desc: 'Manage locations, glass dimensions, bottle volumes, and measurement units', href: '/settings/general' },
     { icon: Shield, title: 'Roles & Permissions', desc: 'Create custom roles and configure granular access rights', href: '/settings/roles' },
     { icon: Users, title: 'User Management', desc: 'Add, edit, and manage user accounts and role assignments', href: '/users' },
+    { icon: RefreshCw, title: 'Syrve Integration', desc: 'Connect to Syrve Server API for product catalog sync and inventory operations', href: '/settings/syrve' },
     { icon: Database, title: 'Database', desc: 'Manage wine catalog backups and data import/export' },
     { icon: Bell, title: 'Notifications', desc: 'Configure low stock alerts and notification preferences' },
   ];

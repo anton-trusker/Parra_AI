@@ -1,0 +1,350 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+async function sha1(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const hash = await crypto.subtle.digest("SHA-1", data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    // Auth check
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claims, error: claimsErr } = await supabase.auth.getClaims(token);
+    if (claimsErr || !claims?.claims) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const userId = claims.claims.sub;
+
+    const { sync_type } = await req.json(); // bootstrap, products, categories, stores
+    const adminClient = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    // Get Syrve config
+    const { data: config, error: configErr } = await adminClient
+      .from("syrve_config")
+      .select("*")
+      .limit(1)
+      .maybeSingle();
+
+    if (configErr || !config) {
+      return new Response(JSON.stringify({ error: "Syrve not configured" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Check sync lock
+    if (config.sync_lock_until && new Date(config.sync_lock_until) > new Date()) {
+      return new Response(JSON.stringify({ error: "Sync already in progress. Please wait." }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Set sync lock (5 minutes max)
+    const lockUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    await adminClient.from("syrve_config").update({ sync_lock_until: lockUntil }).eq("id", config.id);
+
+    // Create sync run
+    const runType = sync_type || "bootstrap";
+    const { data: syncRun } = await adminClient
+      .from("syrve_sync_runs")
+      .insert({ run_type: runType, status: "running", triggered_by: userId })
+      .select()
+      .single();
+
+    let syrveToken: string | null = null;
+    const stats = { stores: 0, categories: 0, products: 0, barcodes: 0, errors: 0 };
+
+    try {
+      // 1. Login to Syrve
+      const authUrl = `${config.server_url}/auth?login=${encodeURIComponent(config.api_login)}&pass=${config.api_password_hash}`;
+      const authResp = await fetch(authUrl);
+      if (!authResp.ok) throw new Error(`Syrve auth failed: ${authResp.status}`);
+      syrveToken = (await authResp.text()).trim();
+
+      await logApi(adminClient, syncRun?.id, "AUTH", "success", authUrl);
+
+      // 2. Sync based on type
+      if (runType === "bootstrap" || runType === "stores") {
+        await syncStores(adminClient, config.server_url, syrveToken, syncRun?.id, stats);
+      }
+
+      if (runType === "bootstrap" || runType === "categories") {
+        await syncCategories(adminClient, config.server_url, syrveToken, syncRun?.id, stats);
+      }
+
+      if (runType === "bootstrap" || runType === "products") {
+        await syncProducts(adminClient, config.server_url, syrveToken, syncRun?.id, stats);
+      }
+
+      // Update sync run as success
+      await adminClient.from("syrve_sync_runs").update({
+        status: "success",
+        finished_at: new Date().toISOString(),
+        stats,
+      }).eq("id", syncRun?.id);
+
+    } catch (syncError) {
+      console.error("Sync error:", syncError);
+      stats.errors++;
+      await adminClient.from("syrve_sync_runs").update({
+        status: "failed",
+        finished_at: new Date().toISOString(),
+        error: syncError instanceof Error ? syncError.message : "Unknown error",
+        stats,
+      }).eq("id", syncRun?.id);
+      throw syncError;
+    } finally {
+      // Always logout and release lock
+      if (syrveToken) {
+        try {
+          await fetch(`${config.server_url}/logout?key=${syrveToken}`);
+          await logApi(adminClient, syncRun?.id, "LOGOUT", "success", "");
+        } catch (e) { console.error("Logout error:", e); }
+      }
+      await adminClient.from("syrve_config").update({ sync_lock_until: null }).eq("id", config.id);
+    }
+
+    return new Response(JSON.stringify({ success: true, stats, sync_run_id: syncRun?.id }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("syrve-sync error:", e);
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Internal error" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
+async function logApi(client: any, syncRunId: string | null, action: string, status: string, url: string, error?: string) {
+  await client.from("syrve_api_logs").insert({
+    sync_run_id: syncRunId,
+    action_type: action,
+    status,
+    request_url: url,
+    error_message: error,
+  });
+}
+
+async function syncStores(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  const url = `${baseUrl}/corporation/stores?key=${token}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    await logApi(client, syncRunId, "FETCH_STORES", "error", url, `HTTP ${resp.status}`);
+    throw new Error(`Failed to fetch stores: ${resp.status}`);
+  }
+
+  const xml = await resp.text();
+  await logApi(client, syncRunId, "FETCH_STORES", "success", url);
+
+  // Parse stores from XML
+  const stores = parseXmlItems(xml, "corporateItemDto");
+  for (const store of stores) {
+    const syrveId = store.id;
+    if (!syrveId) continue;
+
+    // Upsert raw object
+    await client.from("syrve_raw_objects").upsert({
+      entity_type: "store",
+      syrve_id: syrveId,
+      payload: store,
+      payload_hash: await sha1(JSON.stringify(store)),
+      synced_at: new Date().toISOString(),
+    }, { onConflict: "entity_type,syrve_id" });
+
+    // Upsert canonical store
+    await client.from("stores").upsert({
+      syrve_store_id: syrveId,
+      name: store.name || "Unknown",
+      code: store.code || null,
+      store_type: store.type || null,
+      syrve_data: store,
+      synced_at: new Date().toISOString(),
+    }, { onConflict: "syrve_store_id" });
+
+    stats.stores++;
+  }
+}
+
+async function syncCategories(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  const url = `${baseUrl}/v2/entities/products/group/list?includeDeleted=false&key=${token}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    await logApi(client, syncRunId, "FETCH_CATEGORIES", "error", url, `HTTP ${resp.status}`);
+    throw new Error(`Failed to fetch categories: ${resp.status}`);
+  }
+
+  const text = await resp.text();
+  await logApi(client, syncRunId, "FETCH_CATEGORIES", "success", url);
+
+  let groups: any[];
+  try {
+    groups = JSON.parse(text);
+    if (!Array.isArray(groups)) groups = [groups];
+  } catch {
+    // Try XML parsing fallback
+    groups = parseXmlItems(text, "groupDto");
+  }
+
+  for (const group of groups) {
+    const syrveId = group.id || group.groupId;
+    if (!syrveId) continue;
+
+    await client.from("syrve_raw_objects").upsert({
+      entity_type: "product_group",
+      syrve_id: syrveId,
+      payload: group,
+      payload_hash: await sha1(JSON.stringify(group)),
+      synced_at: new Date().toISOString(),
+    }, { onConflict: "entity_type,syrve_id" });
+
+    await client.from("categories").upsert({
+      syrve_group_id: syrveId,
+      name: group.name || "Unknown",
+      parent_syrve_id: group.parentId || group.parent || null,
+      is_deleted: group.deleted || false,
+      is_active: !(group.deleted || false),
+      syrve_data: group,
+      synced_at: new Date().toISOString(),
+    }, { onConflict: "syrve_group_id" });
+
+    stats.categories++;
+  }
+
+  // Resolve parent_id references
+  const { data: allCats } = await client.from("categories").select("id, syrve_group_id, parent_syrve_id");
+  if (allCats) {
+    const lookup = new Map(allCats.map((c: any) => [c.syrve_group_id, c.id]));
+    for (const cat of allCats) {
+      if (cat.parent_syrve_id && lookup.has(cat.parent_syrve_id)) {
+        await client.from("categories").update({ parent_id: lookup.get(cat.parent_syrve_id) }).eq("id", cat.id);
+      }
+    }
+  }
+}
+
+async function syncProducts(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  const url = `${baseUrl}/v2/entities/products/list?includeDeleted=false&key=${token}`;
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    await logApi(client, syncRunId, "FETCH_PRODUCTS", "error", url, `HTTP ${resp.status}`);
+    throw new Error(`Failed to fetch products: ${resp.status}`);
+  }
+
+  const text = await resp.text();
+  await logApi(client, syncRunId, "FETCH_PRODUCTS", "success", url);
+
+  let products: any[];
+  try {
+    products = JSON.parse(text);
+    if (!Array.isArray(products)) products = [products];
+  } catch {
+    products = parseXmlItems(text, "productDto");
+  }
+
+  // Get category mapping
+  const { data: categories } = await client.from("categories").select("id, syrve_group_id");
+  const catLookup = new Map((categories || []).map((c: any) => [c.syrve_group_id, c.id]));
+
+  for (const product of products) {
+    const syrveId = product.id;
+    if (!syrveId) continue;
+
+    await client.from("syrve_raw_objects").upsert({
+      entity_type: "product",
+      syrve_id: syrveId,
+      payload: product,
+      payload_hash: await sha1(JSON.stringify(product)),
+      synced_at: new Date().toISOString(),
+    }, { onConflict: "entity_type,syrve_id" });
+
+    const parentGroupId = product.parent || product.parentId;
+    const categoryId = parentGroupId ? catLookup.get(parentGroupId) : null;
+
+    const { data: upserted } = await client.from("products").upsert({
+      syrve_product_id: syrveId,
+      category_id: categoryId || null,
+      name: product.name || "Unknown",
+      description: product.description || null,
+      sku: product.num || null,
+      code: product.code || null,
+      product_type: product.type || product.productType || null,
+      main_unit_id: product.mainUnit || null,
+      unit_capacity: product.unitCapacity || null,
+      default_sale_price: product.defaultSalePrice || null,
+      not_in_store_movement: product.notInStoreMovement || false,
+      is_deleted: product.deleted || false,
+      is_active: !(product.deleted || false),
+      syrve_data: product,
+      synced_at: new Date().toISOString(),
+    }, { onConflict: "syrve_product_id" }).select("id").single();
+
+    stats.products++;
+
+    // Sync barcodes
+    if (upserted && product.barcodes) {
+      const barcodes = Array.isArray(product.barcodes) ? product.barcodes : [product.barcodes];
+      for (const bc of barcodes) {
+        const barcodeValue = bc.barcode || bc.barcodeContainer?.barcode || (typeof bc === "string" ? bc : null);
+        if (!barcodeValue) continue;
+
+        await client.from("product_barcodes").upsert({
+          product_id: upserted.id,
+          barcode: barcodeValue,
+          container_name: bc.containerName || bc.barcodeContainer?.containerName || null,
+          source: "syrve",
+          is_primary: stats.barcodes === 0,
+        }, { onConflict: "barcode" }).catch(() => { /* ignore duplicate */ });
+
+        stats.barcodes++;
+      }
+    }
+  }
+}
+
+function parseXmlItems(xml: string, tagName: string): any[] {
+  const items: any[] = [];
+  const regex = new RegExp(`<${tagName}>([\\s\\S]*?)</${tagName}>`, "g");
+  let match;
+  while ((match = regex.exec(xml)) !== null) {
+    const item: any = {};
+    const content = match[1];
+    const fieldRegex = /<(\w+)>([^<]*)<\/\1>/g;
+    let fieldMatch;
+    while ((fieldMatch = fieldRegex.exec(content)) !== null) {
+      const val = fieldMatch[2];
+      if (val === "true") item[fieldMatch[1]] = true;
+      else if (val === "false") item[fieldMatch[1]] = false;
+      else if (!isNaN(Number(val)) && val !== "") item[fieldMatch[1]] = Number(val);
+      else item[fieldMatch[1]] = val;
+    }
+    items.push(item);
+  }
+  return items;
+}
