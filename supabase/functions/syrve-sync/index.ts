@@ -520,51 +520,36 @@ async function syncProducts(
 }
 
 async function syncPrices(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  // Use the XML /products endpoint which returns <price> per product item
   const start = Date.now();
-  const url = `${baseUrl}/v2/price?key=${token}`;
+  const url = `${baseUrl}/products?key=${token}&includeDeleted=false`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) {
       await logApi(client, syncRunId, "FETCH_PRICES", "error", url, `HTTP ${resp.status}`, Date.now() - start);
-      console.error(`Price fetch failed: ${resp.status}`);
+      console.error(`Price fetch from /products XML failed: ${resp.status}`);
       return;
     }
 
-    const text = await resp.text();
-    await logApi(client, syncRunId, "FETCH_PRICES", "success", url, undefined, Date.now() - start, text.substring(0, 500));
+    const xml = await resp.text();
+    await logApi(client, syncRunId, "FETCH_PRICES", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
 
-    // Parse price items from XML - format: <item><productId>...</productId><price>...</price></item>
-    const priceItems: { productId: string; price: number; purchasePrice?: number }[] = [];
-    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    // Parse <productDto> items from XML, each has <id>, <price>, <defaultSalePrice>
+    const priceItems: { productId: string; salePrice: number; purchasePrice: number }[] = [];
+    const itemRegex = /<productDto>([\s\S]*?)<\/productDto>/g;
     let match;
-    while ((match = itemRegex.exec(text)) !== null) {
+    while ((match = itemRegex.exec(xml)) !== null) {
       const content = match[1];
       const getField = (tag: string): string | null => {
         const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
         return m ? m[1].trim() : null;
       };
-      const productId = getField("productId") || getField("product");
-      const price = parseFloat(getField("price") || getField("value") || "0");
-      const purchasePrice = parseFloat(getField("purchasePrice") || getField("estimatedPurchasePrice") || "0");
-      if (productId && price > 0) {
-        priceItems.push({ productId, price, purchasePrice: purchasePrice > 0 ? purchasePrice : undefined });
+      const productId = getField("id");
+      const salePrice = parseFloat(getField("price") || getField("defaultSalePrice") || "0");
+      const purchasePrice = parseFloat(getField("purchasePrice") || getField("costPrice") || "0");
+      if (productId && (salePrice > 0 || purchasePrice > 0)) {
+        priceItems.push({ productId, salePrice, purchasePrice });
       }
-    }
-
-    // Also try JSON format
-    if (priceItems.length === 0) {
-      try {
-        const json = JSON.parse(text);
-        const items = Array.isArray(json) ? json : json.items || json.priceListItems || [];
-        for (const item of items) {
-          const productId = item.productId || item.product;
-          const price = parseFloat(item.price || item.value || "0");
-          const purchasePrice = parseFloat(item.purchasePrice || item.estimatedPurchasePrice || "0");
-          if (productId && price > 0) {
-            priceItems.push({ productId, price, purchasePrice: purchasePrice > 0 ? purchasePrice : undefined });
-          }
-        }
-      } catch { /* not JSON */ }
     }
 
     // Batch update products
@@ -572,12 +557,12 @@ async function syncPrices(client: any, baseUrl: string, token: string, syncRunId
     for (let i = 0; i < priceItems.length; i += BATCH) {
       const batch = priceItems.slice(i, i + BATCH);
       for (const item of batch) {
-        const updateData: any = {
-          sale_price: item.price,
-          default_sale_price: item.price,
-          price_updated_at: new Date().toISOString(),
-        };
-        if (item.purchasePrice) {
+        const updateData: any = { price_updated_at: new Date().toISOString() };
+        if (item.salePrice > 0) {
+          updateData.sale_price = item.salePrice;
+          updateData.default_sale_price = item.salePrice;
+        }
+        if (item.purchasePrice > 0) {
           updateData.purchase_price = item.purchasePrice;
         }
         const { error } = await client.from("products")
@@ -586,6 +571,7 @@ async function syncPrices(client: any, baseUrl: string, token: string, syncRunId
         if (!error) stats.prices_updated++;
       }
     }
+    console.log(`Prices: parsed ${priceItems.length} items, updated ${stats.prices_updated}`);
   } catch (e) {
     console.error("syncPrices error:", e);
     await logApi(client, syncRunId, "FETCH_PRICES", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
@@ -593,65 +579,61 @@ async function syncPrices(client: any, baseUrl: string, token: string, syncRunId
 }
 
 async function syncStock(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any, storeId: string) {
+  // Use the legacy report endpoint which works on Server API
   const start = Date.now();
+  const today = new Date().toISOString().split("T")[0];
+  const url = `${baseUrl}/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${today}`;
   try {
-    // Get all product syrve IDs
-    const { data: allProducts } = await client.from("products").select("syrve_product_id").eq("is_active", true);
-    if (!allProducts || allProducts.length === 0) return;
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `HTTP ${resp.status}`, Date.now() - start);
+      console.error(`Stock fetch failed: ${resp.status}`);
+      return;
+    }
 
-    const allSyrveIds = allProducts.map((p: any) => p.syrve_product_id).filter(Boolean);
-    
-    // Batch into groups of 200
-    const BATCH_SIZE = 200;
-    for (let i = 0; i < allSyrveIds.length; i += BATCH_SIZE) {
-      const batch = allSyrveIds.slice(i, i + BATCH_SIZE);
-      const productIdsParam = batch.join(",");
-      const url = `${baseUrl}/v2/entities/products/stock-and-sales?key=${token}&storeIds=${storeId}&productIds=${productIdsParam}`;
-      
-      const resp = await fetch(url);
-      if (!resp.ok) {
-        await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `HTTP ${resp.status}`, Date.now() - start);
-        console.error(`Stock fetch failed: ${resp.status}`);
-        continue;
+    const xml = await resp.text();
+    await logApi(client, syncRunId, "FETCH_STOCK", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
+
+    // Parse stock items from XML report
+    // Format: <item> with <product>, <store>, <amount>/<endStore> fields
+    const stockItems: { productId: string; balance: number }[] = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(xml)) !== null) {
+      const content = match[1];
+      const getField = (tag: string): string | null => {
+        const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+        return m ? m[1].trim() : null;
+      };
+      const productId = getField("product") || getField("productId");
+      const balance = parseFloat(getField("endStore") || getField("amount") || getField("balance") || "0");
+      if (productId) {
+        stockItems.push({ productId, balance });
       }
+    }
 
-      const text = await resp.text();
-      if (i === 0) {
-        await logApi(client, syncRunId, "FETCH_STOCK", "success", url, undefined, Date.now() - start, text.substring(0, 500));
-      }
-
-      // Parse stock items from XML
-      const stockItems: { productId: string; balance: number }[] = [];
-      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
-      let match;
-      while ((match = itemRegex.exec(text)) !== null) {
+    // Also try record-based format
+    if (stockItems.length === 0) {
+      const recordRegex = /<record>([\s\S]*?)<\/record>/g;
+      while ((match = recordRegex.exec(xml)) !== null) {
         const content = match[1];
         const getField = (tag: string): string | null => {
           const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
           return m ? m[1].trim() : null;
         };
-        const productId = getField("productId") || getField("product");
-        const balance = parseFloat(getField("balance") || getField("amount") || getField("endStore") || "0");
+        const productId = getField("product") || getField("productId");
+        const balance = parseFloat(getField("endStore") || getField("amount") || getField("balance") || "0");
         if (productId) {
           stockItems.push({ productId, balance });
         }
       }
+    }
 
-      // Also try JSON format
-      if (stockItems.length === 0) {
-        try {
-          const json = JSON.parse(text);
-          const items = Array.isArray(json) ? json : json.items || [];
-          for (const item of items) {
-            const productId = item.productId || item.product;
-            const balance = parseFloat(item.balance || item.amount || "0");
-            if (productId) stockItems.push({ productId, balance });
-          }
-        } catch { /* not JSON */ }
-      }
-
-      // Update products
-      for (const item of stockItems) {
+    // Update products
+    const BATCH = 50;
+    for (let i = 0; i < stockItems.length; i += BATCH) {
+      const batch = stockItems.slice(i, i + BATCH);
+      for (const item of batch) {
         const { error } = await client.from("products")
           .update({
             current_stock: item.balance,
@@ -661,9 +643,10 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
         if (!error) stats.stock_updated++;
       }
     }
+    console.log(`Stock: parsed ${stockItems.length} items, updated ${stats.stock_updated}`);
   } catch (e) {
     console.error("syncStock error:", e);
-    await logApi(client, syncRunId, "FETCH_STOCK", "error", "", e instanceof Error ? e.message : "Unknown", Date.now() - start);
+    await logApi(client, syncRunId, "FETCH_STOCK", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
   }
 }
 
