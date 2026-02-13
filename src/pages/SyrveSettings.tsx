@@ -666,7 +666,7 @@ export default function SyrveSettings() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-0">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 {
                   value: 'merge',
@@ -675,16 +675,22 @@ export default function SyrveSettings() {
                   description: 'Import new selection and keep all existing products untouched',
                 },
                 {
+                  value: 'hide',
+                  label: 'Hide Others',
+                  icon: '👁️‍🗨️',
+                  description: 'Import new selection and deactivate (hide) products not in it — data is preserved',
+                },
+                {
                   value: 'replace',
                   label: 'Replace',
                   icon: '🗑️',
                   description: 'Import new selection and permanently delete products not in it',
                 },
                 {
-                  value: 'hide',
-                  label: 'Hide Others',
-                  icon: '👁️‍🗨️',
-                  description: 'Import new selection and deactivate (hide) products not in it — data is preserved',
+                  value: 'fresh',
+                  label: 'Delete All & Import Fresh',
+                  icon: '🔄',
+                  description: 'Delete ALL existing products and barcodes, then import from scratch',
                 },
               ].map(mode => (
                 <div
@@ -702,10 +708,12 @@ export default function SyrveSettings() {
                 </div>
               ))}
             </div>
-            {reimportMode === 'replace' && (
+            {(reimportMode === 'replace' || reimportMode === 'fresh') && (
               <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
                 <p className="text-xs text-destructive font-medium">
-                  ⚠️ Warning: Replace mode will permanently delete products that are not part of the new import selection. This cannot be undone.
+                  {reimportMode === 'fresh'
+                    ? '⚠️ Warning: This will DELETE ALL existing products and barcodes before importing. This cannot be undone.'
+                    : '⚠️ Warning: Replace mode will permanently delete products that are not part of the new import selection. This cannot be undone.'}
                 </p>
               </div>
             )}
