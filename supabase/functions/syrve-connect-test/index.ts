@@ -92,14 +92,16 @@ serve(async (req) => {
       console.error("Error fetching stores:", e);
     }
 
-    // 5. Fetch departments (for category selection)
+    // 5. Fetch departments and extract business info
     let departments: any[] = [];
+    let businessInfo: any = null;
     try {
       const deptUrl = `${server_url}/corporation/departments?key=${syrveToken}`;
       const deptResp = await fetch(deptUrl);
       if (deptResp.ok) {
         const deptText = await deptResp.text();
         departments = parseStoresXml(deptText);
+        businessInfo = parseDepartmentDetails(deptText);
       }
     } catch (e) {
       console.error("Error fetching departments:", e);
@@ -119,6 +121,7 @@ serve(async (req) => {
       server_version: serverVersion,
       stores,
       departments,
+      business_info: businessInfo,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -148,4 +151,93 @@ function parseStoresXml(xml: string): any[] {
     });
   }
   return stores;
+}
+
+/**
+ * Parse department XML to extract business/legal entity information.
+ * Looks for JURPERSON type items with jurPersonAdditionalPropertiesDto,
+ * and DEPARTMENT type items with taxpayerIdNumber.
+ */
+function parseDepartmentDetails(xml: string): any {
+  const result: any = {
+    legal_name: null,
+    business_name: null,
+    taxpayer_id: null,
+    registration_number: null,
+    address: null,
+    country: null,
+    region: null,
+    city: null,
+    street: null,
+    house: null,
+    zip_code: null,
+  };
+
+  const getTag = (content: string, tag: string): string | null => {
+    const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+    return m ? m[1].trim() : null;
+  };
+
+  const itemRegex = /<corporateItemDto>([\s\S]*?)<\/corporateItemDto>/g;
+  let match;
+
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const item = match[1];
+    const itemType = getTag(item, "type");
+
+    // Extract taxpayerIdNumber from DEPARTMENT type
+    if (itemType === "DEPARTMENT") {
+      const tid = getTag(item, "taxpayerIdNumber");
+      if (tid && !result.taxpayer_id) {
+        result.taxpayer_id = tid;
+      }
+      // Use department name as business_name if not set
+      const deptName = getTag(item, "name");
+      if (deptName && !result.business_name) {
+        result.business_name = deptName;
+      }
+    }
+
+    // Extract rich legal data from JURPERSON type
+    if (itemType === "JURPERSON") {
+      const jurName = getTag(item, "name");
+      if (jurName) result.legal_name = jurName;
+
+      // Parse jurPersonAdditionalPropertiesDto block
+      const jurBlock = item.match(/<jurPersonAdditionalPropertiesDto>([\s\S]*?)<\/jurPersonAdditionalPropertiesDto>/);
+      if (jurBlock) {
+        const jur = jurBlock[1];
+        const jurTaxpayer = getTag(jur, "taxpayerId");
+        if (jurTaxpayer) result.taxpayer_id = jurTaxpayer;
+
+        const jurAddress = getTag(jur, "address");
+        if (jurAddress) result.address = jurAddress;
+
+        const jurRegNum = getTag(jur, "registrationNumber");
+        if (jurRegNum) result.registration_number = jurRegNum;
+
+        // Parse legalAddressDto
+        const addrBlock = jur.match(/<legalAddressDto>([\s\S]*?)<\/legalAddressDto>/);
+        if (addrBlock) {
+          const addr = addrBlock[1];
+          result.zip_code = getTag(addr, "zipCode") || result.zip_code;
+          result.country = getTag(addr, "country") || result.country;
+          result.region = getTag(addr, "region") || result.region;
+          result.city = getTag(addr, "city") || result.city;
+          result.street = getTag(addr, "street") || result.street;
+          result.house = getTag(addr, "house") || result.house;
+        }
+      }
+    }
+  }
+
+  // Build composite address if components exist but address is empty
+  if (!result.address && (result.street || result.house)) {
+    const parts = [result.street, result.house].filter(Boolean);
+    result.address = parts.join(', ');
+  }
+
+  // Check if we found any useful data
+  const hasData = Object.values(result).some(v => v !== null);
+  return hasData ? result : null;
 }

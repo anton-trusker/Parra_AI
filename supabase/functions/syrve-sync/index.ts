@@ -176,7 +176,6 @@ async function syncStores(client: any, baseUrl: string, token: string, syncRunId
 
     const payloadHash = await sha1(JSON.stringify(store));
 
-    // Hash-based skip: check if raw object already has this hash
     const { data: existing } = await client.from("syrve_raw_objects")
       .select("payload_hash")
       .eq("entity_type", "store")
@@ -235,7 +234,6 @@ async function syncCategories(client: any, baseUrl: string, token: string, syncR
 
     const payloadHash = await sha1(JSON.stringify(group));
 
-    // Hash-based skip
     const { data: existing } = await client.from("syrve_raw_objects")
       .select("payload_hash")
       .eq("entity_type", "product_group")
@@ -332,7 +330,6 @@ async function syncProducts(
 
     const payloadHash = await sha1(JSON.stringify(product));
 
-    // Hash-based skip
     const { data: existing } = await client.from("syrve_raw_objects")
       .select("payload_hash")
       .eq("entity_type", "product")
@@ -358,6 +355,30 @@ async function syncProducts(
     const vintageMatch = product.name?.match(/(19|20)\d{2}/);
     const vintage = vintageMatch ? parseInt(vintageMatch[0]) : null;
 
+    // Extract container data for unit_capacity
+    let unitCapacity = product.unitCapacity || null;
+    const containers = product.containers || [];
+    if (Array.isArray(containers) && containers.length > 0 && !unitCapacity) {
+      const firstContainer = containers[0];
+      if (firstContainer.count) {
+        unitCapacity = parseFloat(firstContainer.count);
+      }
+    }
+
+    // Build metadata with productCategory and cookingPlaceType
+    const metadata: any = {
+      vintage,
+      extracted_at: new Date().toISOString(),
+    };
+    if (product.productCategory) metadata.productCategory = product.productCategory;
+    if (product.cookingPlaceType) metadata.cookingPlaceType = product.cookingPlaceType;
+
+    // Include container data in syrve_data
+    const syrveData = { ...product };
+    if (containers.length > 0) {
+      syrveData.containers = containers;
+    }
+
     const { data: upserted } = await client.from("products").upsert({
       syrve_product_id: syrveId,
       category_id: categoryId || null,
@@ -367,13 +388,13 @@ async function syncProducts(
       code: product.code || null,
       product_type: product.type || product.productType || null,
       main_unit_id: product.mainUnit || null,
-      unit_capacity: product.unitCapacity || null,
+      unit_capacity: unitCapacity,
       default_sale_price: product.defaultSalePrice || null,
       not_in_store_movement: product.notInStoreMovement || false,
       is_deleted: product.deleted || false,
       is_active: !(product.deleted || false),
-      syrve_data: product,
-      metadata: { vintage, extracted_at: new Date().toISOString() },
+      syrve_data: syrveData,
+      metadata,
       synced_at: new Date().toISOString(),
     }, { onConflict: "syrve_product_id" }).select("id").single();
 
@@ -407,6 +428,7 @@ function parseXmlItems(xml: string, tagName: string): any[] {
   while ((match = regex.exec(xml)) !== null) {
     const item: any = {};
     const content = match[1];
+
     // Parse nested barcodes
     const barcodesMatch = content.match(/<barcodes>([\s\S]*?)<\/barcodes>/);
     if (barcodesMatch) {
@@ -424,11 +446,34 @@ function parseXmlItems(xml: string, tagName: string): any[] {
       }
       if (barcodeItems.length > 0) item.barcodes = barcodeItems;
     }
+
+    // Parse nested containers
+    const containersMatch = content.match(/<containers>([\s\S]*?)<\/containers>/);
+    if (containersMatch) {
+      const containerItems: any[] = [];
+      const cRegex = /<container>([\s\S]*?)<\/container>/g;
+      let cMatch;
+      while ((cMatch = cRegex.exec(containersMatch[1])) !== null) {
+        const cItem: any = {};
+        const cFieldRegex = /<(\w+)>([^<]*)<\/\1>/g;
+        let cFieldMatch;
+        while ((cFieldMatch = cFieldRegex.exec(cMatch[1])) !== null) {
+          const val = cFieldMatch[2];
+          if (val === "true") cItem[cFieldMatch[1]] = true;
+          else if (val === "false") cItem[cFieldMatch[1]] = false;
+          else if (!isNaN(Number(val)) && val !== "") cItem[cFieldMatch[1]] = Number(val);
+          else cItem[cFieldMatch[1]] = val;
+        }
+        containerItems.push(cItem);
+      }
+      if (containerItems.length > 0) item.containers = containerItems;
+    }
+
     // Parse simple fields
     const fieldRegex = /<(\w+)>([^<]*)<\/\1>/g;
     let fieldMatch;
     while ((fieldMatch = fieldRegex.exec(content)) !== null) {
-      if (fieldMatch[1] === 'barcodes' || fieldMatch[1] === 'barcodeContainer') continue;
+      if (['barcodes', 'barcodeContainer', 'containers', 'container'].includes(fieldMatch[1])) continue;
       const val = fieldMatch[2];
       if (val === "true") item[fieldMatch[1]] = true;
       else if (val === "false") item[fieldMatch[1]] = false;

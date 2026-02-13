@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, XCircle, Loader2, Store, FolderTree, Filter } from 'lucide-react';
+import { ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, XCircle, Loader2, Store, FolderTree, Filter, Building2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useUpdateAppSetting } from '@/hooks/useAppSettings';
 import {
   useSyrveConfig,
   useTestSyrveConnection,
@@ -26,6 +27,7 @@ export default function SyrveSettings() {
   const { data: categories } = useSyrveCategories();
   const testConnection = useTestSyrveConnection();
   const saveConfig = useSaveSyrveConfig();
+  const updateSetting = useUpdateAppSetting();
 
   const [serverUrl, setServerUrl] = useState('');
   const [apiLogin, setApiLogin] = useState('');
@@ -36,6 +38,8 @@ export default function SyrveSettings() {
   const [passwordHash, setPasswordHash] = useState('');
   const [tested, setTested] = useState(false);
   const [serverVersion, setServerVersion] = useState('');
+  const [businessInfo, setBusinessInfo] = useState<any>(null);
+  const [importingBusiness, setImportingBusiness] = useState(false);
 
   // Pre-fill form from existing config
   useEffect(() => {
@@ -66,11 +70,37 @@ export default function SyrveSettings() {
       setTestStores(result.stores || []);
       setPasswordHash(result.password_hash);
       setServerVersion(result.server_version || '');
+      setBusinessInfo(result.business_info || null);
       setTested(true);
       toast.success(`Connection successful! Found ${result.stores?.length || 0} stores. Server: ${result.server_version || 'unknown'}`);
     } catch (err: any) {
       toast.error(err.message || 'Connection failed');
       setTested(false);
+    }
+  };
+
+  const handleImportBusinessInfo = async () => {
+    if (!businessInfo) return;
+    setImportingBusiness(true);
+    try {
+      const mapping: Record<string, string | null> = {
+        business_name: businessInfo.business_name,
+        legal_name: businessInfo.legal_name,
+        business_address: businessInfo.address,
+        business_country: businessInfo.country,
+        business_city: businessInfo.city,
+        taxpayer_id: businessInfo.taxpayer_id,
+      };
+      for (const [key, value] of Object.entries(mapping)) {
+        if (value) {
+          await updateSetting.mutateAsync({ key, value });
+        }
+      }
+      toast.success('Business info imported to Business Settings');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to import');
+    } finally {
+      setImportingBusiness(false);
     }
   };
 
@@ -230,6 +260,39 @@ export default function SyrveSettings() {
               </Badge>
             )}
           </div>
+
+          {/* Business Info Import */}
+          {tested && businessInfo && (
+            <Card className="border-dashed">
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Building2 className="w-4 h-4 text-primary" />
+                      <p className="font-medium text-sm">Business Info Detected</p>
+                    </div>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      {businessInfo.legal_name && <p>Legal: {businessInfo.legal_name}</p>}
+                      {businessInfo.business_name && <p>Name: {businessInfo.business_name}</p>}
+                      {businessInfo.taxpayer_id && <p>Tax ID: {businessInfo.taxpayer_id}</p>}
+                      {businessInfo.country && <p>Country: {businessInfo.country}</p>}
+                      {businessInfo.city && <p>City: {businessInfo.city}</p>}
+                      {businessInfo.address && <p>Address: {businessInfo.address}</p>}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleImportBusinessInfo}
+                    disabled={importingBusiness}
+                  >
+                    {importingBusiness && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                    Import
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Store Selection */}
           {(tested || isConfigured) && availableStores.length > 0 && (

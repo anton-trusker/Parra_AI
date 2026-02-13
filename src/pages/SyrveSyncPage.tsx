@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, RefreshCw, Download, CheckCircle2, XCircle, Clock, Loader2, Package, FolderTree, Store, Barcode, Send, SkipForward } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Download, CheckCircle2, XCircle, Clock, Loader2, Package, FolderTree, Store, Barcode, Send, SkipForward, Wine, Beaker } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -32,6 +32,35 @@ export default function SyrveSyncPage() {
   const isConfigured = config?.connection_status === 'connected';
   const isSyncing = syncRuns?.some(r => r.status === 'running');
   const pendingJobs = outboxJobs?.filter(j => j.status === 'pending' || j.status === 'processing') || [];
+
+  // Compute unit type breakdown from products
+  const unitBreakdown = (() => {
+    if (!products || products.length === 0) return null;
+    const units: Record<string, number> = {};
+    const categories: Record<string, number> = {};
+    let withContainers = 0;
+    let withoutContainers = 0;
+
+    for (const p of products) {
+      const unit = (p as any).main_unit_id || 'unknown';
+      units[unit] = (units[unit] || 0) + 1;
+
+      const meta = (p as any).metadata as any;
+      if (meta?.productCategory) {
+        const cat = meta.productCategory;
+        categories[cat] = (categories[cat] || 0) + 1;
+      }
+
+      const syrveData = (p as any).syrve_data as any;
+      if (syrveData?.containers && Array.isArray(syrveData.containers) && syrveData.containers.length > 0) {
+        withContainers++;
+      } else {
+        withoutContainers++;
+      }
+    }
+
+    return { units, categories, withContainers, withoutContainers };
+  })();
 
   const handleSync = async (type: string) => {
     try {
@@ -155,6 +184,68 @@ export default function SyrveSyncPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Unit Type Breakdown */}
+      {unitBreakdown && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Beaker className="w-5 h-5" />
+              Product Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Unit types */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">By Main Unit</p>
+                <div className="space-y-1">
+                  {Object.entries(unitBreakdown.units)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([unit, count]) => (
+                      <div key={unit} className="flex items-center justify-between text-sm">
+                        <span className="truncate">{unit || 'unknown'}</span>
+                        <Badge variant="outline" className="ml-2">{count}</Badge>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Container info */}
+              <div>
+                <p className="text-xs font-medium text-muted-foreground mb-2">Container Data</p>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>With containers</span>
+                    <Badge variant="outline">{unitBreakdown.withContainers}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Without containers</span>
+                    <Badge variant="outline">{unitBreakdown.withoutContainers}</Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Product categories */}
+              {Object.keys(unitBreakdown.categories).length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-2">By Category Type</p>
+                  <div className="space-y-1">
+                    {Object.entries(unitBreakdown.categories)
+                      .sort(([, a], [, b]) => b - a)
+                      .map(([cat, count]) => (
+                        <div key={cat} className="flex items-center justify-between text-sm">
+                          <span className="truncate">{cat}</span>
+                          <Badge variant="outline" className="ml-2">{count}</Badge>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sync Actions */}
       <Card>
