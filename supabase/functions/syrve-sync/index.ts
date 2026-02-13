@@ -80,9 +80,15 @@ serve(async (req) => {
     const selectedCategoryIds: string[] = config.selected_category_ids || [];
 
     try {
+      // Normalize server_url: ensure it ends with /api
+      let serverUrl = config.server_url.replace(/\/+$/, '');
+      if (!serverUrl.endsWith('/api')) {
+        serverUrl = serverUrl + '/api';
+      }
+
       // 1. Login to Syrve
       const authStart = Date.now();
-      const authUrl = `${config.server_url}/auth?login=${encodeURIComponent(config.api_login)}&pass=${config.api_password_hash}`;
+      const authUrl = `${serverUrl}/auth?login=${encodeURIComponent(config.api_login)}&pass=${config.api_password_hash}`;
       const authResp = await fetch(authUrl);
       if (!authResp.ok) throw new Error(`Syrve auth failed: ${authResp.status}`);
       syrveToken = (await authResp.text()).trim();
@@ -91,15 +97,15 @@ serve(async (req) => {
 
       // 2. Sync based on type
       if (runType === "bootstrap" || runType === "stores") {
-        await syncStores(adminClient, config.server_url, syrveToken, syncRun?.id, stats);
+        await syncStores(adminClient, serverUrl, syrveToken, syncRun?.id, stats);
       }
 
       if (runType === "bootstrap" || runType === "categories") {
-        await syncCategories(adminClient, config.server_url, syrveToken, syncRun?.id, stats);
+        await syncCategories(adminClient, serverUrl, syrveToken, syncRun?.id, stats);
       }
 
       if (runType === "bootstrap" || runType === "products") {
-        await syncProducts(adminClient, config.server_url, syrveToken, syncRun?.id, stats, selectedCategoryIds);
+        await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds);
       }
 
       // Update sync run as success
@@ -123,7 +129,7 @@ serve(async (req) => {
       // Always logout and release lock
       if (syrveToken) {
         try {
-          await fetch(`${config.server_url}/logout?key=${syrveToken}`);
+          await fetch(`${serverUrl}/logout?key=${syrveToken}`);
           await logApi(adminClient, syncRun?.id, "LOGOUT", "success", "");
         } catch (e) { console.error("Logout error:", e); }
       }
