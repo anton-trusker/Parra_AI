@@ -70,7 +70,7 @@ const App = () => (
                 <Route path="/count" element={<InventoryCount />} />
                 <Route path="/stock" element={<CurrentStock />} />
                 <Route path="/history" element={<InventoryHistory />} />
-                <Route path="/sessions" element={<SessionReview />} />
+                <Route path="/sessions" element={<Navigate to="/stock" replace />} />
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<AppSettings />} />
