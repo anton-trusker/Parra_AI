@@ -1,9 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useColumnStore } from '@/stores/columnStore';
 import { useProducts, useToggleProductFlag, useBulkToggleProductFlag, Product } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
-import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, Wine, Star } from 'lucide-react';
+import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, Wine, Star, CheckSquare } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import DataTable, { DataTableColumn } from '@/components/DataTable';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const PRODUCT_COLUMN_DEFS: ColumnDef[] = [
+  { key: 'select', label: 'Select' },
   { key: 'marked', label: 'Marked' },
   { key: 'by_glass', label: 'By Glass' },
   { key: 'name', label: 'Name' },
@@ -71,11 +72,14 @@ function ContainerInfo({ syrveData }: { syrveData: any }) {
   );
 }
 
-function ProductCard({ product, onClick }: { product: Product; onClick: () => void }) {
+function ProductCard({ product, onClick, selected, onSelect }: { product: Product; onClick: () => void; selected: boolean; onSelect: (id: string) => void }) {
   const containers = product.syrve_data?.containers;
   return (
-    <div onClick={onClick} className="wine-glass-effect rounded-xl overflow-hidden group transition-all duration-300 hover:border-accent/30 hover:shadow-lg cursor-pointer">
-      <div className="p-4 space-y-2">
+    <div className="wine-glass-effect rounded-xl overflow-hidden group transition-all duration-300 hover:border-accent/30 hover:shadow-lg cursor-pointer relative">
+      <div className="absolute top-3 left-3 z-10" onClick={e => { e.stopPropagation(); onSelect(product.id); }}>
+        <Checkbox checked={selected} className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary" />
+      </div>
+      <div onClick={onClick} className="p-4 pl-10 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-1.5">
             {product.is_marked && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />}
@@ -129,6 +133,7 @@ export default function ProductCatalog() {
   const [byGlassFilter, setByGlassFilter] = useState(false);
   const [view, setView] = useState<'cards' | 'table'>('table');
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const categoryFromUrl = searchParams.get('category') || undefined;
 
@@ -162,7 +167,47 @@ export default function ProductCatalog() {
     toggleFlag.mutate({ id: productId, field, value: !current });
   };
 
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === products.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(products.map(p => p.id)));
+    }
+  }, [products, selectedIds.size]);
+
+  const handleBulkAction = useCallback((field: 'is_marked' | 'is_by_glass', value: boolean) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    bulkToggle.mutate({ ids, field, value }, {
+      onSuccess: () => setSelectedIds(new Set()),
+    });
+  }, [selectedIds, bulkToggle]);
+
+  const allSelected = products.length > 0 && selectedIds.size === products.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < products.length;
+
   const tableColumns = useMemo((): DataTableColumn<Product>[] => [
+    {
+      key: 'select',
+      label: '☐',
+      align: 'center',
+      render: p => (
+        <div onClick={e => { e.stopPropagation(); toggleSelect(p.id); }}>
+          <Checkbox
+            checked={selectedIds.has(p.id)}
+            className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+          />
+        </div>
+      ),
+    },
     {
       key: 'marked',
       label: '★',
@@ -200,7 +245,7 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
-  ], []);
+  ], [selectedIds, toggleSelect]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -210,6 +255,35 @@ export default function ProductCatalog() {
           <p className="text-muted-foreground mt-1">{products.length} products from Syrve</p>
         </div>
       </div>
+
+      {/* Bulk action toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckSquare className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          </div>
+          <div className="h-4 w-px bg-border" />
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_marked', true)}>
+            <Star className="w-3.5 h-3.5" /> Mark
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_marked', false)}>
+            <Star className="w-3.5 h-3.5" /> Unmark
+          </Button>
+          <div className="h-4 w-px bg-border" />
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_by_glass', true)}>
+            <Wine className="w-3.5 h-3.5" /> Set By Glass
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_by_glass', false)}>
+            <Wine className="w-3.5 h-3.5" /> Unset By Glass
+          </Button>
+          <div className="ml-auto">
+            <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setSelectedIds(new Set())}>
+              <X className="w-3 h-3 mr-1" /> Clear
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row gap-3">
@@ -222,7 +296,14 @@ export default function ProductCatalog() {
             <span className="hidden sm:inline">Filters</span>
             {activeFilterCount > 0 && <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">{activeFilterCount}</span>}
           </Button>
-          {view === 'table' && <ColumnManager columns={PRODUCT_COLUMN_DEFS} visibleColumns={productColumns} onChange={setProductColumns} />}
+          {view === 'table' && (
+            <>
+              <Button variant="outline" size="icon" className="h-11 w-11 border-border" title={allSelected ? 'Deselect all' : 'Select all'} onClick={toggleSelectAll}>
+                <CheckSquare className={`w-4 h-4 ${allSelected || someSelected ? 'text-primary' : ''}`} />
+              </Button>
+              <ColumnManager columns={PRODUCT_COLUMN_DEFS} visibleColumns={productColumns} onChange={setProductColumns} />
+            </>
+          )}
           <div className="flex border border-border rounded-lg overflow-hidden">
             <button onClick={() => setView('cards')} className={`p-2.5 transition-colors ${view === 'cards' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><LayoutGrid className="w-5 h-5" /></button>
             <button onClick={() => setView('table')} className={`p-2.5 transition-colors ${view === 'table' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><Table2 className="w-5 h-5" /></button>
@@ -279,7 +360,15 @@ export default function ProductCatalog() {
         </div>
       ) : view === 'cards' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {products.map(p => <ProductCard key={p.id} product={p} onClick={() => navigate(`/products/${p.id}`)} />)}
+          {products.map(p => (
+            <ProductCard
+              key={p.id}
+              product={p}
+              selected={selectedIds.has(p.id)}
+              onSelect={toggleSelect}
+              onClick={() => navigate(`/products/${p.id}`)}
+            />
+          ))}
         </div>
       ) : (
         <div className="wine-glass-effect rounded-xl overflow-hidden">
