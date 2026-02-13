@@ -1,0 +1,2 @@
+ALTER TABLE public.syrve_config ADD COLUMN IF NOT EXISTS reimport_mode text NOT NULL DEFAULT 'merge';
+COMMENT ON COLUMN public.syrve_config.reimport_mode IS 'How to handle existing products on reimport: merge (keep others), replace (delete others), hide (deactivate others)';

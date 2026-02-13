@@ -21,6 +21,7 @@ export interface SyrveConfig {
   auto_sync_enabled: boolean;
   sync_direction: string;
   import_inactive_products: boolean;
+  reimport_mode: string;
 }
 
 export interface SyrveStore {
