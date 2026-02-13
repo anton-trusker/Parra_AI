@@ -7,6 +7,7 @@ export interface DataTableColumn<T> {
   label: string;
   align?: 'left' | 'center' | 'right';
   render: (item: T) => React.ReactNode;
+  headerRender?: () => React.ReactNode;
   sortFn?: (a: T, b: T) => number;
   minWidth?: number;
 }
@@ -125,20 +126,22 @@ export default function DataTable<T>({
                     idx === 0 && 'sticky left-0 z-20 bg-card'
                   )}
                   style={{ width: w, minWidth: col.minWidth || (compact ? 80 : 100) }}
-                  onClick={() => handleSort(col.key)}
+                  onClick={() => !col.headerRender && handleSort(col.key)}
                 >
-                  <span className="inline-flex items-center gap-1">
-                    {col.label}
-                    {isSortable && (
-                      <span className="inline-flex opacity-50 group-hover:opacity-100 transition-opacity">
-                        {isSorted ? (
-                          sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                        ) : (
-                          <ArrowUpDown className="w-3 h-3" />
-                        )}
-                      </span>
-                    )}
-                  </span>
+                  {col.headerRender ? col.headerRender() : (
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {isSortable && (
+                        <span className="inline-flex opacity-50 group-hover:opacity-100 transition-opacity">
+                          {isSorted ? (
+                            sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3" />
+                          )}
+                        </span>
+                      )}
+                    </span>
+                  )}
                   <div
                     className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize bg-border/40 hover:bg-primary/50 hover:w-1.5 transition-all"
                     onMouseDown={e => handleResizeStart(e, col.key)}
