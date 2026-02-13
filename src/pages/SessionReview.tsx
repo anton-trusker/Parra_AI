@@ -85,7 +85,7 @@ export default function SessionReview() {
     });
   }, [sessions, statusFilter, typeFilter, search]);
 
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
   const pendingCount = sessions.filter(s => s.status === 'completed').length;
   const approvedCount = sessions.filter(s => s.status === 'approved').length;

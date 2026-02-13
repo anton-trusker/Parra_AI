@@ -37,7 +37,7 @@ function useAiConfig() {
 
 export default function AppSettings() {
   const { user } = useAuthStore();
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
   const { data: syrveConfig } = useSyrveConfig();
   const { data: syncRuns } = useSyrveSyncRuns();

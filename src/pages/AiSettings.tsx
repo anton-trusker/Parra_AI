@@ -84,7 +84,7 @@ export default function AiSettings() {
   const [saving, setSaving] = useState(false);
   const [reindexing, setReindexing] = useState(false);
 
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
   const handleSave = async () => {
     setSaving(true);

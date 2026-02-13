@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 
 export default function Reports() {
   const { user } = useAuthStore();
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
   const reportTypes = [
     { icon: BarChart3, title: 'Stock Summary', desc: 'Current stock levels across all wines', color: 'text-primary' },
