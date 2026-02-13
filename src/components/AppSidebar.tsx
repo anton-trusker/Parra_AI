@@ -32,9 +32,7 @@ const navGroups: NavGroup[] = [
     title: 'Inventory',
     items: [
       { label: 'Wine Inventory', icon: Wine, path: '/catalog', module: 'catalog' },
-      { label: 'Current Stock', icon: Package, path: '/stock', module: 'stock' },
-      { label: 'Start Count', icon: ScanLine, path: '/count', module: 'stock' },
-      { label: 'Session Review', icon: ClipboardCheck, path: '/sessions', module: 'sessions' },
+      { label: 'Inventarisation Check', icon: ClipboardCheck, path: '/stock', module: 'stock' },
     ],
   },
   {
