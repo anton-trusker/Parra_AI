@@ -23,3 +23,15 @@ verify_jwt = false
 
 [functions.syrve-process-outbox]
 verify_jwt = false
+
+[functions.syrve-stock-snapshot]
+verify_jwt = false
+
+[functions.inventory-create-session]
+verify_jwt = false
+
+[functions.inventory-load-baseline]
+verify_jwt = false
+
+[functions.inventory-submit-to-syrve]
+verify_jwt = false
