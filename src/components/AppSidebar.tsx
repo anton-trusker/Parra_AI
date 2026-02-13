@@ -2,8 +2,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import {
   LayoutDashboard, Wine, Package, History, BarChart3, ClipboardCheck,
-  LogOut, Settings, User, Plus, ScanLine, Truck, FolderTree } from
-'lucide-react';
+  LogOut, Settings, User, Plus, ScanLine, Truck, FolderTree
+} from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import type { ModuleKey } from '@/data/referenceData';
 import { useAppSetting } from '@/hooks/useAppSettings';
@@ -23,50 +23,50 @@ interface NavGroup {
 }
 
 const navGroups: NavGroup[] = [
-{
-  items: [
-  { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', module: 'dashboard' }]
-
-},
-{
-  title: 'Inventory',
-  items: [
-  { label: 'Current Stock', icon: Package, path: '/stock', module: 'stock' },
-  { label: 'Start Count', icon: ScanLine, path: '/count', module: 'stock' },
-  { label: 'Session Review', icon: ClipboardCheck, path: '/sessions', module: 'sessions' }]
-
-},
-{
-  title: 'Catalog',
-  items: [
-  { label: 'Wine Catalog', icon: Wine, path: '/catalog', module: 'catalog' },
-  { label: 'Products', icon: Package, path: '/products', module: 'catalog' },
-  { label: 'Categories', icon: FolderTree, path: '/categories', module: 'catalog' }]
-
-},
-{
-  items: [
-  { label: 'History & Logs', icon: History, path: '/history', module: 'history' }]
-
-},
-{
-  title: 'Reports',
-  comingSoon: true,
-  items: [
-  { label: 'Reports', icon: BarChart3, path: '/reports', module: 'reports' }]
-
-},
-{
-  title: 'Suppliers / Orders',
-  comingSoon: true,
-  items: []
-},
-{
-  items: [
-  { label: 'Settings', icon: Settings, path: '/settings', module: 'settings' }]
-
-}];
-
+  {
+    items: [
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', module: 'dashboard' },
+    ],
+  },
+  {
+    title: 'Inventory',
+    items: [
+      { label: 'Current Stock', icon: Package, path: '/stock', module: 'stock' },
+      { label: 'Start Count', icon: ScanLine, path: '/count', module: 'stock' },
+      { label: 'Session Review', icon: ClipboardCheck, path: '/sessions', module: 'sessions' },
+    ],
+  },
+  {
+    title: 'Catalog',
+    items: [
+      { label: 'Wine Catalog', icon: Wine, path: '/catalog', module: 'catalog' },
+      { label: 'Products', icon: Package, path: '/products', module: 'catalog' },
+      { label: 'Categories', icon: FolderTree, path: '/categories', module: 'catalog' },
+    ],
+  },
+  {
+    items: [
+      { label: 'History & Logs', icon: History, path: '/history', module: 'history' },
+    ],
+  },
+  {
+    title: 'Reports',
+    comingSoon: true,
+    items: [
+      { label: 'Reports', icon: BarChart3, path: '/reports', module: 'reports' },
+    ],
+  },
+  {
+    title: 'Suppliers / Orders',
+    comingSoon: true,
+    items: [],
+  },
+  {
+    items: [
+      { label: 'Settings', icon: Settings, path: '/settings', module: 'settings' },
+    ],
+  },
+];
 
 export default function AppSidebar() {
   const { user, logout } = useAuthStore();
@@ -79,18 +79,18 @@ export default function AppSidebar() {
   const shouldHideScanner = !isMobile && hideScannerDesktop === true;
 
   const isActive = (path: string) =>
-  location.pathname === path || path !== '/dashboard' && location.pathname.startsWith(path);
+    location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path));
 
   const filterItems = (items: NavItemDef[]) =>
-  items.filter((item) => {
-    if (!role) return false;
-    // Hide "Start Count" on desktop when setting enabled
-    if (shouldHideScanner && item.path === '/count') return false;
-    // Admin sees everything, staff sees non-restricted
-    if (role.id === 'admin' || role.id === 'super_admin') return true;
-    const restricted: ModuleKey[] = ['settings' as ModuleKey, 'users' as ModuleKey];
-    return !restricted.includes(item.module);
-  });
+    items.filter(item => {
+      if (!role) return false;
+      // Hide "Start Count" on desktop when setting enabled
+      if (shouldHideScanner && item.path === '/count') return false;
+      // Admin sees everything, staff sees non-restricted
+      if (role.id === 'admin' || role.id === 'super_admin') return true;
+      const restricted: ModuleKey[] = ['settings' as ModuleKey, 'users' as ModuleKey];
+      return !restricted.includes(item.module);
+    });
 
   return (
     <>
@@ -100,7 +100,7 @@ export default function AppSidebar() {
           <div className="w-8 h-8 rounded-lg wine-gradient flex items-center justify-center">
             <Wine className="w-4 h-4 text-primary-foreground" />
           </div>
-          <h1 className="font-heading text-base font-semibold text-foreground">Simply Rest</h1>
+          <h1 className="font-heading text-base font-semibold text-foreground">Parra</h1>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle className="p-1.5" />
@@ -114,12 +114,12 @@ export default function AppSidebar() {
       <aside className="hidden lg:flex fixed top-0 left-0 h-full w-64 bg-sidebar z-50 border-r border-sidebar-border flex-col">
         {/* Logo */}
         <div className="p-6 border-b border-sidebar-border">
-          <div className="gap-3 flex items-center justify-center text-primary">
-            
-
-
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl wine-gradient flex items-center justify-center shadow-lg shadow-primary/20">
+              <Wine className="w-5 h-5 text-primary-foreground" />
+            </div>
             <div>
-              <h1 className="font-heading text-lg font-semibold text-foreground">Simply Rest</h1>
+              <h1 className="font-heading text-lg font-semibold text-foreground">Parra</h1>
               <p className="text-xs text-muted-foreground">by Trusker Solutions</p>
             </div>
           </div>
@@ -138,43 +138,43 @@ export default function AppSidebar() {
                 {gi > 0 && <div className="my-2 mx-2 border-t border-sidebar-border/60" />}
 
                 {/* Group title */}
-                {group.title &&
-                <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+                {group.title && (
+                  <div className="flex items-center gap-2 px-3 pt-2 pb-1">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
                       {group.title}
                     </span>
-                    {group.comingSoon &&
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+                    {group.comingSoon && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
                         Soon
                       </span>
-                  }
+                    )}
                   </div>
-                }
+                )}
 
                 {/* Coming soon placeholder with no items */}
-                {group.comingSoon && group.items.length === 0 &&
-                <div className="px-3 py-2 flex items-center gap-3 text-muted-foreground/50">
+                {group.comingSoon && group.items.length === 0 && (
+                  <div className="px-3 py-2 flex items-center gap-3 text-muted-foreground/50">
                     <Truck className="w-5 h-5" />
                     <span className="text-sm">Coming soon</span>
                   </div>
-                }
+                )}
 
                 {/* Nav items */}
-                {visibleItems.map((item) =>
-                <button
-                  key={item.path}
-                  onClick={() => !group.comingSoon && navigate(item.path)}
-                  className={`nav-item w-full ${isActive(item.path) ? 'active' : ''} ${
-                  group.comingSoon ? 'opacity-50 cursor-not-allowed' : ''}`
-                  }
-                  disabled={group.comingSoon}>
-
+                {visibleItems.map(item => (
+                  <button
+                    key={item.path}
+                    onClick={() => !group.comingSoon && navigate(item.path)}
+                    className={`nav-item w-full ${isActive(item.path) ? 'active' : ''} ${
+                      group.comingSoon ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    disabled={group.comingSoon}
+                  >
                     <item.icon className="w-5 h-5" />
                     {item.label}
                   </button>
-                )}
-              </div>);
-
+                ))}
+              </div>
+            );
           })}
         </nav>
 
@@ -192,12 +192,12 @@ export default function AppSidebar() {
             </button>
             <ThemeToggle />
           </div>
-          <button onClick={() => {logout();navigate('/login');}} className="nav-item w-full text-destructive hover:bg-destructive/10">
+          <button onClick={() => { logout(); navigate('/login'); }} className="nav-item w-full text-destructive hover:bg-destructive/10">
             <LogOut className="w-4 h-4" />
             Logout
           </button>
         </div>
       </aside>
-    </>);
-
+    </>
+  );
 }
