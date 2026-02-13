@@ -138,7 +138,8 @@ export default function SyrveSettings() {
           setActiveSyncRunId(null);
           setSyncFinished(true);
           if (data.status === 'success') {
-            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories, ${s?.prices_updated || 0} prices, ${s?.stock_updated || 0} stock levels.`);
+            const aiInfo = s?.ai_enriched ? `, ${s.ai_enriched} AI-enriched (~$${s.ai_estimated_cost_usd || 0})` : '';
+            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories, ${s?.prices_updated || 0} prices, ${s?.stock_updated || 0} stock levels${s?.wines_created ? `, ${s.wines_created} wines created` : ''}${aiInfo}.`);
           } else {
             toast.error(`Sync failed: ${data.error || 'Unknown error'}`);
           }
@@ -302,6 +303,8 @@ export default function SyrveSettings() {
     { key: 'fetching_prices', label: 'Fetching Prices' },
     { key: 'fetching_stock', label: 'Fetching Stock' },
     { key: 'applying_reimport_mode', label: 'Applying Rules' },
+    { key: 'enriching_wines', label: 'Enriching Wines' },
+    { key: 'ai_enriching', label: 'AI Enrichment' },
     { key: 'completed', label: 'Completed' },
   ];
 
