@@ -5,7 +5,8 @@ import { useWineImages, useUploadWineImage, useSetPrimaryImage, useDeleteWineIma
 import { useWineVariants } from '@/hooks/useWineVariants';
 import { useWineMovements } from '@/hooks/useWineMovements';
 import { useArchiveWine } from '@/hooks/useWines';
-import { ArrowLeft, Edit, Copy, Archive, Wine as WineIcon, ImageOff, MapPin, Grape, DollarSign, Package, Clock, History, Upload, Star, Trash2, Layers, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { useLinkedProduct } from '@/hooks/useLinkedProduct';
+import { ArrowLeft, Edit, Copy, Archive, Wine as WineIcon, ImageOff, MapPin, Grape, DollarSign, Package, Clock, History, Upload, Star, Trash2, Layers, Image as ImageIcon, Loader2, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -27,6 +28,7 @@ export default function WineDetail() {
   const { data: images = [] } = useWineImages(id);
   const { data: variants = [] } = useWineVariants(id);
   const { data: movements = [] } = useWineMovements(id);
+  const { data: linkedProduct } = useLinkedProduct(wine?.product_id);
   const uploadImage = useUploadWineImage();
   const setPrimary = useSetPrimaryImage();
   const deleteImage = useDeleteWineImage();
@@ -139,6 +141,12 @@ export default function WineDetail() {
           {wine.raw_source_name && (
             <p className="text-xs text-muted-foreground">Original name: <span className="font-mono">{wine.raw_source_name}</span></p>
           )}
+          <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+            <span>SKU: <span className="font-mono text-foreground">{wine.sku || '—'}</span></span>
+            {wine.internal_code && <span>Code: <span className="font-mono text-foreground">{wine.internal_code}</span></span>}
+            {wine.syrve_product_id && <span>Syrve ID: <span className="font-mono text-foreground">{wine.syrve_product_id.slice(0, 8)}…</span></span>}
+            {wine.primary_barcode && <span>Barcode: <span className="font-mono text-foreground">{wine.primary_barcode}</span></span>}
+          </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="wine-glass-effect rounded-lg p-3 text-center">
@@ -180,6 +188,11 @@ export default function WineDetail() {
           <TabsTrigger value="history" className="flex-1 sm:flex-initial">
             <History className="w-3.5 h-3.5 mr-1.5" /> History
           </TabsTrigger>
+          {wine.product_id && (
+            <TabsTrigger value="syrve" className="flex-1 sm:flex-initial">
+              <Database className="w-3.5 h-3.5 mr-1.5" /> Syrve
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Details Tab */}
@@ -364,6 +377,90 @@ export default function WineDetail() {
             )}
           </div>
         </TabsContent>
+        {/* Syrve Data Tab */}
+        {wine.product_id && linkedProduct && (
+          <TabsContent value="syrve" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Product Info */}
+              <div className="wine-glass-effect rounded-xl p-5 space-y-3">
+                <h3 className="font-heading font-semibold flex items-center gap-2">
+                  <Database className="w-4 h-4 text-accent" /> Product Record
+                </h3>
+                <div className="grid grid-cols-2 gap-y-2 text-sm">
+                  <span className="text-muted-foreground">Product ID</span>
+                  <span className="font-mono text-xs break-all">{linkedProduct.id}</span>
+                  <span className="text-muted-foreground">Syrve Product ID</span>
+                  <span className="font-mono text-xs break-all">{linkedProduct.syrve_product_id}</span>
+                  <span className="text-muted-foreground">Name (Syrve)</span>
+                  <span>{linkedProduct.name}</span>
+                  <span className="text-muted-foreground">SKU (num)</span>
+                  <span className="font-mono">{linkedProduct.sku || '—'}</span>
+                  <span className="text-muted-foreground">Code</span>
+                  <span className="font-mono">{linkedProduct.code || '—'}</span>
+                  <span className="text-muted-foreground">Product Type</span>
+                  <span>{linkedProduct.product_type || '—'}</span>
+                  <span className="text-muted-foreground">Main Unit ID</span>
+                  <span className="font-mono text-xs">{linkedProduct.main_unit_id || '—'}</span>
+                  <span className="text-muted-foreground">Unit Capacity</span>
+                  <span>{linkedProduct.unit_capacity ?? '—'}</span>
+                  <span className="text-muted-foreground">Is By Glass</span>
+                  <span>{linkedProduct.is_by_glass ? 'Yes' : 'No'}</span>
+                  <span className="text-muted-foreground">Is Marked</span>
+                  <span>{linkedProduct.is_marked ? 'Yes' : 'No'}</span>
+                  <span className="text-muted-foreground">Not In Store Mvmt</span>
+                  <span>{linkedProduct.not_in_store_movement ? 'Yes' : 'No'}</span>
+                  <span className="text-muted-foreground">Is Active</span>
+                  <span>{linkedProduct.is_active ? 'Yes' : 'No'}</span>
+                  <span className="text-muted-foreground">Is Deleted</span>
+                  <span>{linkedProduct.is_deleted ? 'Yes' : 'No'}</span>
+                </div>
+              </div>
+
+              {/* Category */}
+              <div className="wine-glass-effect rounded-xl p-5 space-y-3">
+                <h3 className="font-heading font-semibold flex items-center gap-2">
+                  <Package className="w-4 h-4 text-accent" /> Category & Pricing
+                </h3>
+                <div className="grid grid-cols-2 gap-y-2 text-sm">
+                  <span className="text-muted-foreground">Category</span>
+                  <span>{(linkedProduct.categories as any)?.name || '—'}</span>
+                  <span className="text-muted-foreground">Category Syrve ID</span>
+                  <span className="font-mono text-xs">{(linkedProduct.categories as any)?.syrve_group_id || '—'}</span>
+                  <span className="text-muted-foreground">Default Sale Price</span>
+                  <span>{linkedProduct.default_sale_price ?? '—'}</span>
+                  <span className="text-muted-foreground">Sale Price</span>
+                  <span>{linkedProduct.sale_price ?? '—'}</span>
+                  <span className="text-muted-foreground">Purchase Price</span>
+                  <span>{linkedProduct.purchase_price ?? '—'}</span>
+                  <span className="text-muted-foreground">Current Stock</span>
+                  <span>{linkedProduct.current_stock ?? 0}</span>
+                  <span className="text-muted-foreground">Synced At</span>
+                  <span className="text-xs">{linkedProduct.synced_at ? new Date(linkedProduct.synced_at).toLocaleString() : '—'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Raw Syrve JSON */}
+            {linkedProduct.syrve_data && Object.keys(linkedProduct.syrve_data as object).length > 0 && (
+              <div className="wine-glass-effect rounded-xl p-5 space-y-3">
+                <h3 className="font-heading font-semibold">Raw Syrve Data</h3>
+                <pre className="text-xs font-mono bg-secondary/50 rounded-lg p-4 overflow-x-auto max-h-96 overflow-y-auto whitespace-pre-wrap break-all text-muted-foreground">
+                  {JSON.stringify(linkedProduct.syrve_data, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {/* Metadata */}
+            {linkedProduct.metadata && Object.keys(linkedProduct.metadata as object).length > 0 && (
+              <div className="wine-glass-effect rounded-xl p-5 space-y-3">
+                <h3 className="font-heading font-semibold">Metadata</h3>
+                <pre className="text-xs font-mono bg-secondary/50 rounded-lg p-4 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap break-all text-muted-foreground">
+                  {JSON.stringify(linkedProduct.metadata, null, 2)}
+                </pre>
+              </div>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Danger zone */}
