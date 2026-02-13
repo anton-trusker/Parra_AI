@@ -12,6 +12,7 @@ export interface SyrveConfig {
   connection_status: string;
   connection_tested_at: string | null;
   sync_lock_until: string | null;
+  selected_category_ids: string[] | null;
   settings: any;
 }
 
@@ -34,17 +35,27 @@ export interface SyrveSyncRun {
   error: string | null;
 }
 
+export interface SyrveOutboxJob {
+  id: string;
+  job_type: string;
+  status: string;
+  attempts: number;
+  last_error: string | null;
+  session_id: string | null;
+  created_at: string;
+}
+
 export function useSyrveConfig() {
   return useQuery({
     queryKey: ['syrve_config'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('syrve_config' as any)
+        .from('syrve_config')
         .select('*')
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      return data as unknown as SyrveConfig | null;
+      return data as SyrveConfig | null;
     },
   });
 }
@@ -54,11 +65,11 @@ export function useSyrveStores() {
     queryKey: ['syrve_stores'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('stores' as any)
+        .from('stores')
         .select('*')
         .order('name');
       if (error) throw error;
-      return (data || []) as unknown as SyrveStore[];
+      return (data || []) as SyrveStore[];
     },
   });
 }
@@ -68,14 +79,30 @@ export function useSyrveSyncRuns() {
     queryKey: ['syrve_sync_runs'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('syrve_sync_runs' as any)
+        .from('syrve_sync_runs')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(20);
       if (error) throw error;
-      return (data || []) as unknown as SyrveSyncRun[];
+      return (data || []) as SyrveSyncRun[];
     },
-    refetchInterval: 5000, // Poll during syncs
+    refetchInterval: 5000,
+  });
+}
+
+export function useSyrveOutboxJobs() {
+  return useQuery({
+    queryKey: ['syrve_outbox_jobs'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('syrve_outbox_jobs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data || []) as SyrveOutboxJob[];
+    },
+    refetchInterval: 10000,
   });
 }
 
@@ -101,6 +128,7 @@ export function useSaveSyrveConfig() {
       api_password_hash: string;
       default_store_id?: string;
       default_store_name?: string;
+      selected_category_ids?: string[];
     }) => {
       const { data, error } = await supabase.functions.invoke('syrve-save-config', {
         body: params,
@@ -135,12 +163,30 @@ export function useSyrveSync() {
   });
 }
 
+export function useProcessOutbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (jobId?: string) => {
+      const { data, error } = await supabase.functions.invoke('syrve-process-outbox', {
+        body: jobId ? { job_id: jobId } : {},
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['syrve_outbox_jobs'] });
+      qc.invalidateQueries({ queryKey: ['syrve_sync_runs'] });
+    },
+  });
+}
+
 export function useSyrveProducts(search?: string) {
   return useQuery({
     queryKey: ['syrve_products', search],
     queryFn: async () => {
       let query = supabase
-        .from('products' as any)
+        .from('products')
         .select('*, categories!products_category_id_fkey(name)')
         .eq('is_active', true)
         .order('name');
@@ -161,12 +207,25 @@ export function useSyrveCategories() {
     queryKey: ['syrve_categories'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('categories' as any)
+        .from('categories')
         .select('*')
         .eq('is_active', true)
         .order('name');
       if (error) throw error;
       return data || [];
+    },
+  });
+}
+
+export function useSyrveBarcodeCount() {
+  return useQuery({
+    queryKey: ['syrve_barcode_count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('product_barcodes')
+        .select('*', { count: 'exact', head: true });
+      if (error) throw error;
+      return count || 0;
     },
   });
 }

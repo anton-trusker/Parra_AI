@@ -17,7 +17,6 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    // Auth check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -31,16 +30,14 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsErr } = await supabase.auth.getClaims(token);
-    if (claimsErr || !claims?.claims) {
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claims.claims.sub;
 
-    const { sync_type } = await req.json(); // bootstrap, products, categories, stores
+    const { sync_type } = await req.json();
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -74,21 +71,23 @@ serve(async (req) => {
     const runType = sync_type || "bootstrap";
     const { data: syncRun } = await adminClient
       .from("syrve_sync_runs")
-      .insert({ run_type: runType, status: "running", triggered_by: userId })
+      .insert({ run_type: runType, status: "running", triggered_by: user.id })
       .select()
       .single();
 
     let syrveToken: string | null = null;
-    const stats = { stores: 0, categories: 0, products: 0, barcodes: 0, errors: 0 };
+    const stats = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0 };
+    const selectedCategoryIds: string[] = config.selected_category_ids || [];
 
     try {
       // 1. Login to Syrve
+      const authStart = Date.now();
       const authUrl = `${config.server_url}/auth?login=${encodeURIComponent(config.api_login)}&pass=${config.api_password_hash}`;
       const authResp = await fetch(authUrl);
       if (!authResp.ok) throw new Error(`Syrve auth failed: ${authResp.status}`);
       syrveToken = (await authResp.text()).trim();
 
-      await logApi(adminClient, syncRun?.id, "AUTH", "success", authUrl);
+      await logApi(adminClient, syncRun?.id, "AUTH", "success", authUrl, undefined, Date.now() - authStart);
 
       // 2. Sync based on type
       if (runType === "bootstrap" || runType === "stores") {
@@ -100,7 +99,7 @@ serve(async (req) => {
       }
 
       if (runType === "bootstrap" || runType === "products") {
-        await syncProducts(adminClient, config.server_url, syrveToken, syncRun?.id, stats);
+        await syncProducts(adminClient, config.server_url, syrveToken, syncRun?.id, stats, selectedCategoryIds);
       }
 
       // Update sync run as success
@@ -142,43 +141,61 @@ serve(async (req) => {
   }
 });
 
-async function logApi(client: any, syncRunId: string | null, action: string, status: string, url: string, error?: string) {
+async function logApi(
+  client: any, syncRunId: string | null, action: string, status: string, 
+  url: string, error?: string, durationMs?: number, responsePreview?: string
+) {
   await client.from("syrve_api_logs").insert({
     sync_run_id: syncRunId,
     action_type: action,
     status,
     request_url: url,
+    request_method: "GET",
     error_message: error,
+    duration_ms: durationMs || null,
+    response_payload_preview: responsePreview?.substring(0, 500) || null,
   });
 }
 
 async function syncStores(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  const start = Date.now();
   const url = `${baseUrl}/corporation/stores?key=${token}`;
   const resp = await fetch(url);
   if (!resp.ok) {
-    await logApi(client, syncRunId, "FETCH_STORES", "error", url, `HTTP ${resp.status}`);
+    await logApi(client, syncRunId, "FETCH_STORES", "error", url, `HTTP ${resp.status}`, Date.now() - start);
     throw new Error(`Failed to fetch stores: ${resp.status}`);
   }
 
   const xml = await resp.text();
-  await logApi(client, syncRunId, "FETCH_STORES", "success", url);
+  await logApi(client, syncRunId, "FETCH_STORES", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
 
-  // Parse stores from XML
   const stores = parseXmlItems(xml, "corporateItemDto");
   for (const store of stores) {
     const syrveId = store.id;
     if (!syrveId) continue;
 
-    // Upsert raw object
+    const payloadHash = await sha1(JSON.stringify(store));
+
+    // Hash-based skip: check if raw object already has this hash
+    const { data: existing } = await client.from("syrve_raw_objects")
+      .select("payload_hash")
+      .eq("entity_type", "store")
+      .eq("syrve_id", syrveId)
+      .maybeSingle();
+
+    if (existing?.payload_hash === payloadHash) {
+      stats.skipped = (stats.skipped || 0) + 1;
+      continue;
+    }
+
     await client.from("syrve_raw_objects").upsert({
       entity_type: "store",
       syrve_id: syrveId,
       payload: store,
-      payload_hash: await sha1(JSON.stringify(store)),
+      payload_hash: payloadHash,
       synced_at: new Date().toISOString(),
     }, { onConflict: "entity_type,syrve_id" });
 
-    // Upsert canonical store
     await client.from("stores").upsert({
       syrve_store_id: syrveId,
       name: store.name || "Unknown",
@@ -193,22 +210,22 @@ async function syncStores(client: any, baseUrl: string, token: string, syncRunId
 }
 
 async function syncCategories(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  const start = Date.now();
   const url = `${baseUrl}/v2/entities/products/group/list?includeDeleted=false&key=${token}`;
   const resp = await fetch(url);
   if (!resp.ok) {
-    await logApi(client, syncRunId, "FETCH_CATEGORIES", "error", url, `HTTP ${resp.status}`);
+    await logApi(client, syncRunId, "FETCH_CATEGORIES", "error", url, `HTTP ${resp.status}`, Date.now() - start);
     throw new Error(`Failed to fetch categories: ${resp.status}`);
   }
 
   const text = await resp.text();
-  await logApi(client, syncRunId, "FETCH_CATEGORIES", "success", url);
+  await logApi(client, syncRunId, "FETCH_CATEGORIES", "success", url, undefined, Date.now() - start, text.substring(0, 500));
 
   let groups: any[];
   try {
     groups = JSON.parse(text);
     if (!Array.isArray(groups)) groups = [groups];
   } catch {
-    // Try XML parsing fallback
     groups = parseXmlItems(text, "groupDto");
   }
 
@@ -216,11 +233,25 @@ async function syncCategories(client: any, baseUrl: string, token: string, syncR
     const syrveId = group.id || group.groupId;
     if (!syrveId) continue;
 
+    const payloadHash = await sha1(JSON.stringify(group));
+
+    // Hash-based skip
+    const { data: existing } = await client.from("syrve_raw_objects")
+      .select("payload_hash")
+      .eq("entity_type", "product_group")
+      .eq("syrve_id", syrveId)
+      .maybeSingle();
+
+    if (existing?.payload_hash === payloadHash) {
+      stats.skipped = (stats.skipped || 0) + 1;
+      continue;
+    }
+
     await client.from("syrve_raw_objects").upsert({
       entity_type: "product_group",
       syrve_id: syrveId,
       payload: group,
-      payload_hash: await sha1(JSON.stringify(group)),
+      payload_hash: payloadHash,
       synced_at: new Date().toISOString(),
     }, { onConflict: "entity_type,syrve_id" });
 
@@ -249,16 +280,20 @@ async function syncCategories(client: any, baseUrl: string, token: string, syncR
   }
 }
 
-async function syncProducts(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+async function syncProducts(
+  client: any, baseUrl: string, token: string, syncRunId: string | null, 
+  stats: any, selectedCategoryIds: string[]
+) {
+  const start = Date.now();
   const url = `${baseUrl}/v2/entities/products/list?includeDeleted=false&key=${token}`;
   const resp = await fetch(url);
   if (!resp.ok) {
-    await logApi(client, syncRunId, "FETCH_PRODUCTS", "error", url, `HTTP ${resp.status}`);
+    await logApi(client, syncRunId, "FETCH_PRODUCTS", "error", url, `HTTP ${resp.status}`, Date.now() - start);
     throw new Error(`Failed to fetch products: ${resp.status}`);
   }
 
   const text = await resp.text();
-  await logApi(client, syncRunId, "FETCH_PRODUCTS", "success", url);
+  await logApi(client, syncRunId, "FETCH_PRODUCTS", "success", url, undefined, Date.now() - start, text.substring(0, 500));
 
   let products: any[];
   try {
@@ -272,20 +307,56 @@ async function syncProducts(client: any, baseUrl: string, token: string, syncRun
   const { data: categories } = await client.from("categories").select("id, syrve_group_id");
   const catLookup = new Map((categories || []).map((c: any) => [c.syrve_group_id, c.id]));
 
+  // Build set of selected category syrve IDs for filtering
+  let selectedSyrveIds: Set<string> | null = null;
+  if (selectedCategoryIds.length > 0) {
+    const { data: selectedCats } = await client.from("categories")
+      .select("syrve_group_id")
+      .in("id", selectedCategoryIds);
+    if (selectedCats) {
+      selectedSyrveIds = new Set(selectedCats.map((c: any) => c.syrve_group_id));
+    }
+  }
+
   for (const product of products) {
     const syrveId = product.id;
     if (!syrveId) continue;
+
+    const parentGroupId = product.parent || product.parentId;
+
+    // Category filtering: skip products not in selected categories
+    if (selectedSyrveIds && parentGroupId && !selectedSyrveIds.has(parentGroupId)) {
+      stats.skipped = (stats.skipped || 0) + 1;
+      continue;
+    }
+
+    const payloadHash = await sha1(JSON.stringify(product));
+
+    // Hash-based skip
+    const { data: existing } = await client.from("syrve_raw_objects")
+      .select("payload_hash")
+      .eq("entity_type", "product")
+      .eq("syrve_id", syrveId)
+      .maybeSingle();
+
+    if (existing?.payload_hash === payloadHash) {
+      stats.skipped = (stats.skipped || 0) + 1;
+      continue;
+    }
 
     await client.from("syrve_raw_objects").upsert({
       entity_type: "product",
       syrve_id: syrveId,
       payload: product,
-      payload_hash: await sha1(JSON.stringify(product)),
+      payload_hash: payloadHash,
       synced_at: new Date().toISOString(),
     }, { onConflict: "entity_type,syrve_id" });
 
-    const parentGroupId = product.parent || product.parentId;
     const categoryId = parentGroupId ? catLookup.get(parentGroupId) : null;
+
+    // Extract vintage from name if present
+    const vintageMatch = product.name?.match(/(19|20)\d{2}/);
+    const vintage = vintageMatch ? parseInt(vintageMatch[0]) : null;
 
     const { data: upserted } = await client.from("products").upsert({
       syrve_product_id: syrveId,
@@ -302,6 +373,7 @@ async function syncProducts(client: any, baseUrl: string, token: string, syncRun
       is_deleted: product.deleted || false,
       is_active: !(product.deleted || false),
       syrve_data: product,
+      metadata: { vintage, extracted_at: new Date().toISOString() },
       synced_at: new Date().toISOString(),
     }, { onConflict: "syrve_product_id" }).select("id").single();
 
@@ -335,9 +407,28 @@ function parseXmlItems(xml: string, tagName: string): any[] {
   while ((match = regex.exec(xml)) !== null) {
     const item: any = {};
     const content = match[1];
+    // Parse nested barcodes
+    const barcodesMatch = content.match(/<barcodes>([\s\S]*?)<\/barcodes>/);
+    if (barcodesMatch) {
+      const barcodeItems: any[] = [];
+      const bcRegex = /<barcodeContainer>([\s\S]*?)<\/barcodeContainer>/g;
+      let bcMatch;
+      while ((bcMatch = bcRegex.exec(barcodesMatch[1])) !== null) {
+        const bcItem: any = {};
+        const bcFieldRegex = /<(\w+)>([^<]*)<\/\1>/g;
+        let bcFieldMatch;
+        while ((bcFieldMatch = bcFieldRegex.exec(bcMatch[1])) !== null) {
+          bcItem[bcFieldMatch[1]] = bcFieldMatch[2];
+        }
+        barcodeItems.push(bcItem);
+      }
+      if (barcodeItems.length > 0) item.barcodes = barcodeItems;
+    }
+    // Parse simple fields
     const fieldRegex = /<(\w+)>([^<]*)<\/\1>/g;
     let fieldMatch;
     while ((fieldMatch = fieldRegex.exec(content)) !== null) {
+      if (fieldMatch[1] === 'barcodes' || fieldMatch[1] === 'barcodeContainer') continue;
       const val = fieldMatch[2];
       if (val === "true") item[fieldMatch[1]] = true;
       else if (val === "false") item[fieldMatch[1]] = false;

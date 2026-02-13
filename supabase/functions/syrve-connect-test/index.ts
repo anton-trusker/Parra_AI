@@ -32,9 +32,8 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
 
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claims, error: claimsErr } = await supabase.auth.getClaims(token);
-    if (claimsErr || !claims?.claims) {
+    const { data: { user }, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -71,21 +70,42 @@ serve(async (req) => {
       });
     }
 
-    // 3. Fetch stores list
+    // 3. Fetch server version
+    let serverVersion = "unknown";
+    try {
+      const versionResp = await fetch(`${server_url}/version?key=${syrveToken}`);
+      if (versionResp.ok) {
+        serverVersion = (await versionResp.text()).trim();
+      }
+    } catch { /* ignore */ }
+
+    // 4. Fetch stores list
     let stores: any[] = [];
     try {
       const storesUrl = `${server_url}/corporation/stores?key=${syrveToken}`;
       const storesResp = await fetch(storesUrl);
       if (storesResp.ok) {
         const storesText = await storesResp.text();
-        // Parse XML to extract stores
         stores = parseStoresXml(storesText);
       }
     } catch (e) {
       console.error("Error fetching stores:", e);
     }
 
-    // 4. Always logout to release license
+    // 5. Fetch departments (for category selection)
+    let departments: any[] = [];
+    try {
+      const deptUrl = `${server_url}/corporation/departments?key=${syrveToken}`;
+      const deptResp = await fetch(deptUrl);
+      if (deptResp.ok) {
+        const deptText = await deptResp.text();
+        departments = parseStoresXml(deptText);
+      }
+    } catch (e) {
+      console.error("Error fetching departments:", e);
+    }
+
+    // 6. Always logout to release license
     try {
       await fetch(`${server_url}/logout?key=${syrveToken}`);
     } catch (e) {
@@ -96,7 +116,9 @@ serve(async (req) => {
       success: true,
       message: "Connection successful",
       password_hash: passHash,
+      server_version: serverVersion,
       stores,
+      departments,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -109,7 +131,6 @@ serve(async (req) => {
 });
 
 function parseStoresXml(xml: string): any[] {
-  // Simple XML parser for corporateItemDto list
   const stores: any[] = [];
   const itemRegex = /<corporateItemDto>([\s\S]*?)<\/corporateItemDto>/g;
   let match;

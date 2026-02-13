@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { ArrowLeft, RefreshCw, Download, CheckCircle2, XCircle, Clock, Loader2, Package, FolderTree } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Download, CheckCircle2, XCircle, Clock, Loader2, Package, FolderTree, Store, Barcode, Send, SkipForward } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +11,10 @@ import {
   useSyrveSync,
   useSyrveProducts,
   useSyrveCategories,
+  useSyrveStores,
+  useSyrveBarcodeCount,
+  useSyrveOutboxJobs,
+  useProcessOutbox,
 } from '@/hooks/useSyrve';
 
 export default function SyrveSyncPage() {
@@ -19,17 +23,38 @@ export default function SyrveSyncPage() {
   const { data: syncRuns, isLoading: runsLoading } = useSyrveSyncRuns();
   const { data: products } = useSyrveProducts();
   const { data: categories } = useSyrveCategories();
+  const { data: stores } = useSyrveStores();
+  const { data: barcodeCount } = useSyrveBarcodeCount();
+  const { data: outboxJobs } = useSyrveOutboxJobs();
   const syncMutation = useSyrveSync();
+  const processOutbox = useProcessOutbox();
 
   const isConfigured = config?.connection_status === 'connected';
   const isSyncing = syncRuns?.some(r => r.status === 'running');
+  const pendingJobs = outboxJobs?.filter(j => j.status === 'pending' || j.status === 'processing') || [];
 
   const handleSync = async (type: string) => {
     try {
       const result = await syncMutation.mutateAsync(type);
-      toast.success(`Sync completed! Products: ${result.stats?.products || 0}, Categories: ${result.stats?.categories || 0}`);
+      const s = result.stats || {};
+      const parts = [];
+      if (s.products) parts.push(`Products: ${s.products}`);
+      if (s.categories) parts.push(`Categories: ${s.categories}`);
+      if (s.stores) parts.push(`Stores: ${s.stores}`);
+      if (s.barcodes) parts.push(`Barcodes: ${s.barcodes}`);
+      if (s.skipped) parts.push(`Skipped: ${s.skipped}`);
+      toast.success(`Sync completed! ${parts.join(', ')}`);
     } catch (err: any) {
       toast.error(err.message || 'Sync failed');
+    }
+  };
+
+  const handleProcessOutbox = async () => {
+    try {
+      const result = await processOutbox.mutateAsync(undefined);
+      toast.success(`Processed ${result.processed} outbox job(s)`);
+    } catch (err: any) {
+      toast.error(err.message || 'Outbox processing failed');
     }
   };
 
@@ -37,7 +62,7 @@ export default function SyrveSyncPage() {
     switch (status) {
       case 'success': return <CheckCircle2 className="w-4 h-4 text-primary" />;
       case 'failed': return <XCircle className="w-4 h-4 text-destructive" />;
-      case 'running': return <Loader2 className="w-4 h-4 text-primary animate-spin" />;
+      case 'running': case 'processing': return <Loader2 className="w-4 h-4 text-primary animate-spin" />;
       default: return <Clock className="w-4 h-4 text-muted-foreground" />;
     }
   };
@@ -46,7 +71,8 @@ export default function SyrveSyncPage() {
     switch (status) {
       case 'success': return <Badge variant="default">Success</Badge>;
       case 'failed': return <Badge variant="destructive">Failed</Badge>;
-      case 'running': return <Badge variant="secondary">Running</Badge>;
+      case 'running': case 'processing': return <Badge variant="secondary">Running</Badge>;
+      case 'pending': return <Badge variant="outline">Pending</Badge>;
       default: return <Badge variant="secondary">{status}</Badge>;
     }
   };
@@ -83,7 +109,7 @@ export default function SyrveSyncPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
@@ -109,11 +135,22 @@ export default function SyrveSyncPage() {
         <Card>
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5 text-primary" />
+              <Store className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{syncRuns?.length ?? '—'}</p>
-              <p className="text-sm text-muted-foreground">Sync Runs</p>
+              <p className="text-2xl font-bold">{stores?.length ?? '—'}</p>
+              <p className="text-sm text-muted-foreground">Stores</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
+              <Barcode className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{barcodeCount ?? '—'}</p>
+              <p className="text-sm text-muted-foreground">Barcodes</p>
             </div>
           </CardContent>
         </Card>
@@ -140,6 +177,7 @@ export default function SyrveSyncPage() {
               onClick={() => handleSync('products')}
               disabled={syncMutation.isPending || isSyncing}
             >
+              <Package className="w-4 h-4 mr-2" />
               Products Only
             </Button>
             <Button
@@ -147,6 +185,7 @@ export default function SyrveSyncPage() {
               onClick={() => handleSync('categories')}
               disabled={syncMutation.isPending || isSyncing}
             >
+              <FolderTree className="w-4 h-4 mr-2" />
               Categories Only
             </Button>
             <Button
@@ -154,11 +193,67 @@ export default function SyrveSyncPage() {
               onClick={() => handleSync('stores')}
               disabled={syncMutation.isPending || isSyncing}
             >
+              <Store className="w-4 h-4 mr-2" />
               Stores Only
             </Button>
           </div>
+          {config?.selected_category_ids && config.selected_category_ids.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+              <SkipForward className="w-3 h-3" />
+              Category filter active: only {config.selected_category_ids.length} categories will be synced
+            </p>
+          )}
         </CardContent>
       </Card>
+
+      {/* Outbox Jobs */}
+      {outboxJobs && outboxJobs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Send className="w-5 h-5" />
+                  Outbox Jobs
+                </CardTitle>
+                <CardDescription>Inventory submissions to Syrve</CardDescription>
+              </div>
+              {pendingJobs.length > 0 && (
+                <Button
+                  size="sm"
+                  onClick={handleProcessOutbox}
+                  disabled={processOutbox.isPending}
+                >
+                  {processOutbox.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Process {pendingJobs.length} Pending
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {outboxJobs.map((job) => (
+                <div key={job.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    {statusIcon(job.status)}
+                    <div>
+                      <p className="font-medium capitalize">{job.job_type.replace(/_/g, ' ')}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(job.created_at).toLocaleString()}
+                        {job.attempts > 0 && ` • Attempts: ${job.attempts}`}
+                      </p>
+                      {job.last_error && (
+                        <p className="text-xs text-destructive mt-1">{job.last_error}</p>
+                      )}
+                    </div>
+                  </div>
+                  {statusBadge(job.status)}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sync History */}
       <Card>
