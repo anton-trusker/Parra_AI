@@ -77,11 +77,11 @@ serve(async (req) => {
 
     let syrveToken: string | null = null;
     let serverUrl = '';
-    const stats: any = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0, stage: 'authenticating', progress: 0 };
+    const stats: any = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0, prices_updated: 0, stock_updated: 0, stage: 'authenticating', progress: 0 };
     const selectedCategoryIds: string[] = config.selected_category_ids || [];
     const productTypeFilters: string[] = config.product_type_filters || ['GOODS', 'DISH'];
     const importInactive: boolean = config.import_inactive_products || false;
-    const fieldMapping = config.field_mapping || { extract_vintage: true, extract_volume: true, auto_map_category: true };
+    const fieldMapping = config.field_mapping || { extract_vintage: true, extract_volume: true, auto_map_category: true, sync_prices: true, sync_stock: true };
     const reimportMode: string = config.reimport_mode || 'merge';
 
     const updateProgress = async (stage: string, progress: number) => {
@@ -128,8 +128,20 @@ serve(async (req) => {
 
         await updateProgress('importing_products', reimportMode === 'fresh' ? 55 : 45);
         const importedSyrveIds = await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds, productTypeFilters, importInactive, fieldMapping);
-        
-        await updateProgress('applying_reimport_mode', 85);
+
+        // Fetch prices if enabled
+        if (fieldMapping.sync_prices !== false) {
+          await updateProgress('fetching_prices', 80);
+          await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
+        }
+
+        // Fetch stock if enabled and store configured
+        if (fieldMapping.sync_stock !== false && config.default_store_id) {
+          await updateProgress('fetching_stock', 85);
+          await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, config.default_store_id);
+        }
+
+        await updateProgress('applying_reimport_mode', 90);
         // Apply reimport mode for non-imported products (hide/replace)
         if ((reimportMode === 'hide' || reimportMode === 'replace') && importedSyrveIds && importedSyrveIds.length > 0) {
           await applyReimportMode(adminClient, importedSyrveIds, reimportMode, stats);
@@ -505,6 +517,154 @@ async function syncProducts(
   }
 
   return productSyrveIdOrder;
+}
+
+async function syncPrices(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  const start = Date.now();
+  const url = `${baseUrl}/v2/price?key=${token}`;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      await logApi(client, syncRunId, "FETCH_PRICES", "error", url, `HTTP ${resp.status}`, Date.now() - start);
+      console.error(`Price fetch failed: ${resp.status}`);
+      return;
+    }
+
+    const text = await resp.text();
+    await logApi(client, syncRunId, "FETCH_PRICES", "success", url, undefined, Date.now() - start, text.substring(0, 500));
+
+    // Parse price items from XML - format: <item><productId>...</productId><price>...</price></item>
+    const priceItems: { productId: string; price: number; purchasePrice?: number }[] = [];
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+    let match;
+    while ((match = itemRegex.exec(text)) !== null) {
+      const content = match[1];
+      const getField = (tag: string): string | null => {
+        const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+        return m ? m[1].trim() : null;
+      };
+      const productId = getField("productId") || getField("product");
+      const price = parseFloat(getField("price") || getField("value") || "0");
+      const purchasePrice = parseFloat(getField("purchasePrice") || getField("estimatedPurchasePrice") || "0");
+      if (productId && price > 0) {
+        priceItems.push({ productId, price, purchasePrice: purchasePrice > 0 ? purchasePrice : undefined });
+      }
+    }
+
+    // Also try JSON format
+    if (priceItems.length === 0) {
+      try {
+        const json = JSON.parse(text);
+        const items = Array.isArray(json) ? json : json.items || json.priceListItems || [];
+        for (const item of items) {
+          const productId = item.productId || item.product;
+          const price = parseFloat(item.price || item.value || "0");
+          const purchasePrice = parseFloat(item.purchasePrice || item.estimatedPurchasePrice || "0");
+          if (productId && price > 0) {
+            priceItems.push({ productId, price, purchasePrice: purchasePrice > 0 ? purchasePrice : undefined });
+          }
+        }
+      } catch { /* not JSON */ }
+    }
+
+    // Batch update products
+    const BATCH = 50;
+    for (let i = 0; i < priceItems.length; i += BATCH) {
+      const batch = priceItems.slice(i, i + BATCH);
+      for (const item of batch) {
+        const updateData: any = {
+          sale_price: item.price,
+          default_sale_price: item.price,
+          price_updated_at: new Date().toISOString(),
+        };
+        if (item.purchasePrice) {
+          updateData.purchase_price = item.purchasePrice;
+        }
+        const { error } = await client.from("products")
+          .update(updateData)
+          .eq("syrve_product_id", item.productId);
+        if (!error) stats.prices_updated++;
+      }
+    }
+  } catch (e) {
+    console.error("syncPrices error:", e);
+    await logApi(client, syncRunId, "FETCH_PRICES", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
+  }
+}
+
+async function syncStock(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any, storeId: string) {
+  const start = Date.now();
+  try {
+    // Get all product syrve IDs
+    const { data: allProducts } = await client.from("products").select("syrve_product_id").eq("is_active", true);
+    if (!allProducts || allProducts.length === 0) return;
+
+    const allSyrveIds = allProducts.map((p: any) => p.syrve_product_id).filter(Boolean);
+    
+    // Batch into groups of 200
+    const BATCH_SIZE = 200;
+    for (let i = 0; i < allSyrveIds.length; i += BATCH_SIZE) {
+      const batch = allSyrveIds.slice(i, i + BATCH_SIZE);
+      const productIdsParam = batch.join(",");
+      const url = `${baseUrl}/v2/entities/products/stock-and-sales?key=${token}&storeIds=${storeId}&productIds=${productIdsParam}`;
+      
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `HTTP ${resp.status}`, Date.now() - start);
+        console.error(`Stock fetch failed: ${resp.status}`);
+        continue;
+      }
+
+      const text = await resp.text();
+      if (i === 0) {
+        await logApi(client, syncRunId, "FETCH_STOCK", "success", url, undefined, Date.now() - start, text.substring(0, 500));
+      }
+
+      // Parse stock items from XML
+      const stockItems: { productId: string; balance: number }[] = [];
+      const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      let match;
+      while ((match = itemRegex.exec(text)) !== null) {
+        const content = match[1];
+        const getField = (tag: string): string | null => {
+          const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+          return m ? m[1].trim() : null;
+        };
+        const productId = getField("productId") || getField("product");
+        const balance = parseFloat(getField("balance") || getField("amount") || getField("endStore") || "0");
+        if (productId) {
+          stockItems.push({ productId, balance });
+        }
+      }
+
+      // Also try JSON format
+      if (stockItems.length === 0) {
+        try {
+          const json = JSON.parse(text);
+          const items = Array.isArray(json) ? json : json.items || [];
+          for (const item of items) {
+            const productId = item.productId || item.product;
+            const balance = parseFloat(item.balance || item.amount || "0");
+            if (productId) stockItems.push({ productId, balance });
+          }
+        } catch { /* not JSON */ }
+      }
+
+      // Update products
+      for (const item of stockItems) {
+        const { error } = await client.from("products")
+          .update({
+            current_stock: item.balance,
+            stock_updated_at: new Date().toISOString(),
+          })
+          .eq("syrve_product_id", item.productId);
+        if (!error) stats.stock_updated++;
+      }
+    }
+  } catch (e) {
+    console.error("syncStock error:", e);
+    await logApi(client, syncRunId, "FETCH_STOCK", "error", "", e instanceof Error ? e.message : "Unknown", Date.now() - start);
+  }
 }
 
 async function applyReimportMode(client: any, importedSyrveIds: string[], mode: string, stats: any) {

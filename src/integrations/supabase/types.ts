@@ -899,6 +899,7 @@ export type Database = {
           category_id: string | null
           code: string | null
           created_at: string | null
+          current_stock: number | null
           default_sale_price: number | null
           description: string | null
           id: string
@@ -908,8 +909,12 @@ export type Database = {
           metadata: Json | null
           name: string
           not_in_store_movement: boolean | null
+          price_updated_at: string | null
           product_type: string | null
+          purchase_price: number | null
+          sale_price: number | null
           sku: string | null
+          stock_updated_at: string | null
           synced_at: string | null
           syrve_data: Json | null
           syrve_product_id: string
@@ -920,6 +925,7 @@ export type Database = {
           category_id?: string | null
           code?: string | null
           created_at?: string | null
+          current_stock?: number | null
           default_sale_price?: number | null
           description?: string | null
           id?: string
@@ -929,8 +935,12 @@ export type Database = {
           metadata?: Json | null
           name: string
           not_in_store_movement?: boolean | null
+          price_updated_at?: string | null
           product_type?: string | null
+          purchase_price?: number | null
+          sale_price?: number | null
           sku?: string | null
+          stock_updated_at?: string | null
           synced_at?: string | null
           syrve_data?: Json | null
           syrve_product_id: string
@@ -941,6 +951,7 @@ export type Database = {
           category_id?: string | null
           code?: string | null
           created_at?: string | null
+          current_stock?: number | null
           default_sale_price?: number | null
           description?: string | null
           id?: string
@@ -950,8 +961,12 @@ export type Database = {
           metadata?: Json | null
           name?: string
           not_in_store_movement?: boolean | null
+          price_updated_at?: string | null
           product_type?: string | null
+          purchase_price?: number | null
+          sale_price?: number | null
           sku?: string | null
+          stock_updated_at?: string | null
           synced_at?: string | null
           syrve_data?: Json | null
           syrve_product_id?: string
