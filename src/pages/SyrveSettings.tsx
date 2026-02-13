@@ -25,6 +25,7 @@ import {
   useSaveSyrveConfig,
   useSyrveStores,
   useSyrveCategories,
+  useSyrveSync,
 } from '@/hooks/useSyrve';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
@@ -55,6 +56,7 @@ export default function SyrveSettings() {
   const { data: categories } = useSyrveCategories();
   const testConnection = useTestSyrveConnection();
   const saveConfig = useSaveSyrveConfig();
+  const syncMutation = useSyrveSync();
   const updateSetting = useUpdateAppSetting();
 
   // Connection fields
@@ -102,6 +104,7 @@ export default function SyrveSettings() {
 
   // Saving import settings
   const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -221,7 +224,8 @@ export default function SyrveSettings() {
         .eq('id', config.id);
       if (error) throw error;
       qc.invalidateQueries({ queryKey: ['syrve_config'] });
-      toast.success('Import settings saved');
+      toast.success('Settings saved! You can now sync.');
+      setSettingsSaved(true);
     } catch (e: any) {
       toast.error(e.message || 'Failed to save settings');
     } finally {
@@ -721,13 +725,33 @@ export default function SyrveSettings() {
         </Card>
       )}
 
-      {/* Save All Settings */}
+      {/* Save All Settings & Sync */}
       {isConfigured && (
-        <div className="flex gap-3">
-          <Button onClick={handleSaveImportSettings} disabled={savingSettings} size="lg">
+        <div className="flex gap-3 items-center">
+          <Button onClick={handleSaveImportSettings} disabled={savingSettings || syncMutation.isPending} size="lg">
             {savingSettings && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             Save All Settings
           </Button>
+          {settingsSaved && (
+            <Button
+              onClick={() => {
+                syncMutation.mutate('bootstrap', {
+                  onSuccess: () => {
+                    toast.success('Sync completed successfully');
+                    setSettingsSaved(false);
+                  },
+                  onError: (err: any) => toast.error(err.message || 'Sync failed'),
+                });
+              }}
+              disabled={syncMutation.isPending}
+              size="lg"
+              variant="default"
+              className="gap-2"
+            >
+              {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+              {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
+            </Button>
+          )}
         </div>
       )}
 
