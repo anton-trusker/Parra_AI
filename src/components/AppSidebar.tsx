@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import type { ModuleKey } from '@/data/referenceData';
+import { useAppSetting } from '@/hooks/useAppSettings';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface NavItemDef {
   label: string;
@@ -71,6 +73,10 @@ export default function AppSidebar() {
   const role = useUserRole();
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useIsMobile();
+  const { data: hideScannerDesktop } = useAppSetting('inventory_hide_scanner_desktop', false);
+
+  const shouldHideScanner = !isMobile && hideScannerDesktop === true;
 
   const isActive = (path: string) =>
     location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path));
@@ -78,6 +84,8 @@ export default function AppSidebar() {
   const filterItems = (items: NavItemDef[]) =>
     items.filter(item => {
       if (!role) return false;
+      // Hide "Start Count" on desktop when setting enabled
+      if (shouldHideScanner && item.path === '/count') return false;
       // Admin sees everything, staff sees non-restricted
       if (role.id === 'admin' || role.id === 'super_admin') return true;
       const restricted: ModuleKey[] = ['settings' as ModuleKey, 'users' as ModuleKey];

@@ -6,6 +6,8 @@ import {
   TrendingUp, ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAppSetting } from '@/hooks/useAppSettings';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 function StatCard({ icon: Icon, label, value, sub, color, onClick }: {
   icon: any; label: string; value: string | number; sub?: string; color?: string; onClick?: () => void;
@@ -44,6 +46,9 @@ export default function Dashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
+  const isMobile = useIsMobile();
+  const { data: hideScannerDesktop } = useAppSetting('inventory_hide_scanner_desktop', false);
+  const shouldHideScanner = !isMobile && hideScannerDesktop === true;
 
   const totalWines = mockWines.filter(w => w.isActive).length;
   const totalStock = mockWines.reduce((s, w) => s + w.stockUnopened + w.stockOpened, 0);
@@ -90,13 +95,15 @@ export default function Dashboard() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Button
-          onClick={() => navigate('/count')}
-          className="h-16 text-lg font-semibold wine-gradient text-primary-foreground hover:opacity-90"
-        >
-          <Wine className="w-5 h-5 mr-2" />
-          Start Inventory Count
-        </Button>
+        {!shouldHideScanner && (
+          <Button
+            onClick={() => navigate('/count')}
+            className="h-16 text-lg font-semibold wine-gradient text-primary-foreground hover:opacity-90"
+          >
+            <Wine className="w-5 h-5 mr-2" />
+            Start Inventory Count
+          </Button>
+        )}
         {isAdmin && (
           <>
             <Button
