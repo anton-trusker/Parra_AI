@@ -135,8 +135,8 @@ export default function ProductCatalog() {
   const [stockStatusFilter, setStockStatusFilter] = useState<string[]>([]);
   const [volumeFilter, setVolumeFilter] = useState<string[]>([]);
   const [hasPriceFilter, setHasPriceFilter] = useState(false);
-  const [markedFilter, setMarkedFilter] = useState(false);
-  const [byGlassFilter, setByGlassFilter] = useState(false);
+  const [markedFilter, setMarkedFilter] = useState<'all' | 'marked' | 'not_marked'>('all');
+  const [byGlassFilter, setByGlassFilter] = useState<'all' | 'yes' | 'no'>('all');
   const [view, setView] = useState<'cards' | 'table'>('table');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -150,8 +150,6 @@ export default function ProductCatalog() {
     search: search || undefined,
     productType: typeFilter.length ? typeFilter : undefined,
     categoryId: categoryFromUrl,
-    isMarked: markedFilter || undefined,
-    isByGlass: byGlassFilter || undefined,
   });
 
   const { data: categories = [] } = useSyrveCategories();
@@ -190,10 +188,20 @@ export default function ProductCatalog() {
     if (hasPriceFilter) {
       result = result.filter(p => p.sale_price != null && p.sale_price > 0);
     }
+    if (markedFilter === 'marked') {
+      result = result.filter(p => p.is_marked);
+    } else if (markedFilter === 'not_marked') {
+      result = result.filter(p => !p.is_marked);
+    }
+    if (byGlassFilter === 'yes') {
+      result = result.filter(p => p.is_by_glass);
+    } else if (byGlassFilter === 'no') {
+      result = result.filter(p => !p.is_by_glass);
+    }
     return result;
-  }, [products, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter]);
+  }, [products, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter, markedFilter, byGlassFilter]);
 
-  const activeFilterCount = [typeFilter, categoryFilter, stockStatusFilter, volumeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (markedFilter ? 1 : 0) + (byGlassFilter ? 1 : 0) + (hasPriceFilter ? 1 : 0);
+  const activeFilterCount = [typeFilter, categoryFilter, stockStatusFilter, volumeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (markedFilter !== 'all' ? 1 : 0) + (byGlassFilter !== 'all' ? 1 : 0) + (hasPriceFilter ? 1 : 0);
   const fv = (key: string) => productFilters.includes(key);
 
   const clearFilters = () => {
@@ -202,8 +210,8 @@ export default function ProductCatalog() {
     setStockStatusFilter([]);
     setVolumeFilter([]);
     setHasPriceFilter(false);
-    setMarkedFilter(false);
-    setByGlassFilter(false);
+    setMarkedFilter('all');
+    setByGlassFilter('all');
     if (categoryFromUrl) navigate('/products');
   };
 
@@ -252,7 +260,9 @@ export default function ProductCatalog() {
     const ids = Array.from(visibleSelectedIds);
     if (ids.length === 0) return;
     bulkToggle.mutate({ ids, field, value }, {
-      onSuccess: () => setSelectedIds(new Set()),
+      onSuccess: () => {
+        // Don't clear selection immediately — let user see the result
+      },
     });
   }, [visibleSelectedIds, bulkToggle]);
 
@@ -408,26 +418,28 @@ export default function ProductCatalog() {
                 </Button>
               )}
               {fv('marked') && (
-                <Button
-                  variant={markedFilter ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs"
-                  onClick={() => setMarkedFilter(!markedFilter)}
-                >
-                  <Star className={`w-3.5 h-3.5 ${markedFilter ? 'fill-primary-foreground' : ''}`} />
-                  Marked
-                </Button>
+                <MultiSelectFilter
+                  label="Marked"
+                  options={['Marked', 'Not Marked']}
+                  selected={markedFilter === 'all' ? [] : markedFilter === 'marked' ? ['Marked'] : ['Not Marked']}
+                  onChange={sel => {
+                    if (sel.length === 0 || sel.length === 2) setMarkedFilter('all');
+                    else if (sel.includes('Marked')) setMarkedFilter('marked');
+                    else setMarkedFilter('not_marked');
+                  }}
+                />
               )}
               {fv('by_glass') && (
-                <Button
-                  variant={byGlassFilter ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs"
-                  onClick={() => setByGlassFilter(!byGlassFilter)}
-                >
-                  <Wine className="w-3.5 h-3.5" />
-                  By Glass
-                </Button>
+                <MultiSelectFilter
+                  label="By Glass"
+                  options={['Yes', 'No']}
+                  selected={byGlassFilter === 'all' ? [] : byGlassFilter === 'yes' ? ['Yes'] : ['No']}
+                  onChange={sel => {
+                    if (sel.length === 0 || sel.length === 2) setByGlassFilter('all');
+                    else if (sel.includes('Yes')) setByGlassFilter('yes');
+                    else setByGlassFilter('no');
+                  }}
+                />
               )}
               {categoryFromUrl && (
                 <Badge variant="secondary" className="gap-1 cursor-pointer" onClick={() => navigate('/products')}>
