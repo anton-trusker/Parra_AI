@@ -16,7 +16,7 @@ export default function WineDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const isAdmin = user?.roleId === 'role_admin';
+  const isAdmin = user?.role === 'admin';
 
   const wine = mockWines.find(w => w.id === id);
   if (!wine) {

@@ -1,23 +1,67 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/stores/authStore';
-import { ShieldCheck, User, Sparkles } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Sparkles, Mail, Lock, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import loginHero from '@/assets/login-hero.jpg';
 
 export default function Login() {
-  const { login } = useAuthStore();
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
 
-  const handleLogin = (role: 'admin' | 'staff') => {
-    const creds = role === 'admin'
-      ? { email: 'admin@wine.com', password: 'admin123' }
-      : { email: 'staff@wine.com', password: 'staff123' };
-    const success = login(creds.email, creds.password);
-    if (success) {
-      toast.success(`Signed in as ${role}`);
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) { toast.error('Email and password required'); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (error) {
+      toast.error(error.message);
+    } else {
+      toast.success('Signed in successfully');
       navigate('/dashboard');
     }
+  };
+
+  const handleUsernameLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username || !password) { toast.error('Username and password required'); return; }
+    setLoading(true);
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-login-username`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        toast.error(data.error || 'Login failed');
+        setLoading(false);
+        return;
+      }
+      // Set session from edge function response
+      if (data.session) {
+        await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+        });
+        toast.success('Signed in successfully');
+        navigate('/dashboard');
+      }
+    } catch {
+      toast.error('Login failed');
+    }
+    setLoading(false);
   };
 
   return (
@@ -42,7 +86,7 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Right: Role selection */}
+      {/* Right: Login form */}
       <div className="flex-1 flex items-center justify-center p-8 bg-background">
         <div className="w-full max-w-sm animate-fade-in">
           <div className="lg:hidden flex items-center gap-3 mb-10">
@@ -53,25 +97,81 @@ export default function Login() {
           </div>
 
           <h2 className="font-heading text-3xl font-bold mb-2">Welcome back</h2>
-          <p className="text-muted-foreground mb-8">Choose your role to continue</p>
+          <p className="text-muted-foreground mb-8">Sign in to your account</p>
 
-          <div className="space-y-4">
-            <Button
-              onClick={() => handleLogin('admin')}
-              className="w-full h-14 wine-gradient text-primary-foreground font-semibold text-base hover:opacity-90 transition-opacity gap-3"
-            >
-              <ShieldCheck className="w-5 h-5" />
-              Sign in as Admin
-            </Button>
-            <Button
-              onClick={() => handleLogin('staff')}
-              variant="outline"
-              className="w-full h-14 font-semibold text-base gap-3 border-border"
-            >
-              <User className="w-5 h-5" />
-              Sign in as Staff
-            </Button>
-          </div>
+          <Tabs defaultValue="email" className="w-full">
+            <TabsList className="w-full mb-6">
+              <TabsTrigger value="email" className="flex-1 gap-2"><Mail className="w-4 h-4" /> Email</TabsTrigger>
+              <TabsTrigger value="username" className="flex-1 gap-2"><User className="w-4 h-4" /> Username</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="email">
+              <form onSubmit={handleEmailLogin} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="h-12 bg-secondary border-border"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Password</Label>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="h-12 bg-secondary border-border"
+                    disabled={loading}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-14 wine-gradient text-primary-foreground font-semibold text-base hover:opacity-90 transition-opacity gap-3"
+                >
+                  {loading ? 'Signing in...' : 'Sign In'}
+                </Button>
+              </form>
+            </TabsContent>
+
+            <TabsContent value="username">
+              <form onSubmit={handleUsernameLogin} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Username</Label>
+                  <Input
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    placeholder="Your username"
+                    className="h-12 bg-secondary border-border"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Password</Label>
+                  <Input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="h-12 bg-secondary border-border"
+                    disabled={loading}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-14 wine-gradient text-primary-foreground font-semibold text-base hover:opacity-90 transition-opacity gap-3"
+                >
+                  {loading ? 'Signing in...' : 'Sign In'}
+                </Button>
+              </form>
+            </TabsContent>
+          </Tabs>
 
           <p className="text-xs text-muted-foreground text-center mt-10">
             © {new Date().getFullYear()} Trusker Solutions · All rights reserved

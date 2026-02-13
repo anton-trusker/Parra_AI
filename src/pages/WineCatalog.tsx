@@ -120,7 +120,7 @@ export default function WineCatalog() {
   const { user } = useAuthStore();
   const { catalogColumns, setCatalogColumns, catalogFilters, setCatalogFilters, columnWidths, setColumnWidth } = useColumnStore();
   const navigate = useNavigate();
-  const isAdmin = user?.roleId === 'role_admin';
+  const isAdmin = user?.role === 'admin';
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [countryFilter, setCountryFilter] = useState<string[]>([]);

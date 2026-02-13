@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import AuthProvider from "./components/AuthProvider";
 import AppLayout from "./components/AppLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -43,29 +44,31 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route element={<AppLayout />}>
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/catalog" element={<WineCatalog />} />
-              <Route path="/catalog/new" element={<WineForm />} />
-              <Route path="/catalog/:id" element={<WineDetail />} />
-              <Route path="/catalog/:id/edit" element={<WineForm />} />
-              <Route path="/catalog/import" element={<ImportInventory />} />
-              <Route path="/count" element={<InventoryCount />} />
-              <Route path="/stock" element={<CurrentStock />} />
-              <Route path="/history" element={<InventoryHistory />} />
-              <Route path="/sessions" element={<SessionReview />} />
-              <Route path="/users" element={<UserManagement />} />
-              <Route path="/reports" element={<Reports />} />
-              <Route path="/settings" element={<AppSettings />} />
-              <Route path="/settings/general" element={<GeneralSettings />} />
-              <Route path="/settings/roles" element={<RolesPermissions />} />
-              <Route path="/profile" element={<Profile />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<Navigate to="/login" replace />} />
+              <Route element={<AppLayout />}>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/catalog" element={<WineCatalog />} />
+                <Route path="/catalog/new" element={<WineForm />} />
+                <Route path="/catalog/:id" element={<WineDetail />} />
+                <Route path="/catalog/:id/edit" element={<WineForm />} />
+                <Route path="/catalog/import" element={<ImportInventory />} />
+                <Route path="/count" element={<InventoryCount />} />
+                <Route path="/stock" element={<CurrentStock />} />
+                <Route path="/history" element={<InventoryHistory />} />
+                <Route path="/sessions" element={<SessionReview />} />
+                <Route path="/users" element={<UserManagement />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/settings" element={<AppSettings />} />
+                <Route path="/settings/general" element={<GeneralSettings />} />
+                <Route path="/settings/roles" element={<RolesPermissions />} />
+                <Route path="/profile" element={<Profile />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>
     </ThemeApplicator>

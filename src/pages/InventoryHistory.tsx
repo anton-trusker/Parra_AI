@@ -63,7 +63,7 @@ function buildHistoryColumns(isAdmin: boolean): DataTableColumn<InventoryMovemen
 export default function InventoryHistory() {
   const { user } = useAuthStore();
   const { historyColumns, setHistoryColumns, historyFilters, setHistoryFilters, columnWidths, setColumnWidth } = useColumnStore();
-  const isAdmin = user?.roleId === 'role_admin';
+  const isAdmin = user?.role === 'admin';
   const [methodFilter, setMethodFilter] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [datePreset, setDatePreset] = useState<string[]>([]);

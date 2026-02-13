@@ -43,7 +43,7 @@ function MethodBadge({ method }: { method: string }) {
 export default function Dashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const isAdmin = user?.roleId === 'role_admin';
+  const isAdmin = user?.role === 'admin';
 
   const totalWines = mockWines.filter(w => w.isActive).length;
   const totalStock = mockWines.reduce((s, w) => s + w.stockUnopened + w.stockOpened, 0);
@@ -66,7 +66,7 @@ export default function Dashboard() {
     <div className="space-y-8 animate-fade-in">
       <div>
         <h1 className="text-3xl font-heading font-bold">
-          {isAdmin ? 'Admin Dashboard' : `Welcome, ${user?.name?.split(' ')[0]}!`}
+          {isAdmin ? 'Admin Dashboard' : `Welcome, ${user?.displayName?.split(' ')[0]}!`}
         </h1>
         <p className="text-muted-foreground mt-1">
           {isAdmin ? 'Complete overview of your wine inventory' : 'Ready to count inventory'}

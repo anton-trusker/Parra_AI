@@ -17,7 +17,7 @@ export default function UserManagement() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<MockUser | null>(null);
 
-  if (user?.roleId !== 'role_admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
 
   const filtered = mockUsers.filter(u => {
     if (roleFilter !== 'all' && u.role !== roleFilter) return false;

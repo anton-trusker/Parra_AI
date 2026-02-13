@@ -74,7 +74,13 @@ export default function AppSidebar() {
     location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path));
 
   const filterItems = (items: NavItemDef[]) =>
-    items.filter(item => role && role.permissions[item.module] !== 'none');
+    items.filter(item => {
+      if (!role) return false;
+      // Admin sees everything, staff sees non-restricted
+      if (role.id === 'admin') return true;
+      const restricted: ModuleKey[] = ['settings' as ModuleKey, 'users' as ModuleKey];
+      return !restricted.includes(item.module);
+    });
 
   return (
     <>
@@ -89,7 +95,7 @@ export default function AppSidebar() {
         <div className="flex items-center gap-1">
           <ThemeToggle className="p-1.5" />
           <button onClick={() => navigate('/profile')} className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-xs font-bold text-primary-foreground">
-            {user?.name?.charAt(0)}
+            {user?.displayName?.charAt(0)}
           </button>
         </div>
       </div>
@@ -167,10 +173,10 @@ export default function AppSidebar() {
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => navigate('/profile')} className="flex items-center gap-3 flex-1 min-w-0 rounded-lg p-2 -mx-2 hover:bg-sidebar-accent transition-colors">
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-sm font-bold text-primary-foreground shadow-md shadow-primary/20">
-                {user?.name?.charAt(0)}
+                {user?.displayName?.charAt(0)}
               </div>
               <div className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-medium text-foreground truncate">{user?.name}</p>
+                <p className="text-sm font-medium text-foreground truncate">{user?.displayName}</p>
                 <p className="text-xs text-muted-foreground capitalize">{role?.name}</p>
               </div>
             </button>

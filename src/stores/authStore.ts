@@ -1,105 +1,108 @@
 import { create } from 'zustand';
-import { useSettingsStore } from '@/stores/settingsStore';
-import { ALL_MODULES, permKey } from '@/data/referenceData';
-import type { ModuleKey, PermissionLevel } from '@/data/referenceData';
+import { supabase } from '@/integrations/supabase/client';
+import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
-export interface User {
+export interface AppUser {
   id: string;
-  name: string;
   email: string;
-  roleId: string; // references AppRole.id
-  avatar?: string;
+  displayName: string;
+  firstName?: string;
+  lastName?: string;
+  loginName?: string;
+  avatarUrl?: string;
+  avatarColor?: string;
+  role: 'admin' | 'staff';
+  isActive: boolean;
 }
 
 interface AuthState {
-  user: User | null;
+  user: AppUser | null;
+  session: Session | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => boolean;
-  logout: () => void;
-}
+  isLoading: boolean;
+  initialized: boolean;
 
-// Mock users for demo
-const MOCK_USERS: Record<string, { password: string; user: User }> = {
-  'admin@wine.com': {
-    password: 'admin123',
-    user: { id: '1', name: 'Marco Rossi', email: 'admin@wine.com', roleId: 'role_admin' },
-  },
-  'staff@wine.com': {
-    password: 'staff123',
-    user: { id: '2', name: 'Sarah Miller', email: 'staff@wine.com', roleId: 'role_staff' },
-  },
-};
+  setSession: (session: Session | null) => void;
+  setUser: (user: AppUser | null) => void;
+  setLoading: (loading: boolean) => void;
+  setInitialized: (v: boolean) => void;
+  logout: () => Promise<void>;
+}
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
+  session: null,
   isAuthenticated: false,
-  login: (email: string, password: string) => {
-    const record = MOCK_USERS[email];
-    if (record && record.password === password) {
-      set({ user: record.user, isAuthenticated: true });
-      return true;
-    }
-    return false;
+  isLoading: true,
+  initialized: false,
+
+  setSession: (session) => set({ session, isAuthenticated: !!session }),
+  setUser: (user) => set({ user, isAuthenticated: !!user }),
+  setLoading: (isLoading) => set({ isLoading }),
+  setInitialized: (initialized) => set({ initialized }),
+  logout: async () => {
+    await supabase.auth.signOut();
+    set({ user: null, session: null, isAuthenticated: false });
   },
-  logout: () => set({ user: null, isAuthenticated: false }),
 }));
 
-const HIERARCHY: PermissionLevel[] = ['none', 'view', 'edit', 'full'];
+// Fetch profile + role for a given user id
+export async function fetchAppUser(userId: string, email: string): Promise<AppUser | null> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
 
-function resolveLevel(role: { permissions: Record<string, PermissionLevel> }, key: string): PermissionLevel {
-  // Direct key match (e.g. "catalog.add_edit_wines")
-  if (role.permissions[key] !== undefined) return role.permissions[key];
-  return 'none';
+  const { data: roleRow } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId)
+    .single();
+
+  const role = (roleRow?.role as 'admin' | 'staff') || 'staff';
+
+  return {
+    id: userId,
+    email,
+    displayName: profile?.display_name || email,
+    firstName: profile?.first_name || undefined,
+    lastName: profile?.last_name || undefined,
+    loginName: (profile as any)?.login_name || undefined,
+    avatarUrl: profile?.avatar_url || undefined,
+    avatarColor: profile?.avatar_color || undefined,
+    role,
+    isActive: profile?.is_active ?? true,
+  };
 }
 
-// Check module-level: returns the highest level across all sub-actions of a module
-function resolveModuleLevel(role: { permissions: Record<string, PermissionLevel> }, moduleKey: ModuleKey): PermissionLevel {
-  const mod = ALL_MODULES.find(m => m.key === moduleKey);
-  if (!mod) return 'none';
-  let best = 0;
-  for (const a of mod.subActions) {
-    const lvl = HIERARCHY.indexOf(resolveLevel(role, permKey(moduleKey, a.key)));
-    if (lvl > best) best = lvl;
-  }
-  return HIERARCHY[best];
+// Permission helpers
+export function useIsAdmin(): boolean {
+  return useAuthStore((s) => s.user?.role === 'admin');
 }
 
-/**
- * Permission helper — supports both:
- *  - module-level: hasPermission('catalog', 'view') → highest sub-action level
- *  - sub-action:   hasPermission('catalog.add_edit_wines', 'edit')
- */
-export function hasPermission(module: string, requiredLevel: PermissionLevel): boolean {
+export function hasPermission(module: string, _requiredLevel: string): boolean {
   const user = useAuthStore.getState().user;
   if (!user) return false;
-  const roles = useSettingsStore.getState().roles;
-  const role = roles.find((r) => r.id === user.roleId);
-  if (!role) return false;
-
-  const level = module.includes('.')
-    ? resolveLevel(role, module)
-    : resolveModuleLevel(role, module as ModuleKey);
-  return HIERARCHY.indexOf(level) >= HIERARCHY.indexOf(requiredLevel);
+  // Admin has full access
+  if (user.role === 'admin') return true;
+  // Staff has limited access — for now allow view on most, restrict settings/users
+  const restricted = ['settings', 'users'];
+  if (restricted.includes(module)) return false;
+  return true;
 }
 
-// Hook for reactive permission checking
-export function useHasPermission(module: string, requiredLevel: PermissionLevel): boolean {
+export function useHasPermission(module: string, requiredLevel: string): boolean {
   const user = useAuthStore((s) => s.user);
-  const roles = useSettingsStore((s) => s.roles);
   if (!user) return false;
-  const role = roles.find((r) => r.id === user.roleId);
-  if (!role) return false;
-
-  const level = module.includes('.')
-    ? resolveLevel(role, module)
-    : resolveModuleLevel(role, module as ModuleKey);
-  return HIERARCHY.indexOf(level) >= HIERARCHY.indexOf(requiredLevel);
+  if (user.role === 'admin') return true;
+  const restricted = ['settings', 'users'];
+  if (restricted.includes(module)) return false;
+  return true;
 }
 
-// Get user's role object
 export function useUserRole() {
   const user = useAuthStore((s) => s.user);
-  const roles = useSettingsStore((s) => s.roles);
   if (!user) return null;
-  return roles.find((r) => r.id === user.roleId) ?? null;
+  return { name: user.role === 'admin' ? 'Admin' : 'Staff', id: user.role };
 }

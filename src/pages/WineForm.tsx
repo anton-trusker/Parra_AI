@@ -69,7 +69,7 @@ export default function WineForm() {
     glassPourSizeMl: existing?.glassPourSizeMl?.toString() || '',
   });
 
-  if (user?.roleId !== 'role_admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
   if (isEdit && !existing) return <Navigate to="/catalog" replace />;
 
   const update = (field: string, value: string | boolean) => setForm(f => ({ ...f, [field]: value }));
