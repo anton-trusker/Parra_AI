@@ -14,6 +14,126 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_config: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          max_image_size_mb: number | null
+          model_name: string
+          provider: string
+          rate_limit_per_minute: number | null
+          settings: Json | null
+          supported_formats: string[] | null
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_image_size_mb?: number | null
+          model_name?: string
+          provider?: string
+          rate_limit_per_minute?: number | null
+          settings?: Json | null
+          supported_formats?: string[] | null
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_image_size_mb?: number | null
+          model_name?: string
+          provider?: string
+          rate_limit_per_minute?: number | null
+          settings?: Json | null
+          supported_formats?: string[] | null
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      ai_recognition_attempts: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          extracted_data: Json | null
+          id: string
+          image_base64: string | null
+          image_url: string | null
+          match_confidence: number | null
+          match_method: string | null
+          matched_product_id: string | null
+          model_used: string | null
+          processed_at: string | null
+          processing_time_ms: number | null
+          prompt_version: string | null
+          raw_response: Json | null
+          session_id: string | null
+          status: string | null
+          tokens_used: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          extracted_data?: Json | null
+          id?: string
+          image_base64?: string | null
+          image_url?: string | null
+          match_confidence?: number | null
+          match_method?: string | null
+          matched_product_id?: string | null
+          model_used?: string | null
+          processed_at?: string | null
+          processing_time_ms?: number | null
+          prompt_version?: string | null
+          raw_response?: Json | null
+          session_id?: string | null
+          status?: string | null
+          tokens_used?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          extracted_data?: Json | null
+          id?: string
+          image_base64?: string | null
+          image_url?: string | null
+          match_confidence?: number | null
+          match_method?: string | null
+          matched_product_id?: string | null
+          model_used?: string | null
+          processed_at?: string | null
+          processing_time_ms?: number | null
+          prompt_version?: string | null
+          raw_response?: Json | null
+          session_id?: string | null
+          status?: string | null
+          tokens_used?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_recognition_attempts_matched_product_id_fkey"
+            columns: ["matched_product_id"]
+            isOneToOne: false
+            referencedRelation: "wines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_recognition_attempts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_roles_config: {
         Row: {
           color: string | null

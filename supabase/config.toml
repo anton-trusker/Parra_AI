@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.syrve-sync]
 verify_jwt = false
+
+[functions.ai-recognize-label]
+verify_jwt = false
