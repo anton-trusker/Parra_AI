@@ -61,7 +61,7 @@ export default function BusinessSettings() {
 
   const [saving, setSaving] = useState(false);
 
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
   const handleSave = async () => {
     if (!form.business_name.trim()) { toast.error('Business name is required'); return; }

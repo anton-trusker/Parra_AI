@@ -74,7 +74,7 @@ export default function WineForm() {
     setFormInitialized(true);
   }
 
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
   if (isEdit && !isLoading && !existing) return <Navigate to="/catalog" replace />;
   if (isEdit && isLoading) return <div className="space-y-4"><Skeleton className="h-8 w-48" /><Skeleton className="h-64 w-full" /></div>;
 

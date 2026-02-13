@@ -90,7 +90,7 @@ export default function InventorySettings() {
 
   const [saving, setSaving] = useState(false);
 
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
   const handleSave = async () => {
     setSaving(true);

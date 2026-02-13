@@ -43,7 +43,7 @@ export default function GeneralSettings() {
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const [newSubLocNames, setNewSubLocNames] = useState<Record<string, string>>({});
 
-  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
   const isLoading = loadingGlass || loadingLocs || loadingVols || loadingUnit;
 
