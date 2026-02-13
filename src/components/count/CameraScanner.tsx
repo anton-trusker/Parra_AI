@@ -40,9 +40,11 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
   const [selectedWine, setSelectedWine] = useState<WineRef | null>(null);
   const [showQuantity, setShowQuantity] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
-  const [progressWine, setProgressWine] = useState<WineRef | null>(null);
+  const [aiResult, setAiResult] = useState<any>(null);
   const [isCompactQuantity, setIsCompactQuantity] = useState(false);
   const [countingMethod, setCountingMethod] = useState<'barcode' | 'manual' | 'image_ai'>('barcode');
+  const [showVariantPicker, setShowVariantPicker] = useState(false);
+  const [variants, setVariants] = useState<any[]>([]);
   const imageVideoRef = useRef<HTMLVideoElement>(null);
   const sharedStreamRef = useRef<MediaStream | null>(null);
 
@@ -79,7 +81,6 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
       .maybeSingle();
 
     if (!barcodeRow) {
-      // Also try primary_barcode on wines table
       const { data: wineRow } = await supabase
         .from('wines')
         .select('id, name, producer, vintage, volume_ml, volume_label')
@@ -134,7 +135,6 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
   const { isScanning, error: scannerError } = useBarcodeScanner(SCANNER_ELEMENT_ID, handleBarcodeDetected, isBarcodeActive);
 
   const handleSimulateScan = async () => {
-    // Pick a random wine from DB for demo
     const { data: wines } = await supabase.from('wines').select('id, name, producer, vintage, volume_ml, volume_label, primary_barcode').limit(10);
     if (wines && wines.length > 0) {
       const w = wines[Math.floor(Math.random() * wines.length)];
@@ -148,13 +148,42 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
     }
   };
 
+  // Real AI image capture
   const handleImageCapture = async () => {
-    // For now, simulate AI — will be replaced by ai-scan edge function
-    const { data: wines } = await supabase.from('wines').select('id, name, producer, vintage, volume_ml, volume_label').limit(10);
-    if (wines && wines.length > 0) {
-      const w = wines[Math.floor(Math.random() * wines.length)];
-      setProgressWine({ id: w.id, name: w.name, producer: w.producer || '', vintage: w.vintage, volume: w.volume_ml || 750 });
-      setShowProgress(true);
+    const video = imageVideoRef.current;
+    if (!video || !video.videoWidth) {
+      toast.error('Camera not ready');
+      return;
+    }
+
+    // Capture frame from video
+    const canvas = document.createElement('canvas');
+    const maxSide = 1024;
+    const scale = Math.min(1, maxSide / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // Convert to base64 (strip data URL prefix)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    const base64 = dataUrl.split(',')[1];
+
+    // Show progress dialog with pending state
+    setAiResult(null);
+    setShowProgress(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-recognize-label', {
+        body: { image_base64: base64, session_id: sessionId },
+      });
+
+      if (error) throw error;
+      setAiResult(data);
+    } catch (e: any) {
+      console.error('AI recognition error:', e);
+      setAiResult({ status: 'failed', error: e.message });
     }
   };
 
@@ -165,11 +194,27 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
       setCountingMethod('image_ai');
       setIsCompactQuantity(false);
       setShowQuantity(true);
-      if (confidence > 0) toast.info(`Confidence: ${confidence.toFixed(1)}%`, { duration: 2000 });
+      if (confidence > 0) toast.info(`AI Confidence: ${confidence.toFixed(0)}%`, { duration: 2000 });
     } else {
       toast.error('Could not identify wine. Try manual search.');
     }
   }, []);
+
+  const handleVariantSelect = (wine: any) => {
+    setShowVariantPicker(false);
+    setVariants([]);
+    setSelectedWine({
+      id: wine.id,
+      name: wine.name,
+      producer: wine.producer || '',
+      vintage: wine.vintage,
+      volume: wine.volume_ml || 750,
+      volumeLabel: wine.volume_label || undefined,
+    });
+    setCountingMethod('image_ai');
+    setIsCompactQuantity(false);
+    setShowQuantity(true);
+  };
 
   const handleManualSelect = (wine: any) => {
     setShowManualSearch(false);
@@ -207,7 +252,6 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
     setSelectedWine(null);
   };
 
-  // Build a QuantityWine-compatible object for QuantityPopup
   const wineForPopup = selectedWine ? {
     id: selectedWine.id,
     name: selectedWine.name,
@@ -303,7 +347,7 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
             </button>
             <button onClick={() => setMode('image')} className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all ${mode === 'image' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
               <Camera className="w-4 h-4" />
-              Image
+              AI Scan
             </button>
           </div>
           <div className="w-[52px]" />
@@ -324,9 +368,33 @@ export default function CameraScanner({ sessionId, counted, onCount, onEndSessio
 
       <ScanProgressDialog
         open={showProgress}
+        aiResult={aiResult}
         onComplete={handleProgressComplete}
-        simulatedWine={progressWine}
+        onManualSearch={() => { setShowProgress(false); setShowManualSearch(true); }}
+        onSelectVariant={(v) => { setShowProgress(false); handleVariantSelect(v); }}
       />
+
+      {/* Variant picker overlay */}
+      {showVariantPicker && variants.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center animate-fade-in">
+          <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={() => setShowVariantPicker(false)} />
+          <div className="relative w-full max-w-md bg-card border-t border-border rounded-t-2xl p-4 pb-safe max-h-[60vh] overflow-y-auto">
+            <h3 className="font-heading font-semibold mb-3">Select Vintage</h3>
+            <div className="space-y-2">
+              {variants.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => handleVariantSelect(v)}
+                  className="w-full p-3 rounded-lg border border-border hover:border-primary/50 text-left transition-colors"
+                >
+                  <p className="font-medium">{v.name}</p>
+                  <p className="text-sm text-muted-foreground">{v.vintage || 'NV'} · {v.volume_ml || 750}ml</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
