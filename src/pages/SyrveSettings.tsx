@@ -867,7 +867,7 @@ export default function SyrveSettings() {
               {savingSettings && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Save All Settings
             </Button>
-            {(settingsSaved || syncFinished) && !activeSyncRunId && (
+           {(settingsSaved || syncFinished) && !activeSyncRunId && (
               <Button
                 onClick={() => {
                   setSyncFinished(false);
@@ -886,6 +886,26 @@ export default function SyrveSettings() {
               >
                 {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                 {syncMutation.isPending ? 'Starting...' : 'Sync Now'}
+              </Button>
+            )}
+            {!activeSyncRunId && (
+              <Button
+                onClick={() => {
+                  syncMutation.mutate('prices_stock', {
+                    onSuccess: (data: any) => {
+                      setActiveSyncRunId(data?.sync_run_id || null);
+                      setSyncProgress({ stage: 'authenticating', progress: 5 });
+                    },
+                    onError: (err: any) => toast.error(err.message || 'Sync failed'),
+                  });
+                }}
+                disabled={syncMutation.isPending}
+                size="lg"
+                variant="outline"
+                className="gap-2"
+              >
+                {syncMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                Refresh Prices & Stock
               </Button>
             )}
           </div>

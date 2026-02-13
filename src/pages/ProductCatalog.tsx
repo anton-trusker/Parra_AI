@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuthStore } from '@/stores/authStore';
 import { useColumnStore } from '@/stores/columnStore';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
@@ -23,7 +22,8 @@ const PRODUCT_COLUMN_DEFS: ColumnDef[] = [
   { key: 'sale_price', label: 'Sale Price' },
   { key: 'purchase_price', label: 'Purchase Price' },
   { key: 'stock', label: 'Stock' },
-  { key: 'unit_capacity', label: 'Unit Capacity' },
+  { key: 'unit_capacity', label: 'Volume (L)' },
+  { key: 'containers', label: 'Containers' },
   { key: 'synced_at', label: 'Synced At' },
 ];
 
@@ -51,7 +51,23 @@ function StockIndicator({ stock }: { stock: number | null }) {
   return <span className="text-emerald-400 font-medium">{stock}</span>;
 }
 
+function ContainerInfo({ syrveData }: { syrveData: any }) {
+  const containers = syrveData?.containers;
+  if (!Array.isArray(containers) || containers.length === 0) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-col gap-0.5">
+      {containers.slice(0, 3).map((c: any, i: number) => (
+        <span key={i} className="text-xs text-muted-foreground">
+          {c.name || 'unit'}{c.count != null ? ` (${c.count}L)` : ''}
+        </span>
+      ))}
+      {containers.length > 3 && <span className="text-xs text-muted-foreground/60">+{containers.length - 3} more</span>}
+    </div>
+  );
+}
+
 function ProductCard({ product, onClick }: { product: Product; onClick: () => void }) {
+  const containers = product.syrve_data?.containers;
   return (
     <div onClick={onClick} className="wine-glass-effect rounded-xl overflow-hidden group transition-all duration-300 hover:border-accent/30 hover:shadow-lg cursor-pointer">
       <div className="p-4 space-y-2">
@@ -64,14 +80,30 @@ function ProductCard({ product, onClick }: { product: Product; onClick: () => vo
           {product.sku && <span>SKU: {product.sku}</span>}
           {product.code && <><span className="text-border">•</span><span>{product.code}</span></>}
         </div>
+        {/* Container & volume info */}
+        {(product.unit_capacity || (Array.isArray(containers) && containers.length > 0)) && (
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            {product.unit_capacity != null && <span>{product.unit_capacity}L</span>}
+            {Array.isArray(containers) && containers.length > 0 && (
+              <span className="text-border">
+                {containers.map((c: any) => c.name).filter(Boolean).join(', ')}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
           <div className="text-xs">
             <span className="text-muted-foreground">Stock: </span>
             <StockIndicator stock={product.current_stock} />
           </div>
-          {product.sale_price != null && (
-            <span className="text-xs text-accent font-medium">{product.sale_price.toFixed(2)}</span>
-          )}
+          <div className="flex items-center gap-2">
+            {product.purchase_price != null && (
+              <span className="text-[11px] text-muted-foreground">{product.purchase_price.toFixed(2)}</span>
+            )}
+            {product.sale_price != null && (
+              <span className="text-xs text-accent font-medium">{product.sale_price.toFixed(2)}</span>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -88,7 +120,8 @@ function buildProductColumns(): DataTableColumn<Product>[] {
     { key: 'sale_price', label: 'Sale Price', align: 'right', render: p => <span className="text-accent">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.sale_price || 0) - (b.sale_price || 0) },
     { key: 'purchase_price', label: 'Purchase Price', align: 'right', render: p => <span className="text-muted-foreground">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
     { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
-    { key: 'unit_capacity', label: 'Unit Cap.', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span> },
+    { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
+    { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
   ];
 }
