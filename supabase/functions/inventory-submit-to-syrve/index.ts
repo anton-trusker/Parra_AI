@@ -81,16 +81,32 @@ serve(async (req) => {
       });
     }
 
-    // Fetch counted items with wine variant data
-    const { data: items, error: itemsErr } = await adminClient
-      .from("inventory_items")
-      .select("*, wine_variants!inventory_items_variant_id_fkey(syrve_product_id)")
-      .eq("session_id", session_id)
-      .in("count_status", ["counted", "verified"]);
+    // Use aggregated totals from event-sourced model
+    const { data: aggregates, error: aggErr } = await adminClient
+      .from("inventory_product_aggregates")
+      .select("*, wine_variants!inventory_product_aggregates_variant_id_fkey(syrve_product_id)")
+      .eq("session_id", session_id);
 
-    if (itemsErr) throw itemsErr;
+    // Fallback to legacy inventory_items if no aggregates exist
+    let itemsForSubmission: any[] = [];
 
-    if (!items || items.length === 0) {
+    if (aggregates && aggregates.length > 0) {
+      itemsForSubmission = aggregates;
+    } else {
+      // Legacy fallback: use inventory_items
+      const { data: items, error: itemsErr } = await adminClient
+        .from("inventory_items")
+        .select("*, wine_variants!inventory_items_variant_id_fkey(syrve_product_id)")
+        .eq("session_id", session_id)
+        .in("count_status", ["counted", "verified"]);
+      if (itemsErr) throw itemsErr;
+      itemsForSubmission = (items || []).map(item => ({
+        ...item,
+        counted_qty_total: (item.counted_quantity_unopened || 0) + (item.counted_quantity_opened || 0),
+      }));
+    }
+
+    if (!itemsForSubmission || itemsForSubmission.length === 0) {
       return new Response(JSON.stringify({ error: "No counted items found in session" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -102,17 +118,19 @@ serve(async (req) => {
     const docNumber = `INV-${session.session_name.replace(/\s+/g, "-").substring(0, 20)}-${Date.now().toString(36)}`;
 
     let itemsXml = "";
-    for (const item of items) {
+    let itemCount = 0;
+    for (const item of itemsForSubmission) {
       const syrveProductId = item.wine_variants?.syrve_product_id;
       if (!syrveProductId) continue;
 
-      const totalCounted = (item.counted_quantity_unopened || 0) + (item.counted_quantity_opened || 0);
+      const totalCounted = item.counted_qty_total || 0;
 
       itemsXml += `
         <item>
           <product>${escapeXml(syrveProductId)}</product>
           <amount>${totalCounted}</amount>
         </item>`;
+      itemCount++;
     }
 
     const payloadXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -172,8 +190,8 @@ serve(async (req) => {
       action: "inventory.submit_to_syrve",
       entity_type: "inventory_session",
       entity_id: session_id,
-      description: `Submitted session to Syrve outbox. ${items.length} items, job: ${job.id}`,
-      metadata: { outbox_job_id: job.id, items_count: items.length, doc_number: docNumber },
+      description: `Submitted session to Syrve outbox. ${itemCount} items, job: ${job.id}`,
+      metadata: { outbox_job_id: job.id, items_count: itemCount, doc_number: docNumber },
     });
 
     return new Response(JSON.stringify({
@@ -181,7 +199,7 @@ serve(async (req) => {
       outbox_job_id: job.id,
       status: "queued",
       message: "Inventory queued for submission to Syrve",
-      items_count: items.length,
+      items_count: itemCount,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
