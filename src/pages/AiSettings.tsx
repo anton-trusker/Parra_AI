@@ -194,7 +194,6 @@ export default function AiSettings() {
           </div>
           <div className="rounded-lg bg-muted/50 p-3 flex items-center gap-2">
             <Badge variant="outline">{form.model_name}</Badge>
-            <span className="text-xs text-muted-foreground">via {form.provider}</span>
           </div>
         </div>
       </CollapsibleSection>
