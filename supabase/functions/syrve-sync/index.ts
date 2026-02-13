@@ -322,13 +322,27 @@ async function syncProducts(
     }
   }
 
+  // Pre-fetch existing hashes for all products in one query
+  const productSyrveIds = products.map((p: any) => p.id).filter(Boolean);
+  const { data: existingRaw } = await client.from("syrve_raw_objects")
+    .select("syrve_id, payload_hash")
+    .eq("entity_type", "product")
+    .in("syrve_id", productSyrveIds);
+  const existingHashMap = new Map((existingRaw || []).map((r: any) => [r.syrve_id, r.payload_hash]));
+
+  // Prepare batches
+  const BATCH_SIZE = 50;
+  const rawBatch: any[] = [];
+  const productBatch: any[] = [];
+  const productSyrveIdOrder: string[] = [];
+  const barcodeQueue: { syrveId: string; barcodes: any[] }[] = [];
+
   for (const product of products) {
     const syrveId = product.id;
     if (!syrveId) continue;
 
     const parentGroupId = product.parent || product.parentId;
 
-    // Category filtering: skip products not in selected categories
     if (selectedSyrveIds && parentGroupId && !selectedSyrveIds.has(parentGroupId)) {
       stats.skipped = (stats.skipped || 0) + 1;
       continue;
@@ -336,56 +350,38 @@ async function syncProducts(
 
     const payloadHash = await sha1(JSON.stringify(product));
 
-    const { data: existing } = await client.from("syrve_raw_objects")
-      .select("payload_hash")
-      .eq("entity_type", "product")
-      .eq("syrve_id", syrveId)
-      .maybeSingle();
-
-    if (existing?.payload_hash === payloadHash) {
+    if (existingHashMap.get(syrveId) === payloadHash) {
       stats.skipped = (stats.skipped || 0) + 1;
       continue;
     }
 
-    await client.from("syrve_raw_objects").upsert({
+    rawBatch.push({
       entity_type: "product",
       syrve_id: syrveId,
       payload: product,
       payload_hash: payloadHash,
       synced_at: new Date().toISOString(),
-    }, { onConflict: "entity_type,syrve_id" });
+    });
 
     const categoryId = parentGroupId ? catLookup.get(parentGroupId) : null;
-
-    // Extract vintage from name if present
     const vintageMatch = product.name?.match(/(19|20)\d{2}/);
     const vintage = vintageMatch ? parseInt(vintageMatch[0]) : null;
 
-    // Extract container data for unit_capacity
     let unitCapacity = product.unitCapacity || null;
     const containers = product.containers || [];
     if (Array.isArray(containers) && containers.length > 0 && !unitCapacity) {
       const firstContainer = containers[0];
-      if (firstContainer.count) {
-        unitCapacity = parseFloat(firstContainer.count);
-      }
+      if (firstContainer.count) unitCapacity = parseFloat(firstContainer.count);
     }
 
-    // Build metadata with productCategory and cookingPlaceType
-    const metadata: any = {
-      vintage,
-      extracted_at: new Date().toISOString(),
-    };
+    const metadata: any = { vintage, extracted_at: new Date().toISOString() };
     if (product.productCategory) metadata.productCategory = product.productCategory;
     if (product.cookingPlaceType) metadata.cookingPlaceType = product.cookingPlaceType;
 
-    // Include container data in syrve_data
     const syrveData = { ...product };
-    if (containers.length > 0) {
-      syrveData.containers = containers;
-    }
+    if (containers.length > 0) syrveData.containers = containers;
 
-    const { data: upserted } = await client.from("products").upsert({
+    productBatch.push({
       syrve_product_id: syrveId,
       category_id: categoryId || null,
       name: product.name || "Unknown",
@@ -402,27 +398,54 @@ async function syncProducts(
       syrve_data: syrveData,
       metadata,
       synced_at: new Date().toISOString(),
-    }, { onConflict: "syrve_product_id" }).select("id").single();
+    });
+    productSyrveIdOrder.push(syrveId);
+
+    if (product.barcodes) {
+      barcodeQueue.push({ syrveId, barcodes: Array.isArray(product.barcodes) ? product.barcodes : [product.barcodes] });
+    }
 
     stats.products++;
+  }
 
-    // Sync barcodes
-    if (upserted && product.barcodes) {
-      const barcodes = Array.isArray(product.barcodes) ? product.barcodes : [product.barcodes];
+  // Batch upsert raw objects
+  for (let i = 0; i < rawBatch.length; i += BATCH_SIZE) {
+    await client.from("syrve_raw_objects").upsert(rawBatch.slice(i, i + BATCH_SIZE), { onConflict: "entity_type,syrve_id" });
+  }
+
+  // Batch upsert products
+  for (let i = 0; i < productBatch.length; i += BATCH_SIZE) {
+    await client.from("products").upsert(productBatch.slice(i, i + BATCH_SIZE), { onConflict: "syrve_product_id" });
+  }
+
+  // Fetch product IDs for barcode linking
+  if (barcodeQueue.length > 0) {
+    const bcSyrveIds = barcodeQueue.map(b => b.syrveId);
+    const { data: productRows } = await client.from("products")
+      .select("id, syrve_product_id")
+      .in("syrve_product_id", bcSyrveIds);
+    const prodIdMap = new Map((productRows || []).map((p: any) => [p.syrve_product_id, p.id]));
+
+    const barcodeBatch: any[] = [];
+    for (const { syrveId, barcodes } of barcodeQueue) {
+      const productId = prodIdMap.get(syrveId);
+      if (!productId) continue;
       for (const bc of barcodes) {
         const barcodeValue = bc.barcode || bc.barcodeContainer?.barcode || (typeof bc === "string" ? bc : null);
         if (!barcodeValue) continue;
-
-        await client.from("product_barcodes").upsert({
-          product_id: upserted.id,
+        barcodeBatch.push({
+          product_id: productId,
           barcode: barcodeValue,
           container_name: bc.containerName || bc.barcodeContainer?.containerName || null,
           source: "syrve",
-          is_primary: stats.barcodes === 0,
-        }, { onConflict: "barcode" }).catch(() => { /* ignore duplicate */ });
-
+          is_primary: false,
+        });
         stats.barcodes++;
       }
+    }
+
+    for (let i = 0; i < barcodeBatch.length; i += BATCH_SIZE) {
+      await client.from("product_barcodes").upsert(barcodeBatch.slice(i, i + BATCH_SIZE), { onConflict: "barcode" }).catch(() => {});
     }
   }
 }
