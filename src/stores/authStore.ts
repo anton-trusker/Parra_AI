@@ -11,7 +11,7 @@ export interface AppUser {
   loginName?: string;
   avatarUrl?: string;
   avatarColor?: string;
-  role: 'admin' | 'staff';
+  role: 'super_admin' | 'admin' | 'staff';
   isActive: boolean;
 }
 
@@ -60,7 +60,7 @@ export async function fetchAppUser(userId: string, email: string): Promise<AppUs
     .eq('user_id', userId)
     .single();
 
-  const role = (roleRow?.role as 'admin' | 'staff') || 'staff';
+  const role = (roleRow?.role as 'super_admin' | 'admin' | 'staff') || 'staff';
 
   return {
     id: userId,
@@ -78,14 +78,14 @@ export async function fetchAppUser(userId: string, email: string): Promise<AppUs
 
 // Permission helpers
 export function useIsAdmin(): boolean {
-  return useAuthStore((s) => s.user?.role === 'admin');
+  return useAuthStore((s) => s.user?.role === 'admin' || s.user?.role === 'super_admin');
 }
 
 export function hasPermission(module: string, _requiredLevel: string): boolean {
   const user = useAuthStore.getState().user;
   if (!user) return false;
-  // Admin has full access
-  if (user.role === 'admin') return true;
+  // Admin and super_admin have full access
+  if (user.role === 'admin' || user.role === 'super_admin') return true;
   // Staff has limited access — for now allow view on most, restrict settings/users
   const restricted = ['settings', 'users'];
   if (restricted.includes(module)) return false;
@@ -95,7 +95,7 @@ export function hasPermission(module: string, _requiredLevel: string): boolean {
 export function useHasPermission(module: string, requiredLevel: string): boolean {
   const user = useAuthStore((s) => s.user);
   if (!user) return false;
-  if (user.role === 'admin') return true;
+  if (user.role === 'admin' || user.role === 'super_admin') return true;
   const restricted = ['settings', 'users'];
   if (restricted.includes(module)) return false;
   return true;
@@ -104,5 +104,6 @@ export function useHasPermission(module: string, requiredLevel: string): boolean
 export function useUserRole() {
   const user = useAuthStore((s) => s.user);
   if (!user) return null;
-  return { name: user.role === 'admin' ? 'Admin' : 'Staff', id: user.role };
+  const nameMap: Record<string, string> = { super_admin: 'Super Admin', admin: 'Admin', staff: 'Staff' };
+  return { name: nameMap[user.role] || user.role, id: user.role };
 }
