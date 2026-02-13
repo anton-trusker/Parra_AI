@@ -164,7 +164,7 @@ export default function CurrentStock() {
 
   const tableColumns = useMemo(() => buildColumns(), []);
 
-  if (user?.roleId !== 'role_admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
 
   const getRowBg = (w: Wine) => {
     const total = w.stockUnopened + w.stockOpened;

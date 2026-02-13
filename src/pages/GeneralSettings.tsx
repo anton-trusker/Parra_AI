@@ -28,7 +28,7 @@ export default function GeneralSettings() {
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
   const [newSubLocNames, setNewSubLocNames] = useState<Record<string, string>>({});
 
-  if (user?.roleId !== 'role_admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
 
   const toggleExpanded = (id: string) => {
     setExpandedLocations((prev) => {

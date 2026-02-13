@@ -8,7 +8,7 @@ export default function Profile() {
   const { user, logout } = useAuthStore();
   const role = useUserRole();
   const navigate = useNavigate();
-  const isAdmin = user?.roleId === 'role_admin';
+  const isAdmin = user?.role === 'admin';
 
   const stats = [
     { label: 'Total Counts', value: '47', icon: Wine },
@@ -22,10 +22,10 @@ export default function Profile() {
       <div className="wine-glass-effect rounded-2xl p-8 text-center">
         <div className="w-20 h-20 mx-auto rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center mb-4">
           <span className="text-3xl font-heading font-bold text-primary-foreground">
-            {user?.name?.charAt(0)}
+            {user?.displayName?.charAt(0)}
           </span>
         </div>
-        <h1 className="text-2xl font-heading font-bold">{user?.name}</h1>
+        <h1 className="text-2xl font-heading font-bold">{user?.displayName}</h1>
         <div className="flex items-center justify-center gap-2 mt-2">
           <span className="wine-badge bg-primary/15 text-primary">
             <Shield className="w-3 h-3 mr-1" />
@@ -56,7 +56,7 @@ export default function Profile() {
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Full Name</p>
-              <p className="text-sm font-medium">{user?.name}</p>
+              <p className="text-sm font-medium">{user?.displayName}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">

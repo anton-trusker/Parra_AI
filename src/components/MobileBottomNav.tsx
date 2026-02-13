@@ -37,7 +37,9 @@ export default function MobileBottomNav() {
 
   const visibleItems = allNavItems.filter((item) => {
     if (!role) return false;
-    return role.permissions[item.module] !== 'none';
+    if (role.id === 'admin') return true;
+    const restricted = ['settings', 'users'];
+    return !restricted.includes(item.module);
   });
 
   const primaryNav = visibleItems.filter((i) => i.primary).slice(0, 4);

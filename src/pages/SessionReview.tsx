@@ -82,7 +82,7 @@ export default function SessionReview() {
     });
   }, [sessions, statusFilter, typeFilter, createdByFilter, search]);
 
-  if (user?.roleId !== 'role_admin') return <Navigate to="/dashboard" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/dashboard" replace />;
 
   // Summary stats
   const totalSessions = sessions.length;
@@ -91,14 +91,14 @@ export default function SessionReview() {
   const flaggedCount = sessions.filter(s => s.status === 'flagged').length;
 
   const handleApprove = (sessionId: string) => {
-    approveSession(sessionId, approveNotes, user!.id, user!.name);
+    approveSession(sessionId, approveNotes, user!.id, user!.displayName);
     setApproveNotes('');
     toast.success('Session approved and recorded in audit trail');
   };
 
   const handleFlag = (sessionId: string) => {
     if (!flagReason.trim()) { toast.error('Please enter a reason'); return; }
-    flagSession(sessionId, flagReason, user!.id, user!.name);
+    flagSession(sessionId, flagReason, user!.id, user!.displayName);
     setFlagDialogSession(null);
     setFlagReason('');
     toast.warning('Session flagged for review');
