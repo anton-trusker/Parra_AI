@@ -275,17 +275,19 @@ export default function ProductCatalog() {
       label: '',
       align: 'center',
       headerRender: () => (
-        <div onClick={e => { e.stopPropagation(); toggleSelectAll(); }}>
+        <div onClick={e => e.stopPropagation()}>
           <Checkbox
-            checked={allSelected}
+            checked={allSelected ? true : someSelected ? 'indeterminate' : false}
+            onCheckedChange={() => toggleSelectAll()}
             className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
           />
         </div>
       ),
       render: p => (
-        <div onClick={e => { e.stopPropagation(); toggleSelect(p.id); }}>
+        <div onClick={e => e.stopPropagation()}>
           <Checkbox
             checked={selectedIds.has(p.id)}
+            onCheckedChange={() => toggleSelect(p.id)}
             className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
           />
         </div>
@@ -296,9 +298,10 @@ export default function ProductCatalog() {
       label: '★',
       align: 'center',
       render: p => (
-        <div onClick={e => handleCheckboxClick(e, p.id, 'is_marked', p.is_marked)}>
+        <div onClick={e => e.stopPropagation()}>
           <Checkbox
             checked={p.is_marked}
+            onCheckedChange={() => toggleFlag.mutate({ id: p.id, field: 'is_marked', value: !p.is_marked })}
             className="border-border data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
           />
         </div>
@@ -309,9 +312,10 @@ export default function ProductCatalog() {
       label: 'By Glass',
       align: 'center',
       render: p => (
-        <div onClick={e => handleCheckboxClick(e, p.id, 'is_by_glass', p.is_by_glass)}>
+        <div onClick={e => e.stopPropagation()}>
           <Checkbox
             checked={p.is_by_glass}
+            onCheckedChange={() => toggleFlag.mutate({ id: p.id, field: 'is_by_glass', value: !p.is_by_glass })}
             className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
           />
         </div>
@@ -328,7 +332,7 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
-  ], [selectedIds, toggleSelect, allSelected, toggleSelectAll]);
+  ], [selectedIds, toggleSelect, allSelected, someSelected, toggleSelectAll, toggleFlag]);
 
   return (
     <div className="space-y-6 animate-fade-in">
