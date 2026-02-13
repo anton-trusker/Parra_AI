@@ -1663,6 +1663,7 @@ export type Database = {
           decanting_time_minutes: number | null
           deleted_at: string | null
           deleted_by: string | null
+          embedding: string | null
           estate: string | null
           featured_wine: boolean
           fermentation_vessel: string | null
@@ -1720,6 +1721,7 @@ export type Database = {
           retail_price: number | null
           sale_price: number | null
           search_keywords: string | null
+          search_text: string | null
           serving_temperature_max: number | null
           serving_temperature_min: number | null
           shelf_position: string | null
@@ -1787,6 +1789,7 @@ export type Database = {
           decanting_time_minutes?: number | null
           deleted_at?: string | null
           deleted_by?: string | null
+          embedding?: string | null
           estate?: string | null
           featured_wine?: boolean
           fermentation_vessel?: string | null
@@ -1844,6 +1847,7 @@ export type Database = {
           retail_price?: number | null
           sale_price?: number | null
           search_keywords?: string | null
+          search_text?: string | null
           serving_temperature_max?: number | null
           serving_temperature_min?: number | null
           shelf_position?: string | null
@@ -1911,6 +1915,7 @@ export type Database = {
           decanting_time_minutes?: number | null
           deleted_at?: string | null
           deleted_by?: string | null
+          embedding?: string | null
           estate?: string | null
           featured_wine?: boolean
           fermentation_vessel?: string | null
@@ -1968,6 +1973,7 @@ export type Database = {
           retail_price?: number | null
           sale_price?: number | null
           search_keywords?: string | null
+          search_text?: string | null
           serving_temperature_max?: number | null
           serving_temperature_min?: number | null
           shelf_position?: string | null
@@ -2024,12 +2030,53 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      build_wine_search_text: {
+        Args: {
+          p_appellation: string
+          p_country: string
+          p_grape_varieties: Json
+          p_name: string
+          p_producer: string
+          p_region: string
+          p_vintage: number
+          p_volume_ml: number
+        }
+        Returns: string
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
           _user_id: string
         }
         Returns: boolean
+      }
+      match_wines_embedding: {
+        Args: { p_limit?: number; p_query_embedding: string }
+        Returns: {
+          cosine_score: number
+          country: string
+          producer: string
+          region: string
+          vintage: number
+          volume_label: string
+          volume_ml: number
+          wine_id: string
+          wine_name: string
+        }[]
+      }
+      match_wines_trigram: {
+        Args: { p_limit?: number; p_query: string }
+        Returns: {
+          country: string
+          producer: string
+          region: string
+          similarity_score: number
+          vintage: number
+          volume_label: string
+          volume_ml: number
+          wine_id: string
+          wine_name: string
+        }[]
       }
     }
     Enums: {

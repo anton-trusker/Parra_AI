@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.ai-recognize-label]
 verify_jwt = false
+
+[functions.generate-wine-embeddings]
+verify_jwt = false
