@@ -765,13 +765,21 @@ function parseWineName(rawName: string, syrveData: any): {
     }
   }
 
-  // Extract vintage (4-digit year 1900-2099)
+  // Extract vintage (4-digit year 1900-2099 or 'YY shorthand)
   const vintageMatch = text.match(/\b(19|20)\d{2}\b/);
   if (vintageMatch) {
     const yr = parseInt(vintageMatch[0]);
     if (yr >= 1900 && yr <= 2099) {
       result.vintage = yr;
       text = text.replace(vintageMatch[0], ' ');
+    }
+  } else {
+    // Short year: '17, '20, etc.
+    const shortMatch = text.match(/[''](\d{2})\b/);
+    if (shortMatch) {
+      const yy = parseInt(shortMatch[1]);
+      result.vintage = yy >= 50 ? 1900 + yy : 2000 + yy;
+      text = text.replace(shortMatch[0], ' ');
     }
   }
 
@@ -850,12 +858,13 @@ async function enrichWinesFromProducts(client: any, config: any, stats: any) {
       available_by_glass: parsed.available_by_glass || product.is_by_glass || false,
       sale_price: product.sale_price || product.default_sale_price || null,
       purchase_price: product.purchase_price || null,
-      sku: product.sku || null,
+      sku: product.sku || product.code || null,
       primary_barcode: barcode,
       current_stock_unopened: Math.max(0, Math.floor(product.current_stock || 0)),
       current_stock_opened: 0,
       is_active: true,
       is_archived: false,
+      internal_code: product.code || null,
     });
   }
 
