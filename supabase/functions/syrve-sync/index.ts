@@ -109,10 +109,15 @@ serve(async (req) => {
       }
 
       if (runType === "bootstrap" || runType === "products") {
+        // Fresh mode: delete everything before importing
+        if (reimportMode === 'fresh') {
+          await deleteAllProducts(adminClient, stats);
+        }
+
         const importedSyrveIds = await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds, productTypeFilters, importInactive, fieldMapping);
         
-        // Apply reimport mode for non-imported products
-        if (reimportMode !== 'merge' && importedSyrveIds && importedSyrveIds.length > 0) {
+        // Apply reimport mode for non-imported products (hide/replace)
+        if ((reimportMode === 'hide' || reimportMode === 'replace') && importedSyrveIds && importedSyrveIds.length > 0) {
           await applyReimportMode(adminClient, importedSyrveIds, reimportMode, stats);
         }
       }
@@ -517,6 +522,14 @@ async function applyReimportMode(client: any, importedSyrveIds: string[], mode: 
       stats.deleted += chunk.length;
     }
   }
+}
+
+async function deleteAllProducts(client: any, stats: any) {
+  // Delete all barcodes first, then all products
+  await client.from("product_barcodes").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  const { count } = await client.from("products").select("*", { count: "exact", head: true });
+  await client.from("products").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  stats.deleted = (stats.deleted || 0) + (count || 0);
 }
 
 function parseXmlItems(xml: string, tagName: string): any[] {

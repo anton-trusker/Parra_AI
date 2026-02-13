@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Sparkles, Mail, Lock, User } from 'lucide-react';
+import { Sparkles, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import loginHero from '@/assets/login-hero.jpg';
+
+const REMEMBER_KEY = 'parra_remember_me';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -15,11 +18,35 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+
+  // Restore remembered credentials
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(REMEMBER_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.email) setEmail(parsed.email);
+        if (parsed.username) setUsername(parsed.username);
+        setRememberMe(true);
+      }
+    } catch {}
+  }, []);
+
+  const saveRemember = () => {
+    if (rememberMe) {
+      localStorage.setItem(REMEMBER_KEY, JSON.stringify({ email, username }));
+    } else {
+      localStorage.removeItem(REMEMBER_KEY);
+    }
+  };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) { toast.error('Email and password required'); return; }
     setLoading(true);
+    saveRemember();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
@@ -34,6 +61,7 @@ export default function Login() {
     e.preventDefault();
     if (!username || !password) { toast.error('Username and password required'); return; }
     setLoading(true);
+    saveRemember();
     try {
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-login-username`, {
         method: 'POST',
@@ -49,7 +77,6 @@ export default function Login() {
         setLoading(false);
         return;
       }
-      // Set session from edge function response
       if (data.session) {
         await supabase.auth.setSession({
           access_token: data.session.access_token,
@@ -63,6 +90,45 @@ export default function Login() {
     }
     setLoading(false);
   };
+
+  const PasswordInput = () => (
+    <div className="space-y-1.5">
+      <Label>Password</Label>
+      <div className="relative">
+        <Input
+          type={showPassword ? 'text' : 'password'}
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          placeholder="••••••••"
+          className="h-12 bg-secondary border-border pr-10"
+          disabled={loading}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+          onClick={() => setShowPassword(!showPassword)}
+          tabIndex={-1}
+        >
+          {showPassword ? <EyeOff className="w-4 h-4 text-muted-foreground" /> : <Eye className="w-4 h-4 text-muted-foreground" />}
+        </Button>
+      </div>
+    </div>
+  );
+
+  const RememberMe = () => (
+    <div className="flex items-center gap-2">
+      <Checkbox
+        id="remember-me"
+        checked={rememberMe}
+        onCheckedChange={(v) => setRememberMe(!!v)}
+      />
+      <label htmlFor="remember-me" className="text-sm text-muted-foreground cursor-pointer select-none">
+        Remember me
+      </label>
+    </div>
+  );
 
   return (
     <div className="min-h-screen flex">
@@ -118,17 +184,8 @@ export default function Login() {
                     disabled={loading}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Password</Label>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="h-12 bg-secondary border-border"
-                    disabled={loading}
-                  />
-                </div>
+                <PasswordInput />
+                <RememberMe />
                 <Button
                   type="submit"
                   disabled={loading}
@@ -151,17 +208,8 @@ export default function Login() {
                     disabled={loading}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Password</Label>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="h-12 bg-secondary border-border"
-                    disabled={loading}
-                  />
-                </div>
+                <PasswordInput />
+                <RememberMe />
                 <Button
                   type="submit"
                   disabled={loading}
