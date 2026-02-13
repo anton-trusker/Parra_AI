@@ -1,17 +1,18 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { useWine } from '@/hooks/useWines';
+import { useWine, useUpdateWine } from '@/hooks/useWines';
 import { useWineImages, useUploadWineImage, useSetPrimaryImage, useDeleteWineImage } from '@/hooks/useWineImages';
 import { useWineVariants } from '@/hooks/useWineVariants';
 import { useWineMovements } from '@/hooks/useWineMovements';
 import { useArchiveWine } from '@/hooks/useWines';
 import { useLinkedProduct } from '@/hooks/useLinkedProduct';
-import { ArrowLeft, Edit, Copy, Archive, Wine as WineIcon, ImageOff, MapPin, Grape, DollarSign, Package, Clock, History, Upload, Star, Trash2, Layers, Image as ImageIcon, Loader2, Database } from 'lucide-react';
+import { ArrowLeft, Edit, Copy, Archive, Wine as WineIcon, ImageOff, MapPin, Grape, DollarSign, Package, Clock, History, Upload, Star, Trash2, Layers, Image as ImageIcon, Loader2, Database, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 
 const TYPE_DISPLAY: Record<string, string> = {
   red: 'Red', white: 'White', rose: 'Rosé', sparkling: 'Sparkling', fortified: 'Fortified', dessert: 'Dessert',
@@ -23,6 +24,7 @@ export default function WineDetail() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [aiEnriching, setAiEnriching] = useState(false);
 
   const { data: wine, isLoading } = useWine(id);
   const { data: images = [] } = useWineImages(id);
@@ -33,6 +35,7 @@ export default function WineDetail() {
   const setPrimary = useSetPrimaryImage();
   const deleteImage = useDeleteWineImage();
   const archiveWine = useArchiveWine();
+  const updateWine = useUpdateWine();
 
   if (isLoading) {
     return (
@@ -82,6 +85,48 @@ export default function WineDetail() {
     } catch { toast.error('Failed to archive'); }
   };
 
+  const handleAiEnrich = async () => {
+    setAiEnriching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-enrich-wine', {
+        body: { wine_id: wine.id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      // Update the wine with AI data
+      if (data?.enrichment) {
+        const updates: any = {};
+        const e = data.enrichment;
+        if (e.country) updates.country = e.country;
+        if (e.region) updates.region = e.region;
+        if (e.sub_region) updates.sub_region = e.sub_region;
+        if (e.appellation) updates.appellation = e.appellation;
+        if (e.grape_varieties?.length) updates.grape_varieties = e.grape_varieties;
+        if (e.wine_type) updates.body = e.wine_type;
+        if (e.producer && !wine.producer) updates.producer = e.producer;
+        if (e.tasting_notes) updates.tasting_notes = e.tasting_notes;
+        if (e.food_pairing) updates.food_pairing = e.food_pairing;
+        if (e.sweetness) updates.sweetness = e.sweetness;
+        if (e.acidity) updates.acidity = e.acidity;
+        if (e.tannins) updates.tannins = e.tannins;
+
+        if (Object.keys(updates).length > 0) {
+          updates.enrichment_source = 'ai';
+          updates.enrichment_status = 'ai_enriched';
+          await updateWine.mutateAsync({ id: wine.id, updates });
+        }
+      }
+
+      const tokenInfo = data?.tokens_used ? ` (${data.tokens_used} tokens, ~$${data.estimated_cost_usd?.toFixed(4) || '0'})` : '';
+      toast.success(`AI enrichment complete${tokenInfo}`);
+    } catch (err: any) {
+      toast.error(err.message || 'AI enrichment failed');
+    } finally {
+      setAiEnriching(false);
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Breadcrumb */}
@@ -117,6 +162,16 @@ export default function WineDetail() {
             </div>
             {isAdmin && (
               <div className="flex gap-2 flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-purple-500/30 text-purple-400 hover:bg-purple-500/10"
+                  onClick={handleAiEnrich}
+                  disabled={aiEnriching}
+                >
+                  {aiEnriching ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
+                  AI Enrich
+                </Button>
                 <Button variant="outline" size="sm" className="border-border" onClick={() => navigate(`/catalog/${wine.id}/edit`)}>
                   <Edit className="w-4 h-4 mr-1" /> Edit
                 </Button>
@@ -381,7 +436,6 @@ export default function WineDetail() {
         {wine.product_id && linkedProduct && (
           <TabsContent value="syrve" className="space-y-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Product Info */}
               <div className="wine-glass-effect rounded-xl p-5 space-y-3">
                 <h3 className="font-heading font-semibold flex items-center gap-2">
                   <Database className="w-4 h-4 text-accent" /> Product Record
@@ -416,7 +470,6 @@ export default function WineDetail() {
                 </div>
               </div>
 
-              {/* Category */}
               <div className="wine-glass-effect rounded-xl p-5 space-y-3">
                 <h3 className="font-heading font-semibold flex items-center gap-2">
                   <Package className="w-4 h-4 text-accent" /> Category & Pricing
@@ -440,7 +493,6 @@ export default function WineDetail() {
               </div>
             </div>
 
-            {/* Raw Syrve JSON */}
             {linkedProduct.syrve_data && Object.keys(linkedProduct.syrve_data as object).length > 0 && (
               <div className="wine-glass-effect rounded-xl p-5 space-y-3">
                 <h3 className="font-heading font-semibold">Raw Syrve Data</h3>
@@ -450,7 +502,6 @@ export default function WineDetail() {
               </div>
             )}
 
-            {/* Metadata */}
             {linkedProduct.metadata && Object.keys(linkedProduct.metadata as object).length > 0 && (
               <div className="wine-glass-effect rounded-xl p-5 space-y-3">
                 <h3 className="font-heading font-semibold">Metadata</h3>

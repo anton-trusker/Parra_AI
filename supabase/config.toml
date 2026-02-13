@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.inventory-submit-to-syrve]
 verify_jwt = false
+
+[functions.ai-enrich-wine]
+verify_jwt = false
