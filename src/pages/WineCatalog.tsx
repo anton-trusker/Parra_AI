@@ -15,7 +15,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 const CATALOG_COLUMN_DEFS: ColumnDef[] = [
   { key: 'wine', label: 'Wine' },
   { key: 'producer', label: 'Producer' },
-  { key: 'vintage', label: 'Vintage' },
+  { key: 'vintage', label: 'Year' },
   { key: 'type', label: 'Type' },
   { key: 'volume', label: 'Volume' },
   { key: 'country', label: 'Country' },
@@ -110,7 +110,7 @@ function buildCatalogColumns(isAdmin: boolean, hideStock: boolean): DataTableCol
   return [
     { key: 'wine', label: 'Wine', minWidth: 140, render: w => <span className="font-medium">{w.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
     { key: 'producer', label: 'Producer', render: w => <span className="text-muted-foreground">{w.producer || '—'}</span>, sortFn: (a, b) => (a.producer || '').localeCompare(b.producer || '') },
-    { key: 'vintage', label: 'Vintage', render: w => w.vintage || 'NV', sortFn: (a, b) => (b.vintage || 0) - (a.vintage || 0) },
+    { key: 'vintage', label: 'Year', render: w => w.vintage || 'NV', sortFn: (a, b) => (b.vintage || 0) - (a.vintage || 0) },
     { key: 'type', label: 'Type', render: w => <TypeBadge type={w.wine_type} />, sortFn: (a, b) => (a.wine_type || '').localeCompare(b.wine_type || '') },
     { key: 'volume', label: 'Volume', render: w => <span className="text-muted-foreground">{w.volume_ml || 750}ml</span> },
     { key: 'country', label: 'Country', render: w => <span className="text-muted-foreground">{w.country || '—'}</span>, sortFn: (a, b) => (a.country || '').localeCompare(b.country || '') },

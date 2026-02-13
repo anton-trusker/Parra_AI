@@ -142,7 +142,7 @@ export default function WineDetail() {
 
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div className="wine-glass-effect rounded-lg p-3 text-center">
-              <p className="text-xs text-muted-foreground">Vintage</p>
+              <p className="text-xs text-muted-foreground">Year</p>
               <p className="font-heading font-bold text-lg">{wine.vintage || 'NV'}</p>
             </div>
             <div className="wine-glass-effect rounded-lg p-3 text-center">
