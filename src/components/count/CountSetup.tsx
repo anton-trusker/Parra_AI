@@ -1,4 +1,4 @@
-import { Play } from 'lucide-react';
+import { Play, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,10 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 interface CountSetupProps {
   countType: string;
   onCountTypeChange: (v: string) => void;
+  notes: string;
+  onNotesChange: (v: string) => void;
   onStart: () => void;
+  isLoading?: boolean;
 }
 
-export default function CountSetup({ countType, onCountTypeChange, onStart }: CountSetupProps) {
+export default function CountSetup({ countType, onCountTypeChange, notes, onNotesChange, onStart, isLoading }: CountSetupProps) {
   return (
     <div className="max-w-lg mx-auto space-y-6 animate-fade-in">
       <div>
@@ -35,14 +38,20 @@ export default function CountSetup({ countType, onCountTypeChange, onStart }: Co
 
         <div className="space-y-2">
           <Label>Notes (optional)</Label>
-          <Textarea placeholder="e.g., Weekly count" className="bg-card border-border" />
+          <Textarea
+            placeholder="e.g., Weekly count"
+            className="bg-card border-border"
+            value={notes}
+            onChange={(e) => onNotesChange(e.target.value)}
+          />
         </div>
 
         <Button
           onClick={onStart}
+          disabled={isLoading}
           className="w-full h-14 text-lg font-semibold wine-gradient text-primary-foreground hover:opacity-90"
         >
-          <Play className="w-5 h-5 mr-2" />
+          {isLoading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Play className="w-5 h-5 mr-2" />}
           Start Counting
         </Button>
       </div>

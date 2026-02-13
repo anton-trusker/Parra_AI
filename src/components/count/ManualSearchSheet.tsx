@@ -1,34 +1,48 @@
 import { Search, Plus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Wine, mockWines } from '@/data/mockWines';
 import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
+
+interface WineResult {
+  id: string;
+  name: string;
+  producer: string | null;
+  vintage: number | null;
+  volume_ml: number | null;
+  region: string | null;
+}
 
 interface ManualSearchSheetProps {
   open: boolean;
   onClose: () => void;
-  onSelect: (wine: Wine) => void;
+  onSelect: (wine: WineResult) => void;
 }
 
 export default function ManualSearchSheet({ open, onClose, onSelect }: ManualSearchSheetProps) {
   const [query, setQuery] = useState('');
 
-  const results = query.length >= 2
-    ? mockWines.filter(w => {
-        const q = query.toLowerCase();
-        return w.name.toLowerCase().includes(q) || w.producer.toLowerCase().includes(q);
-      })
-    : [];
+  const { data: results = [] } = useQuery({
+    queryKey: ['wine-search', query],
+    queryFn: async () => {
+      if (query.length < 2) return [];
+      const { data } = await supabase
+        .from('wines')
+        .select('id, name, producer, vintage, volume_ml, region')
+        .or(`name.ilike.%${query}%,producer.ilike.%${query}%`)
+        .eq('is_active', true)
+        .limit(20);
+      return (data || []) as WineResult[];
+    },
+    enabled: query.length >= 2,
+  });
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col animate-fade-in">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Sheet from bottom */}
       <div className="relative mt-auto max-h-[85vh] flex flex-col bg-card border-t border-border rounded-t-2xl overflow-hidden">
-        {/* Handle + Header */}
         <div className="p-4 pb-2 flex-shrink-0">
           <div className="w-10 h-1 rounded-full bg-muted mx-auto mb-4" />
           <div className="flex items-center justify-between mb-3">
@@ -37,7 +51,6 @@ export default function ManualSearchSheet({ open, onClose, onSelect }: ManualSea
               <X className="w-5 h-5 text-muted-foreground" />
             </button>
           </div>
-
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -49,8 +62,6 @@ export default function ManualSearchSheet({ open, onClose, onSelect }: ManualSea
             />
           </div>
         </div>
-
-        {/* Results */}
         <div className="flex-1 overflow-y-auto p-4 pt-2 space-y-2">
           {results.map(wine => (
             <button
@@ -63,7 +74,7 @@ export default function ManualSearchSheet({ open, onClose, onSelect }: ManualSea
                   <p className="font-medium truncate">{wine.name}</p>
                   <p className="text-sm text-muted-foreground truncate">{wine.producer}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    {wine.vintage || 'NV'} · {wine.volume}ml · {wine.region}
+                    {wine.vintage || 'NV'} · {wine.volume_ml || 750}ml · {wine.region || ''}
                   </p>
                 </div>
                 <Plus className="w-5 h-5 text-accent flex-shrink-0" />

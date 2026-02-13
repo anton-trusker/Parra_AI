@@ -4,71 +4,90 @@ import { toast } from 'sonner';
 import CountSetup from '@/components/count/CountSetup';
 import CameraScanner from '@/components/count/CameraScanner';
 import SessionSummary from '@/components/count/SessionSummary';
-import { InventoryItem } from '@/data/mockWines';
+import { useAuthStore } from '@/stores/authStore';
+import { useCreateSession, useCompleteSession, useSessionItems } from '@/hooks/useInventorySessions';
 
 type Phase = 'setup' | 'scanning' | 'summary';
 
 export default function InventoryCount() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [phase, setPhase] = useState<Phase>('setup');
   const [countType, setCountType] = useState('full');
-  const [sessionId] = useState(() => `S${String(Math.floor(Math.random() * 9000) + 1000)}`);
+  const [notes, setNotes] = useState('');
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [counted, setCounted] = useState(0);
   const [startTime] = useState(() => Date.now());
-  const [sessionItems, setSessionItems] = useState<InventoryItem[]>([]);
+
+  const createSession = useCreateSession();
+  const completeSession = useCompleteSession();
+  const { data: sessionItems = [] } = useSessionItems(sessionId ?? undefined);
+
+  const handleStart = useCallback(async () => {
+    if (!user) return;
+    try {
+      const session = await createSession.mutateAsync({
+        session_name: `${countType === 'full' ? 'Full' : countType === 'partial' ? 'Partial' : 'Spot'} Count`,
+        session_type: countType,
+        status: 'in_progress',
+        started_at: new Date().toISOString(),
+        started_by: user.id,
+        description: notes || null,
+      });
+      setSessionId(session.id);
+      setPhase('scanning');
+    } catch (e: any) {
+      toast.error('Failed to create session: ' + e.message);
+    }
+  }, [user, countType, notes, createSession]);
 
   const handleCount = useCallback(() => {
     setCounted(c => c + 1);
   }, []);
 
-  const handleEndSession = useCallback(() => {
+  const handleEndSession = useCallback(async () => {
     if (counted === 0) {
       setPhase('setup');
       toast.info('Session cancelled');
       return;
     }
-    setPhase('summary');
-  }, [counted]);
+    if (!sessionId || !user) return;
+    const duration = Math.floor((Date.now() - startTime) / 1000);
+    try {
+      await completeSession.mutateAsync({
+        id: sessionId,
+        completedBy: user.id,
+        duration,
+        totalCounted: counted,
+      });
+      setPhase('summary');
+    } catch (e: any) {
+      toast.error('Failed to complete session: ' + e.message);
+    }
+  }, [counted, sessionId, user, startTime, completeSession]);
 
   if (phase === 'setup') {
     return (
       <CountSetup
         countType={countType}
         onCountTypeChange={setCountType}
-        onStart={() => setPhase('scanning')}
+        notes={notes}
+        onNotesChange={setNotes}
+        onStart={handleStart}
+        isLoading={createSession.isPending}
       />
     );
   }
 
-  if (phase === 'summary') {
+  if (phase === 'summary' && sessionId) {
     const duration = Math.floor((Date.now() - startTime) / 1000);
-    // Generate mock summary items from counted items
-    const mockItems: InventoryItem[] = Array.from({ length: counted }, (_, i) => ({
-      id: `temp-${i}`,
-      sessionId,
-      wineId: String(i + 1),
-      wineName: `Wine ${i + 1}`,
-      expectedUnopened: 10,
-      expectedOpened: 1,
-      countedUnopened: 10 + (i % 3 === 0 ? -1 : 0),
-      countedOpened: 1,
-      varianceUnopened: i % 3 === 0 ? -1 : 0,
-      varianceOpened: 0,
-      totalVariance: i % 3 === 0 ? -1 : 0,
-      hasVariance: i % 3 === 0,
-      countedAt: new Date().toISOString(),
-      countedBy: '2',
-      countedByName: 'Current User',
-      countingMethod: i % 2 === 0 ? 'barcode' : 'manual',
-    }));
-
     return (
       <SessionSummary
         sessionId={sessionId}
         sessionName={`${countType === 'full' ? 'Full' : countType === 'partial' ? 'Partial' : 'Spot'} Count`}
-        items={mockItems}
+        items={sessionItems}
         duration={duration}
-        onStartNew={() => { setCounted(0); setPhase('setup'); }}
+        onStartNew={() => { setCounted(0); setSessionId(null); setPhase('setup'); }}
         onClose={() => navigate('/dashboard')}
       />
     );
@@ -76,7 +95,7 @@ export default function InventoryCount() {
 
   return (
     <CameraScanner
-      sessionId={sessionId}
+      sessionId={sessionId!}
       counted={counted}
       onCount={handleCount}
       onEndSession={handleEndSession}
