@@ -148,6 +148,17 @@ serve(async (req) => {
         }
       }
 
+      // Prices & stock only mode (no product re-import)
+      if (runType === "prices_stock") {
+        await updateProgress('fetching_prices', 30);
+        await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
+
+        if (config.default_store_id) {
+          await updateProgress('fetching_stock', 60);
+          await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, config.default_store_id);
+        }
+      }
+
       // Update sync run as success
       stats.stage = 'completed';
       stats.progress = 100;
