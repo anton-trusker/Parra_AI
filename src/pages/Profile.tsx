@@ -8,7 +8,7 @@ export default function Profile() {
   const { user, logout } = useAuthStore();
   const role = useUserRole();
   const navigate = useNavigate();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   const stats = [
     { label: 'Total Counts', value: '47', icon: Wine },
