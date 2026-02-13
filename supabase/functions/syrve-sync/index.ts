@@ -76,21 +76,29 @@ serve(async (req) => {
       .single();
 
     let syrveToken: string | null = null;
-    const stats = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0 };
+    let serverUrl = '';
+    const stats: any = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0, stage: 'authenticating', progress: 0 };
     const selectedCategoryIds: string[] = config.selected_category_ids || [];
     const productTypeFilters: string[] = config.product_type_filters || ['GOODS', 'DISH'];
     const importInactive: boolean = config.import_inactive_products || false;
     const fieldMapping = config.field_mapping || { extract_vintage: true, extract_volume: true, auto_map_category: true };
     const reimportMode: string = config.reimport_mode || 'merge';
 
+    const updateProgress = async (stage: string, progress: number) => {
+      stats.stage = stage;
+      stats.progress = progress;
+      await adminClient.from("syrve_sync_runs").update({ stats }).eq("id", syncRun?.id);
+    };
+
     try {
       // Normalize server_url: ensure it ends with /api
-      let serverUrl = config.server_url.replace(/\/+$/, '');
+      serverUrl = config.server_url.replace(/\/+$/, '');
       if (!serverUrl.endsWith('/api')) {
         serverUrl = serverUrl + '/api';
       }
 
       // 1. Login to Syrve
+      await updateProgress('authenticating', 5);
       const authStart = Date.now();
       const authUrl = `${serverUrl}/auth?login=${encodeURIComponent(config.api_login)}&pass=${config.api_password_hash}`;
       const authResp = await fetch(authUrl);
@@ -101,21 +109,27 @@ serve(async (req) => {
 
       // 2. Sync based on type
       if (runType === "bootstrap" || runType === "stores") {
+        await updateProgress('syncing_stores', 15);
         await syncStores(adminClient, serverUrl, syrveToken, syncRun?.id, stats);
       }
 
       if (runType === "bootstrap" || runType === "categories") {
+        await updateProgress('syncing_categories', 30);
         await syncCategories(adminClient, serverUrl, syrveToken, syncRun?.id, stats);
       }
 
       if (runType === "bootstrap" || runType === "products") {
         // Fresh mode: delete everything before importing
         if (reimportMode === 'fresh') {
+          await updateProgress('deleting_products', 40);
           await deleteAllProducts(adminClient, stats);
+          await updateProgress('deleted_products', 50);
         }
 
+        await updateProgress('importing_products', reimportMode === 'fresh' ? 55 : 45);
         const importedSyrveIds = await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds, productTypeFilters, importInactive, fieldMapping);
         
+        await updateProgress('applying_reimport_mode', 85);
         // Apply reimport mode for non-imported products (hide/replace)
         if ((reimportMode === 'hide' || reimportMode === 'replace') && importedSyrveIds && importedSyrveIds.length > 0) {
           await applyReimportMode(adminClient, importedSyrveIds, reimportMode, stats);
@@ -123,6 +137,8 @@ serve(async (req) => {
       }
 
       // Update sync run as success
+      stats.stage = 'completed';
+      stats.progress = 100;
       await adminClient.from("syrve_sync_runs").update({
         status: "success",
         finished_at: new Date().toISOString(),
@@ -132,6 +148,7 @@ serve(async (req) => {
     } catch (syncError) {
       console.error("Sync error:", syncError);
       stats.errors++;
+      stats.stage = 'failed';
       await adminClient.from("syrve_sync_runs").update({
         status: "failed",
         finished_at: new Date().toISOString(),
@@ -141,7 +158,7 @@ serve(async (req) => {
       throw syncError;
     } finally {
       // Always logout and release lock
-      if (syrveToken) {
+      if (syrveToken && serverUrl) {
         try {
           await fetch(`${serverUrl}/logout?key=${syrveToken}`);
           await logApi(adminClient, syncRun?.id, "LOGOUT", "success", "");
