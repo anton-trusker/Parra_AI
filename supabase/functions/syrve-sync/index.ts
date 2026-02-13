@@ -76,11 +76,12 @@ serve(async (req) => {
       .single();
 
     let syrveToken: string | null = null;
-    const stats = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0 };
+    const stats = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0 };
     const selectedCategoryIds: string[] = config.selected_category_ids || [];
     const productTypeFilters: string[] = config.product_type_filters || ['GOODS', 'DISH'];
     const importInactive: boolean = config.import_inactive_products || false;
     const fieldMapping = config.field_mapping || { extract_vintage: true, extract_volume: true, auto_map_category: true };
+    const reimportMode: string = config.reimport_mode || 'merge';
 
     try {
       // Normalize server_url: ensure it ends with /api
@@ -108,7 +109,12 @@ serve(async (req) => {
       }
 
       if (runType === "bootstrap" || runType === "products") {
-        await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds, productTypeFilters, importInactive, fieldMapping);
+        const importedSyrveIds = await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds, productTypeFilters, importInactive, fieldMapping);
+        
+        // Apply reimport mode for non-imported products
+        if (reimportMode !== 'merge' && importedSyrveIds && importedSyrveIds.length > 0) {
+          await applyReimportMode(adminClient, importedSyrveIds, reimportMode, stats);
+        }
       }
 
       // Update sync run as success
@@ -291,7 +297,7 @@ async function syncProducts(
   client: any, baseUrl: string, token: string, syncRunId: string | null, 
   stats: any, selectedCategoryIds: string[], productTypeFilters: string[],
   importInactive: boolean, fieldMapping: any
-) {
+): Promise<string[]> {
   const start = Date.now();
   const includeDeleted = importInactive ? 'true' : 'false';
   const url = `${baseUrl}/v2/entities/products/list?includeDeleted=${includeDeleted}&key=${token}`;
@@ -472,6 +478,43 @@ async function syncProducts(
 
     for (let i = 0; i < barcodeBatch.length; i += BATCH_SIZE) {
       await client.from("product_barcodes").upsert(barcodeBatch.slice(i, i + BATCH_SIZE), { onConflict: "barcode" }).catch(() => {});
+    }
+  }
+
+  return productSyrveIdOrder;
+}
+
+async function applyReimportMode(client: any, importedSyrveIds: string[], mode: string, stats: any) {
+  const BATCH = 100;
+  let offset = 0;
+  const idsToProcess: string[] = [];
+  
+  while (true) {
+    const { data: batch } = await client.from("products")
+      .select("id, syrve_product_id")
+      .not("syrve_product_id", "in", `(${importedSyrveIds.join(",")})`)
+      .range(offset, offset + BATCH - 1);
+    
+    if (!batch || batch.length === 0) break;
+    idsToProcess.push(...batch.map((p: any) => p.id));
+    offset += BATCH;
+    if (batch.length < BATCH) break;
+  }
+
+  if (idsToProcess.length === 0) return;
+
+  if (mode === 'hide') {
+    for (let i = 0; i < idsToProcess.length; i += BATCH) {
+      const chunk = idsToProcess.slice(i, i + BATCH);
+      await client.from("products").update({ is_active: false }).in("id", chunk);
+      stats.deactivated += chunk.length;
+    }
+  } else if (mode === 'replace') {
+    for (let i = 0; i < idsToProcess.length; i += BATCH) {
+      const chunk = idsToProcess.slice(i, i + BATCH);
+      await client.from("product_barcodes").delete().in("product_id", chunk);
+      await client.from("products").delete().in("id", chunk);
+      stats.deleted += chunk.length;
     }
   }
 }

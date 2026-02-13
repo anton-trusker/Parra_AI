@@ -88,6 +88,9 @@ export default function SyrveSettings() {
   const [syncInterval, setSyncInterval] = useState(60);
   const [syncDirection, setSyncDirection] = useState('syrve_to_local');
 
+  // Reimport mode
+  const [reimportMode, setReimportMode] = useState('merge');
+
   // Section states
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     connection: true,
@@ -114,6 +117,7 @@ export default function SyrveSettings() {
       setAutoSyncEnabled(config.auto_sync_enabled ?? false);
       setSyncInterval(config.sync_interval_minutes || 60);
       setSyncDirection(config.sync_direction || 'syrve_to_local');
+      setReimportMode(config.reimport_mode || 'merge');
 
       // Auto-expand relevant sections
       if (config.connection_status === 'connected') {
@@ -212,6 +216,7 @@ export default function SyrveSettings() {
           auto_sync_enabled: autoSyncEnabled,
           sync_interval_minutes: syncInterval,
           sync_direction: syncDirection,
+          reimport_mode: reimportMode,
         } as any)
         .eq('id', config.id);
       if (error) throw error;
@@ -643,6 +648,70 @@ export default function SyrveSettings() {
           </CollapsibleContent>
         </Card>
       </Collapsible>
+
+      {/* Reimport Mode */}
+      {isConfigured && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                <RefreshCw className="w-4.5 h-4.5 text-primary" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Re-import Mode</CardTitle>
+                <CardDescription className="text-xs">
+                  How to handle existing products when you re-import with updated category/type selections
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-0">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                {
+                  value: 'merge',
+                  label: 'Merge',
+                  icon: '🔀',
+                  description: 'Import new selection and keep all existing products untouched',
+                },
+                {
+                  value: 'replace',
+                  label: 'Replace',
+                  icon: '🗑️',
+                  description: 'Import new selection and permanently delete products not in it',
+                },
+                {
+                  value: 'hide',
+                  label: 'Hide Others',
+                  icon: '👁️‍🗨️',
+                  description: 'Import new selection and deactivate (hide) products not in it — data is preserved',
+                },
+              ].map(mode => (
+                <div
+                  key={mode.value}
+                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                    reimportMode === mode.value
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-muted-foreground/40'
+                  }`}
+                  onClick={() => setReimportMode(mode.value)}
+                >
+                  <div className="text-2xl mb-2">{mode.icon}</div>
+                  <p className="text-sm font-semibold">{mode.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{mode.description}</p>
+                </div>
+              ))}
+            </div>
+            {reimportMode === 'replace' && (
+              <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                <p className="text-xs text-destructive font-medium">
+                  ⚠️ Warning: Replace mode will permanently delete products that are not part of the new import selection. This cannot be undone.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Save All Settings */}
       {isConfigured && (

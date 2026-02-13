@@ -1281,6 +1281,7 @@ export type Database = {
           id: string
           import_inactive_products: boolean | null
           product_type_filters: string[] | null
+          reimport_mode: string
           selected_category_ids: string[] | null
           server_url: string
           settings: Json | null
@@ -1304,6 +1305,7 @@ export type Database = {
           id?: string
           import_inactive_products?: boolean | null
           product_type_filters?: string[] | null
+          reimport_mode?: string
           selected_category_ids?: string[] | null
           server_url?: string
           settings?: Json | null
@@ -1327,6 +1329,7 @@ export type Database = {
           id?: string
           import_inactive_products?: boolean | null
           product_type_filters?: string[] | null
+          reimport_mode?: string
           selected_category_ids?: string[] | null
           server_url?: string
           settings?: Json | null
