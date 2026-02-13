@@ -1895,6 +1895,8 @@ export type Database = {
           deleted_at: string | null
           deleted_by: string | null
           embedding: string | null
+          enrichment_source: string | null
+          enrichment_status: string | null
           estate: string | null
           featured_wine: boolean
           fermentation_vessel: string | null
@@ -1940,9 +1942,11 @@ export type Database = {
           primary_barcode: string | null
           producer: string | null
           producer_slug: string | null
+          product_id: string | null
           production_method: string | null
           purchase_price: number | null
           rack_number: string | null
+          raw_source_name: string | null
           region: string | null
           release_date: string | null
           reorder_point: number | null
@@ -1966,6 +1970,7 @@ export type Database = {
           supplier_name: string | null
           supplier_sku: string | null
           sweetness: string | null
+          syrve_product_id: string | null
           tags: Json | null
           tannins: string | null
           tasting_notes: string | null
@@ -2021,6 +2026,8 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           embedding?: string | null
+          enrichment_source?: string | null
+          enrichment_status?: string | null
           estate?: string | null
           featured_wine?: boolean
           fermentation_vessel?: string | null
@@ -2066,9 +2073,11 @@ export type Database = {
           primary_barcode?: string | null
           producer?: string | null
           producer_slug?: string | null
+          product_id?: string | null
           production_method?: string | null
           purchase_price?: number | null
           rack_number?: string | null
+          raw_source_name?: string | null
           region?: string | null
           release_date?: string | null
           reorder_point?: number | null
@@ -2092,6 +2101,7 @@ export type Database = {
           supplier_name?: string | null
           supplier_sku?: string | null
           sweetness?: string | null
+          syrve_product_id?: string | null
           tags?: Json | null
           tannins?: string | null
           tasting_notes?: string | null
@@ -2147,6 +2157,8 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           embedding?: string | null
+          enrichment_source?: string | null
+          enrichment_status?: string | null
           estate?: string | null
           featured_wine?: boolean
           fermentation_vessel?: string | null
@@ -2192,9 +2204,11 @@ export type Database = {
           primary_barcode?: string | null
           producer?: string | null
           producer_slug?: string | null
+          product_id?: string | null
           production_method?: string | null
           purchase_price?: number | null
           rack_number?: string | null
+          raw_source_name?: string | null
           region?: string | null
           release_date?: string | null
           reorder_point?: number | null
@@ -2218,6 +2232,7 @@ export type Database = {
           supplier_name?: string | null
           supplier_sku?: string | null
           sweetness?: string | null
+          syrve_product_id?: string | null
           tags?: Json | null
           tannins?: string | null
           tasting_notes?: string | null
@@ -2240,6 +2255,13 @@ export type Database = {
           winemaker_name?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "wines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "wines_replacement_wine_id_fkey"
             columns: ["replacement_wine_id"]
