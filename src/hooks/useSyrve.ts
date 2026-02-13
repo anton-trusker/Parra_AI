@@ -260,6 +260,47 @@ export function useSyrveApiLogs(limit = 50) {
   });
 }
 
+export function useForceStopSync() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      // Clear sync lock
+      const { data: config } = await supabase
+        .from('syrve_config')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+      if (config) {
+        await supabase
+          .from('syrve_config')
+          .update({ sync_lock_until: null } as any)
+          .eq('id', config.id);
+      }
+      // Mark all running sync runs as failed
+      const { data: runningRuns } = await supabase
+        .from('syrve_sync_runs')
+        .select('id')
+        .eq('status', 'running');
+      if (runningRuns) {
+        for (const run of runningRuns) {
+          await supabase
+            .from('syrve_sync_runs')
+            .update({
+              status: 'failed',
+              error: 'Manually stopped by user',
+              finished_at: new Date().toISOString(),
+            } as any)
+            .eq('id', run.id);
+        }
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['syrve_config'] });
+      qc.invalidateQueries({ queryKey: ['syrve_sync_runs'] });
+    },
+  });
+}
+
 export function useToggleTestingMode() {
   const qc = useQueryClient();
   return useMutation({

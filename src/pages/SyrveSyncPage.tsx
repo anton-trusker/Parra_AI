@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { StopCircle } from 'lucide-react';
 import { ArrowLeft, RefreshCw, Download, CheckCircle2, XCircle, Clock, Loader2, Package, FolderTree, Store, Barcode, Send, SkipForward, Wine, Beaker } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +16,7 @@ import {
   useSyrveBarcodeCount,
   useSyrveOutboxJobs,
   useProcessOutbox,
+  useForceStopSync,
 } from '@/hooks/useSyrve';
 
 export default function SyrveSyncPage() {
@@ -28,6 +30,7 @@ export default function SyrveSyncPage() {
   const { data: outboxJobs } = useSyrveOutboxJobs();
   const syncMutation = useSyrveSync();
   const processOutbox = useProcessOutbox();
+  const forceStop = useForceStopSync();
 
   const isConfigured = config?.connection_status === 'connected';
   const isSyncing = syncRuns?.some(r => r.status === 'running');
@@ -84,6 +87,15 @@ export default function SyrveSyncPage() {
       toast.success(`Processed ${result.processed} outbox job(s)`);
     } catch (err: any) {
       toast.error(err.message || 'Outbox processing failed');
+    }
+  };
+
+  const handleForceStop = async () => {
+    try {
+      await forceStop.mutateAsync();
+      toast.success('Sync stopped and lock cleared');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to stop sync');
     }
   };
 
@@ -287,6 +299,16 @@ export default function SyrveSyncPage() {
               <Store className="w-4 h-4 mr-2" />
               Stores Only
             </Button>
+            {isSyncing && (
+              <Button
+                variant="destructive"
+                onClick={handleForceStop}
+                disabled={forceStop.isPending}
+              >
+                <StopCircle className="w-4 h-4 mr-2" />
+                Force Stop
+              </Button>
+            )}
           </div>
           {config?.selected_category_ids && config.selected_category_ids.length > 0 && (
             <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
