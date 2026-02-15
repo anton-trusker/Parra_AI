@@ -71,7 +71,7 @@
     --popover: 220 14% 13%;
     --popover-foreground: 30 20% 90%;
 
-    --primary: 350 55% 32%;
+    --primary: 350 55% 38%;
     --primary-foreground: 30 25% 95%;
 
     --secondary: 220 12% 16%;
@@ -88,28 +88,28 @@
 
     --border: 220 12% 18%;
     --input: 220 12% 18%;
-    --ring: 350 55% 32%;
+    --ring: 350 55% 38%;
 
-    --wine-red: 350 55% 32%;
-    --wine-red-light: 350 50% 42%;
-    --wine-red-dark: 350 60% 22%;
+    --wine-red: 350 55% 38%;
+    --wine-red-light: 350 50% 48%;
+    --wine-red-dark: 350 60% 25%;
     --wine-gold: 38 45% 60%;
     --wine-gold-light: 38 50% 72%;
     --wine-cream: 30 25% 95%;
-    --wine-burgundy: 340 65% 25%;
-    --wine-success: 145 60% 40%;
+    --wine-burgundy: 340 65% 28%;
+    --wine-success: 145 60% 42%;
     --wine-warning: 38 90% 55%;
     --wine-surface: 220 14% 11%;
     --wine-surface-hover: 220 14% 14%;
 
     --sidebar-background: 220 16% 6%;
     --sidebar-foreground: 30 15% 75%;
-    --sidebar-primary: 350 55% 32%;
+    --sidebar-primary: 350 55% 38%;
     --sidebar-primary-foreground: 30 25% 95%;
     --sidebar-accent: 220 12% 12%;
     --sidebar-accent-foreground: 30 20% 90%;
     --sidebar-border: 220 12% 14%;
-    --sidebar-ring: 350 55% 32%;
+    --sidebar-ring: 350 55% 38%;
   }
 }
 
@@ -121,10 +121,19 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   h1, h2, h3, h4 {
     font-family: var(--font-heading);
+  }
+
+  /* Focus rings */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
@@ -133,16 +142,20 @@
     background: linear-gradient(135deg, hsl(var(--wine-red-dark)), hsl(var(--wine-burgundy)));
   }
 
-  /* Legacy alias */
   .wine-gradient { background: linear-gradient(135deg, hsl(var(--wine-red-dark)), hsl(var(--wine-burgundy))); }
 
   .glass-card {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
     border-radius: var(--radius);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
-  /* Legacy alias */
+  .glass-card:hover {
+    border-color: hsl(var(--border));
+    box-shadow: 0 2px 12px hsl(var(--foreground) / 0.04);
+  }
+
   .wine-glass-effect {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
@@ -159,19 +172,21 @@
   }
 
   .stat-card {
-    @apply glass-card p-5 transition-all duration-300;
+    @apply glass-card p-5;
     border-radius: var(--radius);
+    transition: all 0.2s ease;
   }
 
   .stat-card:hover {
     border-color: hsl(var(--primary) / 0.25);
-    box-shadow: 0 4px 24px hsl(var(--primary) / 0.08);
-    transform: translateY(-2px);
+    box-shadow: 0 4px 20px hsl(var(--primary) / 0.08);
+    transform: translateY(-1px);
   }
 
   .mode-card {
-    @apply glass-card p-6 cursor-pointer transition-all duration-300;
+    @apply glass-card p-6 cursor-pointer;
     border-radius: 1rem;
+    transition: all 0.2s ease;
   }
 
   .mode-card:hover {
@@ -181,8 +196,9 @@
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm transition-all duration-200;
+    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm;
     color: hsl(var(--sidebar-foreground));
+    transition: all 0.2s ease;
   }
 
   .nav-item:hover {
@@ -215,7 +231,6 @@
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 
-  /* Legacy alias */
   .wine-badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
@@ -227,10 +242,10 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.35s ease-out forwards;
+  animation: fadeIn 0.3s ease-out forwards;
 }

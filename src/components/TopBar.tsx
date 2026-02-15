@@ -1,37 +1,36 @@
 import { useState } from 'react';
-import { Search, Building2, Calendar, Command } from 'lucide-react';
+import { Search, Building2, Command } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select';
-import { mockStores } from '@/data/mockStores';
+import { useStores } from '@/hooks/useStores';
 
 export default function TopBar() {
   const [selectedStore, setSelectedStore] = useState('all');
+  const { data: stores = [] } = useStores();
 
   return (
     <header className="hidden lg:flex items-center justify-between gap-4 px-8 py-3 border-b border-border/60 bg-background/80 backdrop-blur-sm">
-      {/* Left: Location switcher */}
       <div className="flex items-center gap-3">
         <Building2 className="w-4 h-4 text-muted-foreground" />
         <Select value={selectedStore} onValueChange={setSelectedStore}>
-          <SelectTrigger className="w-[200px] h-8 text-sm border-border/50 bg-muted/30">
+          <SelectTrigger className="w-[220px] h-9 text-sm border-border/50 bg-muted/30">
             <SelectValue placeholder="All Locations" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Locations</SelectItem>
-            {mockStores.map((s) => (
+            {stores.map((s) => (
               <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
 
-      {/* Right: Search trigger */}
       <Button
         variant="outline"
         size="sm"
-        className="gap-2 text-muted-foreground hover:text-foreground border-border/50 bg-muted/30 h-8 px-3"
+        className="gap-2 text-muted-foreground hover:text-foreground border-border/50 bg-muted/30 h-9 px-4"
       >
         <Search className="w-3.5 h-3.5" />
         <span className="text-xs">Search...</span>

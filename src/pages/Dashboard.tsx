@@ -19,7 +19,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { mockAiScans } from '@/data/mockAiScans';
 import { mockInventoryChecks, checkStatusConfig, type CheckStatus } from '@/data/mockInventoryChecks';
-import { mockStores } from '@/data/mockStores';
+import { useStores } from '@/hooks/useStores';
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
 
 // Mock weekly variance trend
@@ -70,6 +70,7 @@ export default function Dashboard() {
   const { data: sessions = [], isLoading: sessionsLoading } = useInventorySessions();
   const { data: syrveConfig } = useSyrveConfig();
   const { data: syncRuns } = useSyrveSyncRuns();
+  const { data: stores = [] } = useStores();
   const { data: userCount } = useQuery({
     queryKey: ['user_count_dashboard'],
     queryFn: async () => {
@@ -361,10 +362,12 @@ export default function Dashboard() {
                 </Button>
               </div>
               <div className="space-y-3">
-                {mockStores.map(store => (
+                {stores.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">No warehouses synced</p>
+                ) : stores.map(store => (
                   <div key={store.id} className="flex items-center justify-between py-1.5">
                     <span className="text-sm">{store.name}</span>
-                    <span className="text-xs text-muted-foreground tabular-nums">{store.productCount} products</span>
+                    {store.store_type && <Badge variant="outline" className="text-[10px]">{store.store_type}</Badge>}
                   </div>
                 ))}
               </div>

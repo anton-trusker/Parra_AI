@@ -61,28 +61,31 @@ export default function SimpleDataTable<T extends Record<string, any>>({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-0">
       <div className="rounded-xl border border-border/60 overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/30 hover:bg-muted/30">
+            <TableRow className="bg-muted/40 hover:bg-muted/40 border-b-2 border-border/50">
               {columns.map((col) => (
                 <TableHead
                   key={col.key}
                   className={cn(
-                    'text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap',
-                    col.sortable && 'cursor-pointer select-none',
+                    'text-[11px] font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap h-11',
+                    col.sortable && 'cursor-pointer select-none hover:text-foreground transition-colors',
                     col.align === 'right' && 'text-right',
                     col.align === 'center' && 'text-center',
                   )}
                   onClick={() => col.sortable && handleSort(col.key)}
                 >
-                  <div className="flex items-center gap-1">
+                  <div className={cn('flex items-center gap-1.5', col.align === 'right' && 'justify-end')}>
                     {col.label}
                     {col.sortable && (
-                      sortKey === col.key
-                        ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
-                        : <ArrowUpDown className="w-3 h-3 opacity-30" />
+                      <span className={cn('transition-opacity', sortKey === col.key ? 'opacity-100' : 'opacity-0 group-hover:opacity-30')}>
+                        {sortKey === col.key
+                          ? (sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)
+                          : <ArrowUpDown className="w-3 h-3 opacity-30" />
+                        }
+                      </span>
                     )}
                   </div>
                 </TableHead>
@@ -92,16 +95,21 @@ export default function SimpleDataTable<T extends Record<string, any>>({
           <TableBody>
             {paged.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="text-center py-12 text-muted-foreground">{emptyMessage}</TableCell>
+                <TableCell colSpan={columns.length} className="text-center py-16 text-muted-foreground">{emptyMessage}</TableCell>
               </TableRow>
             ) : paged.map((item, idx) => (
               <TableRow
                 key={String(item[keyField])}
-                className={cn('transition-colors', idx % 2 === 1 && 'bg-muted/20', onRowClick && 'cursor-pointer')}
+                className={cn(
+                  'transition-colors duration-150',
+                  idx % 2 === 1 && 'bg-muted/15',
+                  onRowClick && 'cursor-pointer hover:bg-primary/5',
+                  !onRowClick && 'hover:bg-muted/30'
+                )}
                 onClick={() => onRowClick?.(item)}
               >
                 {columns.map((col) => (
-                  <TableCell key={col.key} className={cn(col.align === 'right' && 'text-right', col.align === 'center' && 'text-center')}>
+                  <TableCell key={col.key} className={cn('py-3', col.align === 'right' && 'text-right', col.align === 'center' && 'text-center')}>
                     {col.render ? col.render(item) : String(item[col.key] ?? '')}
                   </TableCell>
                 ))}
@@ -112,20 +120,20 @@ export default function SimpleDataTable<T extends Record<string, any>>({
       </div>
 
       {paginated && sorted.length > 0 && (
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center justify-between py-3 text-sm">
           <span className="text-muted-foreground text-xs">
-            Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, sorted.length)} of {sorted.length}
+            Showing <span className="font-medium text-foreground">{page * pageSize + 1}–{Math.min((page + 1) * pageSize, sorted.length)}</span> of <span className="font-medium text-foreground">{sorted.length}</span>
           </span>
           <div className="flex items-center gap-2">
             <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>
-              <SelectTrigger className="w-[70px] h-7 text-xs"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-[72px] h-8 text-xs border-border/60"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {[10, 25, 50, 100].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" className="h-7 w-7" disabled={page === 0} onClick={() => setPage(page - 1)}><ChevronLeft className="w-4 h-4" /></Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page === 0} onClick={() => setPage(page - 1)}><ChevronLeft className="w-4 h-4" /></Button>
             <span className="text-xs tabular-nums text-muted-foreground">{page + 1} / {totalPages}</span>
-            <Button variant="outline" size="icon" className="h-7 w-7" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}><ChevronRight className="w-4 h-4" /></Button>
+            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages - 1} onClick={() => setPage(page + 1)}><ChevronRight className="w-4 h-4" /></Button>
           </div>
         </div>
       )}
