@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import {
   Package, AlertTriangle, Users, Clock, TrendingUp,
   ArrowRight, RefreshCw, CheckCircle2, XCircle, Loader2,
-  ClipboardCheck, Wifi, WifiOff, BarChart3, Bot, Store
+  ClipboardCheck, Wifi, WifiOff, BarChart3, Bot, Store, Play, Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 import { useAppSetting } from '@/hooks/useAppSettings';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useProducts } from '@/hooks/useProducts';
@@ -17,8 +18,15 @@ import { useSyrveConfig, useSyrveSyncRuns } from '@/hooks/useSyrve';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { mockAiScans } from '@/data/mockAiScans';
-import { mockInventoryChecks } from '@/data/mockInventoryChecks';
+import { mockInventoryChecks, checkStatusConfig, type CheckStatus } from '@/data/mockInventoryChecks';
 import { mockStores } from '@/data/mockStores';
+import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts';
+
+// Mock weekly variance trend
+const varianceTrend = [
+  { week: 'W1', pct: 3.2 }, { week: 'W2', pct: 4.1 }, { week: 'W3', pct: 2.8 },
+  { week: 'W4', pct: 5.5 }, { week: 'W5', pct: 3.9 }, { week: 'W6', pct: 2.1 },
+];
 
 function StatCard({ icon: Icon, label, value, sub, color, onClick }: {
   icon: any; label: string; value: string | number; sub?: string; color?: string; onClick?: () => void;
@@ -42,8 +50,8 @@ function SessionStatusBadge({ status }: { status: string }) {
   const map: Record<string, { cls: string; label: string }> = {
     draft: { cls: 'bg-secondary text-secondary-foreground', label: 'Draft' },
     in_progress: { cls: 'bg-primary/15 text-primary', label: 'Active' },
-    completed: { cls: 'bg-[hsl(var(--wine-warning))]/15 text-[hsl(var(--wine-warning))]', label: 'Pending' },
-    approved: { cls: 'bg-[hsl(var(--wine-success))]/15 text-[hsl(var(--wine-success))]', label: 'Approved' },
+    completed: { cls: 'bg-amber-500/15 text-amber-500', label: 'Pending' },
+    approved: { cls: 'bg-emerald-500/15 text-emerald-500', label: 'Approved' },
     flagged: { cls: 'bg-destructive/15 text-destructive', label: 'Flagged' },
   };
   const c = map[status] || map.draft;
@@ -89,6 +97,9 @@ export default function Dashboard() {
   const checksPending = mockInventoryChecks.filter(c => c.status === 'pending_review').length;
   const totalVariances = mockInventoryChecks.reduce((sum, c) => sum + c.varianceItems, 0);
 
+  // Active sessions from mock data
+  const activeSessions = mockInventoryChecks.filter(c => ['in_progress', 'pending_review', 'draft'].includes(c.status));
+
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -125,7 +136,7 @@ export default function Dashboard() {
         {/* Left column */}
         <div className="lg:col-span-2 space-y-6">
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {!shouldHideScanner && (
               <button onClick={() => navigate('/count')} className="group relative overflow-hidden rounded-xl p-5 text-left app-gradient text-primary-foreground transition-all hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5">
                 <ClipboardCheck className="w-8 h-8 mb-3 opacity-80" />
@@ -136,17 +147,66 @@ export default function Dashboard() {
             )}
             <button onClick={() => navigate('/inventory/checks')} className="group rounded-xl p-5 text-left border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all hover:-translate-y-0.5">
               <ClipboardCheck className="w-8 h-8 mb-3 text-primary opacity-70" />
-              <p className="font-heading font-semibold">Inventory Checks</p>
+              <p className="font-heading font-semibold">Sessions</p>
               <p className="text-sm text-muted-foreground mt-1">{checksInProgress} in progress</p>
+            </button>
+            <button onClick={() => navigate('/products')} className="group rounded-xl p-5 text-left border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all hover:-translate-y-0.5">
+              <Search className="w-8 h-8 mb-3 text-primary opacity-70" />
+              <p className="font-heading font-semibold">Search Products</p>
+              <p className="text-sm text-muted-foreground mt-1">{totalProducts} total</p>
             </button>
             <button onClick={() => navigate('/inventory/ai-scans')} className="group rounded-xl p-5 text-left border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all hover:-translate-y-0.5">
               <Bot className="w-8 h-8 mb-3 text-primary opacity-70" />
               <p className="font-heading font-semibold">AI Scans</p>
-              <p className="text-sm text-muted-foreground mt-1">{mockAiScans.length} total scans</p>
+              <p className="text-sm text-muted-foreground mt-1">{mockAiScans.length} total</p>
             </button>
           </div>
 
-          {/* Inventory Health */}
+          {/* Active Sessions Table */}
+          {activeSessions.length > 0 && (
+            <Card className="border-border/60 rounded-xl">
+              <CardContent className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <ClipboardCheck className="w-4 h-4 text-primary" />
+                    <h3 className="font-heading font-semibold text-sm">Active Sessions</h3>
+                    <Badge variant="secondary" className="text-[10px]">{activeSessions.length}</Badge>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7" onClick={() => navigate('/inventory/checks')}>
+                    View all <ArrowRight className="w-3 h-3 ml-1" />
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {activeSessions.slice(0, 4).map(s => {
+                    const pct = s.totalItems > 0 ? Math.round((s.countedItems / s.totalItems) * 100) : 0;
+                    const cfg = checkStatusConfig[s.status as CheckStatus];
+                    return (
+                      <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/40 transition-colors cursor-pointer" onClick={() => navigate(`/inventory/checks/${s.id}`)}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{s.title}</p>
+                          <p className="text-xs text-muted-foreground">{s.storeName} · {s.createdBy}</p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <div className="w-20">
+                            <Progress value={pct} className="h-1.5" />
+                            <p className="text-[10px] text-muted-foreground text-right mt-0.5 tabular-nums">{pct}%</p>
+                          </div>
+                          <Badge className={`${cfg.color} border-0 text-[10px]`}>{cfg.label}</Badge>
+                          {s.status === 'in_progress' && (
+                            <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={e => { e.stopPropagation(); navigate(`/inventory/checks/${s.id}`); }}>
+                              <Play className="w-3 h-3" />Join
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Inventory Health with Variance Trend */}
           <Card className="border-border/60 rounded-xl">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
@@ -158,7 +218,7 @@ export default function Dashboard() {
                   View all <ArrowRight className="w-3 h-3 ml-1" />
                 </Button>
               </div>
-              <div className="grid grid-cols-3 gap-4 text-center">
+              <div className="grid grid-cols-3 gap-4 text-center mb-4">
                 <div>
                   <p className="text-2xl font-bold text-foreground">{checksInProgress}</p>
                   <p className="text-xs text-muted-foreground">In Progress</p>
@@ -170,6 +230,21 @@ export default function Dashboard() {
                 <div>
                   <p className="text-2xl font-bold text-destructive">{totalVariances}</p>
                   <p className="text-xs text-muted-foreground">Total Variances</p>
+                </div>
+              </div>
+              <div className="pt-3 border-t border-border/30">
+                <p className="text-xs text-muted-foreground mb-2">Weekly Variance Trend (%)</p>
+                <div className="h-16">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={varianceTrend}>
+                      <Line type="monotone" dataKey="pct" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                      <Tooltip
+                        contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                        labelStyle={{ color: 'hsl(var(--foreground))' }}
+                        formatter={(value: any) => [`${value}%`, 'Variance']}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             </CardContent>

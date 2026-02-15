@@ -38,7 +38,7 @@ const navGroups: NavGroup[] = [
       { label: 'Products', icon: Package, path: '/products' },
       { label: 'Categories', icon: FolderTree, path: '/categories' },
       { label: 'By Store', icon: Store, path: '/inventory/by-store' },
-      { label: 'Inventory Checks', icon: ClipboardCheck, path: '/inventory/checks' },
+      { label: 'Sessions', icon: ClipboardCheck, path: '/inventory/checks' },
       { label: 'AI Scans', icon: Bot, path: '/inventory/ai-scans' },
     ],
   },

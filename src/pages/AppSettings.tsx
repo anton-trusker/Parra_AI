@@ -2,7 +2,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
 import {
   SlidersHorizontal, Shield, Users, RefreshCw, Database, Bell,
-  Building2, ClipboardCheck, Brain, ArrowRight, AlertTriangle
+  Building2, ClipboardCheck, Brain, ArrowRight, AlertTriangle,
+  CreditCard, User, Puzzle
 } from 'lucide-react';
 import { Card, CardContent, CardDescription } from '@/components/ui/card';
 import StatusIndicator from '@/components/StatusIndicator';
@@ -33,6 +34,13 @@ function useAiConfig() {
   });
 }
 
+interface SettingCard {
+  icon: React.ElementType;
+  title: string;
+  desc: string;
+  href?: string;
+}
+
 export default function AppSettings() {
   const { user } = useAuthStore();
   if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
@@ -54,16 +62,44 @@ export default function AppSettings() {
     if (productCount === 0) alerts.push({ message: 'No products synced yet — run your first sync', href: '/settings/syrve/sync', level: 'warn' });
   }
 
-  const sections = [
-    { icon: Building2, title: 'Business', desc: 'Business profile, locale, and timezone', href: '/settings/business' },
-    { icon: SlidersHorizontal, title: 'General', desc: 'Measurement units and configuration', href: '/settings/general' },
-    { icon: ClipboardCheck, title: 'Inventory Rules', desc: 'Approval workflows and thresholds', href: '/settings/inventory' },
-    { icon: RefreshCw, title: 'Syrve Integration', desc: 'Product catalog sync from Syrve API', href: '/settings/syrve' },
-    { icon: Brain, title: 'AI Recognition', desc: 'Label recognition and AI pipeline', href: '/settings/ai' },
-    { icon: Shield, title: 'Roles & Permissions', desc: 'Custom roles and access rights', href: '/settings/roles' },
-    { icon: Users, title: 'User Management', desc: 'Manage user accounts', href: '/users' },
-    { icon: Database, title: 'Database', desc: 'Backups and data import/export' },
-    { icon: Bell, title: 'Notifications', desc: 'Low stock alerts and preferences' },
+  const sections: { label: string; cards: SettingCard[] }[] = [
+    {
+      label: 'General',
+      cards: [
+        { icon: Building2, title: 'Business', desc: 'Business profile, locale, and timezone', href: '/settings/business' },
+        { icon: SlidersHorizontal, title: 'General', desc: 'Measurement units and configuration', href: '/settings/general' },
+      ],
+    },
+    {
+      label: 'Users & Access',
+      cards: [
+        { icon: Users, title: 'User Management', desc: 'Manage user accounts and access', href: '/users' },
+        { icon: Shield, title: 'Roles & Permissions', desc: 'Custom roles and access rights', href: '/settings/roles' },
+      ],
+    },
+    {
+      label: 'Integrations',
+      cards: [
+        { icon: RefreshCw, title: 'Syrve Integration', desc: 'Product catalog sync from Syrve API', href: '/settings/syrve' },
+        { icon: Brain, title: 'AI Recognition', desc: 'Label recognition and AI pipeline', href: '/settings/ai' },
+      ],
+    },
+    {
+      label: 'Inventory',
+      cards: [
+        { icon: ClipboardCheck, title: 'Inventory Rules', desc: 'Approval workflows and thresholds', href: '/settings/inventory' },
+      ],
+    },
+    {
+      label: 'System',
+      cards: [
+        { icon: CreditCard, title: 'Billing & Usage', desc: 'Subscription, AI usage, invoices', href: '/settings/billing' },
+        { icon: Database, title: 'Database', desc: 'Backups and data import/export' },
+        { icon: Bell, title: 'Notifications', desc: 'Low stock alerts and preferences' },
+        { icon: Puzzle, title: 'Custom Fields', desc: 'Custom attributes for products' },
+        { icon: User, title: 'My Profile', desc: 'Account settings and preferences', href: '/profile' },
+      ],
+    },
   ];
 
   return (
@@ -113,9 +149,9 @@ export default function AppSettings() {
               <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors hover:shadow-sm ${
                 alert.level === 'error'
                   ? 'border-destructive/30 bg-destructive/5 hover:bg-destructive/10'
-                  : 'border-[hsl(var(--wine-warning))]/30 bg-[hsl(var(--wine-warning))]/5 hover:bg-[hsl(var(--wine-warning))]/10'
+                  : 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10'
               }`}>
-                <AlertTriangle className={`w-4 h-4 shrink-0 ${alert.level === 'error' ? 'text-destructive' : 'text-[hsl(var(--wine-warning))]'}`} />
+                <AlertTriangle className={`w-4 h-4 shrink-0 ${alert.level === 'error' ? 'text-destructive' : 'text-amber-500'}`} />
                 <span className="text-sm flex-1">{alert.message}</span>
                 <ArrowRight className="w-4 h-4 text-muted-foreground" />
               </div>
@@ -124,33 +160,38 @@ export default function AppSettings() {
         </div>
       )}
 
-      {/* Settings Navigation Cards */}
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {sections.map((s) => {
-          const inner = (
-            <Card className={`h-full transition-all group border-border/60 ${s.href ? 'hover:shadow-md hover:border-primary/20 hover:-translate-y-0.5' : 'opacity-50'}`}>
-              <CardContent className="p-5 flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-primary/8 flex items-center justify-center shrink-0 group-hover:bg-primary/15 transition-colors">
-                  <s.icon className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-heading font-semibold text-sm">{s.title}</p>
-                    {s.href && <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />}
-                  </div>
-                  <CardDescription className="text-xs mt-0.5">{s.desc}</CardDescription>
-                </div>
-              </CardContent>
-            </Card>
-          );
+      {/* Grouped Settings */}
+      {sections.map(section => (
+        <div key={section.label}>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{section.label}</h2>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {section.cards.map((s) => {
+              const inner = (
+                <Card className={`h-full transition-all group border-border/60 ${s.href ? 'hover:shadow-md hover:border-primary/20 hover:-translate-y-0.5' : 'opacity-50'}`}>
+                  <CardContent className="p-5 flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-primary/8 flex items-center justify-center shrink-0 group-hover:bg-primary/15 transition-colors">
+                      <s.icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="font-heading font-semibold text-sm">{s.title}</p>
+                        {s.href && <ArrowRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />}
+                      </div>
+                      <CardDescription className="text-xs mt-0.5">{s.desc}</CardDescription>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
 
-          return s.href ? (
-            <Link key={s.title} to={s.href} className="block h-full">{inner}</Link>
-          ) : (
-            <div key={s.title} className="cursor-not-allowed h-full">{inner}</div>
-          );
-        })}
-      </div>
+              return s.href ? (
+                <Link key={s.title} to={s.href} className="block h-full">{inner}</Link>
+              ) : (
+                <div key={s.title} className="cursor-not-allowed h-full">{inner}</div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
