@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
-import { ArrowLeft, ClipboardCheck, ShieldCheck, Ruler, AlertTriangle, Loader2, ScanBarcode, Brain, Search, Beaker, Monitor } from 'lucide-react';
+import { ArrowLeft, ClipboardCheck, ShieldCheck, Ruler, AlertTriangle, Loader2, ScanBarcode, Brain, Search, Beaker, Monitor, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,7 +14,6 @@ import { useAppSetting, useUpdateAppSetting } from '@/hooks/useAppSettings';
 
 export default function InventorySettings() {
   const { user } = useAuthStore();
-  // Existing settings
   const { data: approvalRequired = true, isLoading: l1 } = useAppSetting<boolean>('inventory_approval_required', true);
   const { data: allowCountingAfterEnd = false, isLoading: l2 } = useAppSetting<boolean>('inventory_allow_counting_after_end', false);
   const { data: allowStaffCorrections = true, isLoading: l3 } = useAppSetting<boolean>('inventory_allow_staff_corrections', true);
@@ -23,7 +22,6 @@ export default function InventorySettings() {
   const { data: requireEvidenceForHighVariance = false, isLoading: l6 } = useAppSetting<boolean>('inventory_require_evidence_high_variance', false);
   const { data: maxUnopenedPerEntry = 50, isLoading: l7 } = useAppSetting<number>('inventory_max_unopened_per_entry', 50);
   const { data: autoTimeoutHours = 0, isLoading: l8 } = useAppSetting<number>('inventory_auto_timeout_hours', 0);
-  // New counting method settings
   const { data: barcodeEnabled = true, isLoading: l9 } = useAppSetting<boolean>('inventory_barcode_scanner_enabled', true);
   const { data: aiEnabled = true, isLoading: l10 } = useAppSetting<boolean>('inventory_ai_scanner_enabled', true);
   const { data: manualSearchEnabled = true, isLoading: l11 } = useAppSetting<boolean>('inventory_allow_manual_search', true);
@@ -31,65 +29,48 @@ export default function InventorySettings() {
   const { data: trackOpened = true, isLoading: l13 } = useAppSetting<boolean>('inventory_track_opened_bottles', true);
   const { data: requireLocation = true, isLoading: l14 } = useAppSetting<boolean>('inventory_require_location', true);
   const { data: allowNegativeStock = false, isLoading: l15 } = useAppSetting<boolean>('inventory_allow_negative_stock', false);
-  // New improved rules
   const { data: baselineSource = 'syrve', isLoading: l16 } = useAppSetting<string>('inventory_baseline_source', 'syrve');
   const { data: autoCloseDays = 0, isLoading: l17 } = useAppSetting<number>('inventory_auto_close_days', 0);
   const { data: allowRecount = false, isLoading: l18 } = useAppSetting<boolean>('inventory_allow_recount', false);
   const { data: showLitresEquiv = true, isLoading: l19 } = useAppSetting<boolean>('inventory_show_litres_equivalent', true);
   const { data: hideScannerDesktop = false, isLoading: l20 } = useAppSetting<boolean>('inventory_hide_scanner_desktop', false);
+  // Variance thresholds
+  const { data: varianceHighPct = 10, isLoading: l21 } = useAppSetting<number>('inventory_variance_high_pct', 10);
+  const { data: varianceMedPct = 5, isLoading: l22 } = useAppSetting<number>('inventory_variance_med_pct', 5);
+  const { data: collaborativeCounting = false, isLoading: l23 } = useAppSetting<boolean>('inventory_collaborative_counting', false);
 
   const update = useUpdateAppSetting();
-  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8 || l9 || l10 || l11 || l12 || l13 || l14 || l15 || l16 || l17 || l18 || l19 || l20;
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8 || l9 || l10 || l11 || l12 || l13 || l14 || l15 || l16 || l17 || l18 || l19 || l20 || l21 || l22 || l23;
 
   const [form, setForm] = useState({
-    approval_required: true,
-    allow_counting_after_end: false,
-    allow_staff_corrections: true,
-    require_adjustment_reason: false,
-    variance_threshold_litres: 0,
-    require_evidence_high_variance: false,
-    max_unopened_per_entry: 50,
-    auto_timeout_hours: 0,
-    barcode_scanner_enabled: true,
-    ai_scanner_enabled: true,
-    allow_manual_search: true,
-    counting_unit: 'bottles',
-    track_opened_bottles: true,
-    require_location: true,
-    allow_negative_stock: false,
-    baseline_source: 'syrve',
-    auto_close_days: 0,
-    allow_recount: false,
-    show_litres_equivalent: true,
-    hide_scanner_desktop: false,
+    approval_required: true, allow_counting_after_end: false, allow_staff_corrections: true,
+    require_adjustment_reason: false, variance_threshold_litres: 0, require_evidence_high_variance: false,
+    max_unopened_per_entry: 50, auto_timeout_hours: 0, barcode_scanner_enabled: true,
+    ai_scanner_enabled: true, allow_manual_search: true, counting_unit: 'bottles',
+    track_opened_bottles: true, require_location: true, allow_negative_stock: false,
+    baseline_source: 'syrve', auto_close_days: 0, allow_recount: false,
+    show_litres_equivalent: true, hide_scanner_desktop: false,
+    variance_high_pct: 10, variance_med_pct: 5, collaborative_counting: false,
   });
 
   useEffect(() => {
     if (!isLoading) {
       setForm({
-        approval_required: approvalRequired,
-        allow_counting_after_end: allowCountingAfterEnd,
-        allow_staff_corrections: allowStaffCorrections,
-        require_adjustment_reason: requireReasonForAdjustment,
-        variance_threshold_litres: varianceThresholdLitres,
-        require_evidence_high_variance: requireEvidenceForHighVariance,
-        max_unopened_per_entry: maxUnopenedPerEntry,
-        auto_timeout_hours: autoTimeoutHours,
-        barcode_scanner_enabled: barcodeEnabled,
-        ai_scanner_enabled: aiEnabled,
-        allow_manual_search: manualSearchEnabled,
-        counting_unit: countingUnit,
-        track_opened_bottles: trackOpened,
-        require_location: requireLocation,
-        allow_negative_stock: allowNegativeStock,
-        baseline_source: baselineSource,
-        auto_close_days: autoCloseDays,
-        allow_recount: allowRecount,
-        show_litres_equivalent: showLitresEquiv,
-        hide_scanner_desktop: hideScannerDesktop,
+        approval_required: approvalRequired, allow_counting_after_end: allowCountingAfterEnd,
+        allow_staff_corrections: allowStaffCorrections, require_adjustment_reason: requireReasonForAdjustment,
+        variance_threshold_litres: varianceThresholdLitres, require_evidence_high_variance: requireEvidenceForHighVariance,
+        max_unopened_per_entry: maxUnopenedPerEntry, auto_timeout_hours: autoTimeoutHours,
+        barcode_scanner_enabled: barcodeEnabled, ai_scanner_enabled: aiEnabled,
+        allow_manual_search: manualSearchEnabled, counting_unit: countingUnit,
+        track_opened_bottles: trackOpened, require_location: requireLocation,
+        allow_negative_stock: allowNegativeStock, baseline_source: baselineSource,
+        auto_close_days: autoCloseDays, allow_recount: allowRecount,
+        show_litres_equivalent: showLitresEquiv, hide_scanner_desktop: hideScannerDesktop,
+        variance_high_pct: varianceHighPct, variance_med_pct: varianceMedPct,
+        collaborative_counting: collaborativeCounting,
       });
     }
-  }, [isLoading, approvalRequired, allowCountingAfterEnd, allowStaffCorrections, requireReasonForAdjustment, varianceThresholdLitres, requireEvidenceForHighVariance, maxUnopenedPerEntry, autoTimeoutHours, barcodeEnabled, aiEnabled, manualSearchEnabled, countingUnit, trackOpened, requireLocation, allowNegativeStock, baselineSource, autoCloseDays, allowRecount, showLitresEquiv]);
+  }, [isLoading, approvalRequired, allowCountingAfterEnd, allowStaffCorrections, requireReasonForAdjustment, varianceThresholdLitres, requireEvidenceForHighVariance, maxUnopenedPerEntry, autoTimeoutHours, barcodeEnabled, aiEnabled, manualSearchEnabled, countingUnit, trackOpened, requireLocation, allowNegativeStock, baselineSource, autoCloseDays, allowRecount, showLitresEquiv, hideScannerDesktop, varianceHighPct, varianceMedPct, collaborativeCounting]);
 
   const [saving, setSaving] = useState(false);
 
@@ -119,6 +100,9 @@ export default function InventorySettings() {
         inventory_allow_recount: form.allow_recount,
         inventory_show_litres_equivalent: form.show_litres_equivalent,
         inventory_hide_scanner_desktop: form.hide_scanner_desktop,
+        inventory_variance_high_pct: form.variance_high_pct,
+        inventory_variance_med_pct: form.variance_med_pct,
+        inventory_collaborative_counting: form.collaborative_counting,
       };
       for (const [key, value] of Object.entries(mapping)) {
         await update.mutateAsync({ key, value });
@@ -168,13 +152,11 @@ export default function InventorySettings() {
           <ToggleRow label="AI Label Recognition" description="Use camera-based AI recognition to identify product labels" checked={form.ai_scanner_enabled} onChange={v => setForm(f => ({ ...f, ai_scanner_enabled: v }))} />
           <ToggleRow label="Manual Search" description="Allow staff to search for products manually by name" checked={form.allow_manual_search} onChange={v => setForm(f => ({ ...f, allow_manual_search: v }))} />
 
-          <div className="space-y-1 pt-2 border-t">
+          <div className="space-y-1 pt-2 border-t border-border/40">
             <Label className="text-xs">Counting Unit</Label>
             <p className="text-xs text-muted-foreground mb-1">How quantities are entered and displayed during counting</p>
             <Select value={form.counting_unit} onValueChange={v => setForm(f => ({ ...f, counting_unit: v }))}>
-              <SelectTrigger className="bg-secondary border-border w-48">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="bg-secondary border-border w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="bottles">Bottles</SelectItem>
                 <SelectItem value="litres">Litres</SelectItem>
@@ -185,12 +167,12 @@ export default function InventorySettings() {
 
           <ToggleRow label="Track opened items" description="Separately track opened items with measurement" checked={form.track_opened_bottles} onChange={v => setForm(f => ({ ...f, track_opened_bottles: v }))} />
           <ToggleRow label="Show litres equivalent" description="Display litre equivalent alongside bottle counts" checked={form.show_litres_equivalent} onChange={v => setForm(f => ({ ...f, show_litres_equivalent: v }))} />
-          <ToggleRow label="Hide scanner on desktop" description="Hide the barcode/AI scanner interface on desktop browsers. Scanning will only be available on mobile devices." checked={form.hide_scanner_desktop} onChange={v => setForm(f => ({ ...f, hide_scanner_desktop: v }))} />
+          <ToggleRow label="Hide scanner on desktop" description="Hide the barcode/AI scanner interface on desktop browsers" checked={form.hide_scanner_desktop} onChange={v => setForm(f => ({ ...f, hide_scanner_desktop: v }))} />
         </div>
       </CollapsibleSection>
 
       {/* Session Rules */}
-      <CollapsibleSection icon={ClipboardCheck} title="Session Rules" defaultOpen>
+      <CollapsibleSection icon={ClipboardCheck} title="Session Defaults" defaultOpen>
         <div className="space-y-4">
           <ToggleRow label="Approval required before submission" description="Manager must approve inventory before it's sent to Syrve" checked={form.approval_required} onChange={v => setForm(f => ({ ...f, approval_required: v }))} />
           <ToggleRow label="Allow counting after 'End Counting'" description="Staff can still add counts after manager ends counting phase" checked={form.allow_counting_after_end} onChange={v => setForm(f => ({ ...f, allow_counting_after_end: v }))} />
@@ -199,14 +181,13 @@ export default function InventorySettings() {
           <ToggleRow label="Require location assignment" description="Each count must be tagged with a location/sub-location" checked={form.require_location} onChange={v => setForm(f => ({ ...f, require_location: v }))} />
           <ToggleRow label="Allow negative stock" description="Allow stock values to go below zero" checked={form.allow_negative_stock} onChange={v => setForm(f => ({ ...f, allow_negative_stock: v }))} />
           <ToggleRow label="Allow recount" description="Allow recounting the same item within one session" checked={form.allow_recount} onChange={v => setForm(f => ({ ...f, allow_recount: v }))} />
+          <ToggleRow label="Collaborative counting" description="Allow multiple users to count simultaneously in the same session" checked={form.collaborative_counting} onChange={v => setForm(f => ({ ...f, collaborative_counting: v }))} />
 
-          <div className="space-y-1 pt-2 border-t">
+          <div className="space-y-1 pt-2 border-t border-border/40">
             <Label className="text-xs">Baseline Source</Label>
             <p className="text-xs text-muted-foreground mb-1">Where expected quantities come from at session start</p>
             <Select value={form.baseline_source} onValueChange={v => setForm(f => ({ ...f, baseline_source: v }))}>
-              <SelectTrigger className="bg-secondary border-border w-48">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="bg-secondary border-border w-48"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="syrve">Syrve (live stock)</SelectItem>
                 <SelectItem value="last_session">Last Session</SelectItem>
@@ -216,15 +197,34 @@ export default function InventorySettings() {
         </div>
       </CollapsibleSection>
 
-      {/* Variance & Safety */}
-      <CollapsibleSection icon={AlertTriangle} title="Variance & Safety">
+      {/* Variance Thresholds */}
+      <CollapsibleSection icon={AlertTriangle} title="Variance Thresholds" defaultOpen>
         <div className="space-y-4">
-          <div className="space-y-1">
-            <Label className="text-xs">Variance threshold (litres)</Label>
+          <p className="text-xs text-muted-foreground">Define severity levels for variance highlighting during review</p>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-destructive" />
+                High Variance Threshold (%)
+              </Label>
+              <Input type="number" min="0" max="100" value={form.variance_high_pct} onChange={e => setForm(f => ({ ...f, variance_high_pct: parseFloat(e.target.value) || 10 }))} className="bg-secondary border-border w-24" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                Medium Variance Threshold (%)
+              </Label>
+              <Input type="number" min="0" max="100" value={form.variance_med_pct} onChange={e => setForm(f => ({ ...f, variance_med_pct: parseFloat(e.target.value) || 5 }))} className="bg-secondary border-border w-24" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">Variances below the medium threshold are shown as <span className="text-emerald-500 font-medium">low</span></p>
+
+          <div className="space-y-1 pt-2 border-t border-border/40">
+            <Label className="text-xs">Absolute Variance Threshold (litres)</Label>
             <p className="text-xs text-muted-foreground mb-1">Require manager review if total variance exceeds this value. Set to 0 to disable.</p>
             <Input type="number" step="0.1" min="0" value={form.variance_threshold_litres} onChange={e => setForm(f => ({ ...f, variance_threshold_litres: parseFloat(e.target.value) || 0 }))} className="bg-secondary border-border w-32" />
           </div>
-          <ToggleRow label="Require evidence for high-variance items" description="Staff must attach a photo for items exceeding the variance threshold" checked={form.require_evidence_high_variance} onChange={v => setForm(f => ({ ...f, require_evidence_high_variance: v }))} />
+          <ToggleRow label="Require evidence for high-variance items" description="Staff must attach a photo for items exceeding the high variance threshold" checked={form.require_evidence_high_variance} onChange={v => setForm(f => ({ ...f, require_evidence_high_variance: v }))} />
           <div className="space-y-1">
             <Label className="text-xs">Max unopened bottles per entry</Label>
             <p className="text-xs text-muted-foreground mb-1">Prevents fat-finger errors during counting</p>

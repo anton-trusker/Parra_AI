@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
-import { ArrowLeft, Building2, Globe, Banknote, Clock, Loader2 } from 'lucide-react';
+import { ArrowLeft, Building2, Globe, Banknote, Clock, Loader2, Mail, Phone, ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,16 +36,17 @@ export default function BusinessSettings() {
   const { data: language = 'en', isLoading: l6 } = useAppSetting<string>('language', 'en');
   const { data: currency = 'USD', isLoading: l7 } = useAppSetting<string>('currency', 'USD');
   const { data: timezone = 'UTC', isLoading: l8 } = useAppSetting<string>('timezone', 'UTC');
-  const { data: defaultBottleSize = 750, isLoading: l9 } = useAppSetting<number>('default_bottle_size_ml', 750);
-  const { data: defaultGlassSize = 150, isLoading: l10 } = useAppSetting<number>('default_glass_size_ml', 150);
+  const { data: email = '', isLoading: l9 } = useAppSetting<string>('business_email', '');
+  const { data: phone = '', isLoading: l10 } = useAppSetting<string>('business_phone', '');
+  const { data: defaultBottleSize = 750, isLoading: l11 } = useAppSetting<number>('default_bottle_size_ml', 750);
 
   const update = useUpdateAppSetting();
-  const isLoading = l1 || l2 || l3 || l4 || l5 || l5b || l6 || l7 || l8 || l9 || l10;
+  const isLoading = l1 || l2 || l3 || l4 || l5 || l5b || l6 || l7 || l8 || l9 || l10 || l11;
 
   const [form, setForm] = useState({
     business_name: '', legal_name: '', business_address: '', business_country: '', business_city: '', taxpayer_id: '',
-    language: 'en', currency: 'USD', timezone: 'UTC',
-    default_bottle_size_ml: 750, default_glass_size_ml: 150,
+    language: 'en', currency: 'USD', timezone: 'UTC', business_email: '', business_phone: '',
+    default_bottle_size_ml: 750,
   });
 
   useEffect(() => {
@@ -53,11 +54,11 @@ export default function BusinessSettings() {
       setForm({
         business_name: businessName, legal_name: legalName, business_address: address,
         business_country: country, business_city: city, taxpayer_id: taxpayerId,
-        language, currency, timezone,
-        default_bottle_size_ml: defaultBottleSize, default_glass_size_ml: defaultGlassSize,
+        language, currency, timezone, business_email: email, business_phone: phone,
+        default_bottle_size_ml: defaultBottleSize,
       });
     }
-  }, [isLoading, businessName, legalName, address, country, city, taxpayerId, language, currency, timezone, defaultBottleSize, defaultGlassSize]);
+  }, [isLoading, businessName, legalName, address, country, city, taxpayerId, language, currency, timezone, email, phone, defaultBottleSize]);
 
   const [saving, setSaving] = useState(false);
 
@@ -136,6 +137,32 @@ export default function BusinessSettings() {
         </div>
       </CollapsibleSection>
 
+      <CollapsibleSection icon={Mail} title="Contact" defaultOpen>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label className="text-xs">Email</Label>
+            <Input type="email" value={form.business_email} onChange={e => setForm(f => ({ ...f, business_email: e.target.value }))} placeholder="info@business.com" className="bg-secondary border-border" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Phone</Label>
+            <Input type="tel" value={form.business_phone} onChange={e => setForm(f => ({ ...f, business_phone: e.target.value }))} placeholder="+1 234 567 890" className="bg-secondary border-border" />
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection icon={ImageIcon} title="Branding">
+        <div className="flex items-center gap-4 p-4 border border-dashed border-border/60 rounded-xl">
+          <div className="w-16 h-16 rounded-xl bg-muted/30 flex items-center justify-center">
+            <ImageIcon className="w-8 h-8 text-muted-foreground/40" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">Business Logo</p>
+            <p className="text-xs text-muted-foreground">Upload a logo for reports and invoices</p>
+            <Button variant="outline" size="sm" className="mt-2 text-xs" disabled>Upload Logo</Button>
+          </div>
+        </div>
+      </CollapsibleSection>
+
       <CollapsibleSection icon={Globe} title="Locale" defaultOpen>
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="space-y-1">
@@ -174,10 +201,6 @@ export default function BusinessSettings() {
           <div className="space-y-1">
             <Label className="text-xs">Default Bottle Size (ml)</Label>
             <Input type="number" value={form.default_bottle_size_ml} onChange={e => setForm(f => ({ ...f, default_bottle_size_ml: parseInt(e.target.value) || 750 }))} className="bg-secondary border-border w-32" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Default Glass Size (ml)</Label>
-            <Input type="number" value={form.default_glass_size_ml} onChange={e => setForm(f => ({ ...f, default_glass_size_ml: parseInt(e.target.value) || 150 }))} className="bg-secondary border-border w-32" />
           </div>
         </div>
       </CollapsibleSection>

@@ -25,6 +25,7 @@ import SyrveTestingPage from "./pages/SyrveTestingPage";
 import BusinessSettings from "./pages/BusinessSettings";
 import InventorySettings from "./pages/InventorySettings";
 import AiSettings from "./pages/AiSettings";
+import BillingSettings from "./pages/BillingSettings";
 import ProductCatalog from "./pages/ProductCatalog";
 import ProductDetail from "./pages/ProductDetail";
 import CategoriesPage from "./pages/CategoriesPage";
@@ -84,6 +85,7 @@ const App = () => (
                 <Route path="/settings/business" element={<BusinessSettings />} />
                 <Route path="/settings/inventory" element={<InventorySettings />} />
                 <Route path="/settings/ai" element={<AiSettings />} />
+                <Route path="/settings/billing" element={<BillingSettings />} />
                 <Route path="/profile" element={<Profile />} />
               </Route>
               <Route path="*" element={<NotFound />} />
