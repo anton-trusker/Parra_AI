@@ -8,12 +8,13 @@ import { useBaselineItems, useProductAggregates, useCountEvents } from '@/hooks/
 import { useCreateSession, useCompleteSession, useSessionItems } from '@/hooks/useInventorySessions';
 import { useAppSetting } from '@/hooks/useAppSettings';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useStores } from '@/hooks/useStores';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Search, Download, SlidersHorizontal, X, ClipboardCheck, Plus, Package,
   Clock, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp,
-  ThumbsUp, Flag, Users, Filter, Send, Loader2
+  ThumbsUp, Flag, Users, Filter, Send, Loader2, Warehouse, Ban, Play
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -35,10 +36,6 @@ import type { Database } from '@/integrations/supabase/types';
 
 type SessionStatus = Database['public']['Enums']['session_status_enum'];
 
-// ═══════════════════════════════════════════════
-// Column & filter definitions for Inventory tab
-// ═══════════════════════════════════════════════
-
 const STOCK_COLUMN_DEFS: ColumnDef[] = [
   { key: 'name', label: 'Product' },
   { key: 'sku', label: 'SKU' },
@@ -51,25 +48,17 @@ const STOCK_COLUMN_DEFS: ColumnDef[] = [
   { key: 'synced', label: 'Last Synced' },
 ];
 
-// ═══════════════════════════════════════════════
-// Shared components
-// ═══════════════════════════════════════════════
-
 function StockStatusBadge({ stock }: { stock: number | null }) {
   const s = stock ?? 0;
-  if (s <= 0) return <span className="wine-badge stock-out">✗ Out</span>;
-  if (s < 5) return <span className="wine-badge stock-low">⚠ Low</span>;
-  return <span className="wine-badge stock-healthy">✓ In Stock</span>;
+  if (s <= 0) return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-destructive/15 text-destructive border border-destructive/30">✗ Out</span>;
+  if (s < 5) return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-amber-500/15 text-amber-600 border border-amber-500/30">⚠ Low</span>;
+  return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">✓ In Stock</span>;
 }
 
 function TypeBadge({ type }: { type: string | null }) {
   if (!type) return <span className="text-muted-foreground">—</span>;
-  return <span className="wine-badge bg-secondary text-secondary-foreground">{type}</span>;
+  return <Badge variant="outline" className="text-[10px] font-semibold">{type}</Badge>;
 }
-
-// ═══════════════════════════════════════════════
-// Inventory Tab
-// ═══════════════════════════════════════════════
 
 function buildStockColumns(isManager: boolean): DataTableColumn<Product>[] {
   return [
@@ -79,8 +68,8 @@ function buildStockColumns(isManager: boolean): DataTableColumn<Product>[] {
     { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{(p as any).categories?.name || '—'}</span> },
     { key: 'type', label: 'Type', render: p => <TypeBadge type={p.product_type} /> },
     ...(isManager ? [
-      { key: 'stock', label: 'Stock', align: 'right' as const, render: (p: Product) => <span className="font-semibold">{p.current_stock ?? 0}</span>, sortFn: (a: Product, b: Product) => (a.current_stock || 0) - (b.current_stock || 0) },
-      { key: 'sale_price', label: 'Sale Price', align: 'right' as const, render: (p: Product) => <span className="text-accent">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a: Product, b: Product) => (a.sale_price || 0) - (b.sale_price || 0) },
+      { key: 'stock', label: 'Stock', align: 'right' as const, render: (p: Product) => <span className="font-semibold tabular-nums">{p.current_stock ?? 0}</span>, sortFn: (a: Product, b: Product) => (a.current_stock || 0) - (b.current_stock || 0) },
+      { key: 'sale_price', label: 'Sale Price', align: 'right' as const, render: (p: Product) => <span className="text-accent font-medium">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a: Product, b: Product) => (a.sale_price || 0) - (b.sale_price || 0) },
       { key: 'purchase_price', label: 'Purchase Price', align: 'right' as const, render: (p: Product) => <span className="text-muted-foreground">{p.purchase_price?.toFixed(2) ?? '—'}</span> },
     ] : [
       { key: 'stock', label: 'Stock', align: 'right' as const, render: (p: Product) => <StockStatusBadge stock={p.current_stock} /> },
@@ -94,7 +83,7 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
   const { stockColumns, setStockColumns, stockFilters, setStockFilters, columnWidths, setColumnWidth } = useColumnStore();
   const [search, setSearch] = useState('');
   const [filterValues, setFilterValues] = useState<Record<string, string[]>>({});
-  const [showFilters, setShowFilters] = useState(false);
+  const { data: stores = [] } = useStores();
 
   const { data: products = [], isLoading } = useProducts({
     search: search || undefined,
@@ -112,26 +101,54 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
     };
   }, [products]);
 
-  const filterDefs: FilterDef[] = [
-    { key: 'type', label: 'Type' },
-    { key: 'category', label: 'Category' },
-  ];
+  // Quick filter
+  const [quickFilter, setQuickFilter] = useState<string | null>(null);
+  const quickCounts = useMemo(() => ({
+    outOfStock: products.filter(p => (p.current_stock ?? 0) <= 0).length,
+    lowStock: products.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5).length,
+    inStock: products.filter(p => (p.current_stock ?? 0) >= 5).length,
+  }), [products]);
 
-  const activeFilterCount = Object.values(filterValues).filter(f => f.length > 0).length;
-  const fv = (key: string) => stockFilters.includes(key);
-  const clearFilters = () => setFilterValues({});
+  const filteredProducts = useMemo(() => {
+    let result = products;
+    if (filterValues.category?.length) result = result.filter(p => filterValues.category.includes((p as any).categories?.name || ''));
+    if (quickFilter === 'outOfStock') result = result.filter(p => (p.current_stock ?? 0) <= 0);
+    if (quickFilter === 'lowStock') result = result.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5);
+    if (quickFilter === 'inStock') result = result.filter(p => (p.current_stock ?? 0) >= 5);
+    return result;
+  }, [products, filterValues, quickFilter]);
+
   const setFilter = (key: string, values: string[]) => setFilterValues(prev => ({ ...prev, [key]: values }));
   const tableColumns = useMemo(() => buildStockColumns(isManager), [isManager]);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-        <span>{products.length} products</span>
+        <span>{filteredProducts.length} products</span>
         {isManager && (
           <>
-            <span>•</span>
+            <span className="text-border">•</span>
             <span>{totalStock} total stock</span>
           </>
+        )}
+      </div>
+
+      {/* Quick Filters */}
+      <div className="quick-filter-bar">
+        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mr-1">Quick:</span>
+        <button onClick={() => setQuickFilter(quickFilter === 'outOfStock' ? null : 'outOfStock')} className={`quick-filter-pill ${quickFilter === 'outOfStock' ? 'active' : ''}`}>
+          <Ban className="w-3 h-3" /> Out of Stock <span className="text-[10px] opacity-70">({quickCounts.outOfStock})</span>
+        </button>
+        <button onClick={() => setQuickFilter(quickFilter === 'lowStock' ? null : 'lowStock')} className={`quick-filter-pill ${quickFilter === 'lowStock' ? 'active' : ''}`}>
+          <AlertTriangle className="w-3 h-3" /> Low Stock <span className="text-[10px] opacity-70">({quickCounts.lowStock})</span>
+        </button>
+        <button onClick={() => setQuickFilter(quickFilter === 'inStock' ? null : 'inStock')} className={`quick-filter-pill ${quickFilter === 'inStock' ? 'active' : ''}`}>
+          <CheckCircle2 className="w-3 h-3" /> In Stock <span className="text-[10px] opacity-70">({quickCounts.inStock})</span>
+        </button>
+        {quickFilter && (
+          <button onClick={() => setQuickFilter(null)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 ml-1">
+            <X className="w-3 h-3" /> Clear
+          </button>
         )}
       </div>
 
@@ -140,52 +157,22 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search product..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 bg-card border-border" />
         </div>
-        <Button
-          variant="outline" size="icon"
-          className={`h-10 w-10 shrink-0 border-border relative ${showFilters ? 'bg-primary/10 text-primary border-primary/30' : ''}`}
-          onClick={() => setShowFilters(!showFilters)}
-        >
-          <SlidersHorizontal className="w-4 h-4" />
-          {activeFilterCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-primary text-primary-foreground text-[9px] font-bold flex items-center justify-center">
-              {activeFilterCount}
-            </span>
-          )}
-        </Button>
+        <MultiSelectFilter label="Type" options={optionsMap.type} selected={filterValues.type || []} onChange={v => setFilter('type', v)} />
+        <MultiSelectFilter label="Category" options={optionsMap.category} selected={filterValues.category || []} onChange={v => setFilter('category', v)} />
+        {stores.length > 0 && (
+          <MultiSelectFilter label="Store" options={stores.map(s => s.name)} selected={[]} onChange={() => {}} />
+        )}
         <ColumnManager columns={STOCK_COLUMN_DEFS} visibleColumns={stockColumns} onChange={setStockColumns} />
       </div>
-
-      {showFilters && (
-        <div className="wine-glass-effect rounded-xl p-4 animate-fade-in">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Filters</p>
-            <div className="flex items-center gap-2">
-              {activeFilterCount > 0 && (
-                <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={clearFilters}>
-                  <X className="w-3 h-3 mr-1" /> Clear all
-                </Button>
-              )}
-              <FilterManager filters={filterDefs} visibleFilters={stockFilters} onChange={setStockFilters} />
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {filterDefs.map(fd =>
-              fv(fd.key) && optionsMap[fd.key as keyof typeof optionsMap] ? (
-                <MultiSelectFilter key={fd.key} label={fd.label} options={optionsMap[fd.key as keyof typeof optionsMap] || []} selected={filterValues[fd.key] || []} onChange={v => setFilter(fd.key, v)} />
-              ) : null
-            )}
-          </div>
-        </div>
-      )}
 
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
         </div>
       ) : (
-        <div className="wine-glass-effect rounded-xl overflow-hidden">
+        <div className="rounded-xl border border-border overflow-hidden bg-card">
           <DataTable
-            data={products}
+            data={filteredProducts}
             columns={tableColumns}
             visibleColumns={stockColumns}
             columnWidths={columnWidths}
@@ -202,26 +189,26 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
 }
 
 // ═══════════════════════════════════════════════
-// Check Review Tab (Session Review embedded)
+// Check Review Tab
 // ═══════════════════════════════════════════════
 
 function SessionStatusBadge({ status }: { status: SessionStatus }) {
   const cfg: Record<string, { cls: string; icon: any; label: string }> = {
-    draft: { cls: 'bg-secondary text-secondary-foreground', icon: Clock, label: 'Draft' },
-    in_progress: { cls: 'bg-primary/15 text-primary', icon: Clock, label: 'In Progress' },
-    completed: { cls: 'bg-wine-warning/15 text-wine-warning', icon: AlertTriangle, label: 'Pending Review' },
-    paused: { cls: 'bg-secondary text-secondary-foreground', icon: Clock, label: 'Paused' },
-    approved: { cls: 'stock-healthy', icon: CheckCircle2, label: 'Approved' },
-    flagged: { cls: 'stock-out', icon: XCircle, label: 'Flagged' },
+    draft: { cls: 'bg-secondary text-secondary-foreground border border-border', icon: Clock, label: 'Draft' },
+    in_progress: { cls: 'bg-primary/15 text-primary border border-primary/30', icon: Play, label: 'In Progress' },
+    completed: { cls: 'bg-amber-500/15 text-amber-600 border border-amber-500/30', icon: AlertTriangle, label: 'Pending Review' },
+    paused: { cls: 'bg-secondary text-secondary-foreground border border-border', icon: Clock, label: 'Paused' },
+    approved: { cls: 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30', icon: CheckCircle2, label: 'Approved' },
+    flagged: { cls: 'bg-destructive/15 text-destructive border border-destructive/30', icon: XCircle, label: 'Flagged' },
   };
   const c = cfg[status] || cfg.draft;
-  return <span className={`wine-badge ${c.cls}`}><c.icon className="w-3 h-3 mr-1" />{c.label}</span>;
+  return <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-semibold ${c.cls}`}><c.icon className="w-3 h-3" />{c.label}</span>;
 }
 
 function VarianceBadge({ variance }: { variance: number }) {
-  if (variance === 0) return <span className="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--wine-success))]/15 text-[hsl(var(--wine-success))]">Match</span>;
-  if (Math.abs(variance) <= 2) return <span className="text-xs px-2 py-0.5 rounded-full bg-wine-warning/15 text-wine-warning">{variance > 0 ? '+' : ''}{variance}</span>;
-  return <span className="text-xs px-2 py-0.5 rounded-full bg-destructive/15 text-destructive">{variance > 0 ? '+' : ''}{variance}</span>;
+  if (variance === 0) return <span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-emerald-500/15 text-emerald-600 border border-emerald-500/30">Match</span>;
+  if (Math.abs(variance) <= 2) return <span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-amber-500/15 text-amber-600 border border-amber-500/30">{variance > 0 ? '+' : ''}{variance}</span>;
+  return <span className="text-xs px-2 py-0.5 rounded-md font-semibold bg-destructive/15 text-destructive border border-destructive/30">{variance > 0 ? '+' : ''}{variance}</span>;
 }
 
 function useProductNames(productIds: string[]) {
@@ -302,101 +289,103 @@ function SessionDiffTable({ sessionId, canSeeStock }: { sessionId: string; canSe
   }
 
   return (
-    <Tabs defaultValue="overview" className="w-full">
-      <TabsList className="m-3">
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        {userIds.length > 1 && <TabsTrigger value="by-user"><Users className="w-3.5 h-3.5 mr-1" />By User</TabsTrigger>}
-      </TabsList>
+    <div className="modern-tabs">
+      <Tabs defaultValue="overview" className="w-full">
+        <TabsList className="m-3">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          {userIds.length > 1 && <TabsTrigger value="by-user"><Users className="w-3.5 h-3.5 mr-1" />By User</TabsTrigger>}
+        </TabsList>
 
-      <TabsContent value="overview">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
-          <div className="rounded-lg bg-secondary/50 p-2 text-center">
-            <p className="text-lg font-bold">{diffRows.length}</p>
-            <p className="text-[10px] text-muted-foreground">Products</p>
-          </div>
-          {canSeeStock && (
-            <div className="rounded-lg bg-secondary/50 p-2 text-center">
-              <p className="text-lg font-bold">{totalExpected}</p>
-              <p className="text-[10px] text-muted-foreground">Expected</p>
+        <TabsContent value="overview">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3">
+            <div className="rounded-lg bg-muted/30 border border-border p-3 text-center">
+              <p className="text-lg font-bold">{diffRows.length}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Products</p>
             </div>
-          )}
-          <div className="rounded-lg bg-secondary/50 p-2 text-center">
-            <p className="text-lg font-bold">{totalCounted}</p>
-            <p className="text-[10px] text-muted-foreground">Counted</p>
-          </div>
-          {canSeeStock && (
-            <div className={`rounded-lg p-2 text-center ${totalVariance === 0 ? 'bg-[hsl(var(--wine-success))]/10' : Math.abs(totalVariance) <= 5 ? 'bg-wine-warning/10' : 'bg-destructive/10'}`}>
-              <p className="text-lg font-bold">{totalVariance > 0 ? '+' : ''}{totalVariance}</p>
-              <p className="text-[10px] text-muted-foreground">{varianceItems} variances</p>
+            {canSeeStock && (
+              <div className="rounded-lg bg-muted/30 border border-border p-3 text-center">
+                <p className="text-lg font-bold">{totalExpected}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Expected</p>
+              </div>
+            )}
+            <div className="rounded-lg bg-muted/30 border border-border p-3 text-center">
+              <p className="text-lg font-bold">{totalCounted}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Counted</p>
             </div>
-          )}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-muted-foreground border-b border-border/50">
-                <th className="text-left p-3 font-medium">Product</th>
-                {canSeeStock && <th className="text-center p-3 font-medium">Expected</th>}
-                <th className="text-center p-3 font-medium">Counted</th>
-                {canSeeStock && <th className="text-center p-3 font-medium">Variance</th>}
-                <th className="text-center p-3 font-medium">Events</th>
-              </tr>
-            </thead>
-            <tbody>
-              {diffRows.map(row => (
-                <tr key={row.product_id} className="border-b border-border/30 hover:bg-secondary/30">
-                  <td className="p-3 font-medium text-xs max-w-[200px] truncate">{row.product_name}</td>
-                  {canSeeStock && <td className="p-3 text-center text-muted-foreground">{row.expected_qty}</td>}
-                  <td className="p-3 text-center font-semibold">{row.counted_qty}</td>
-                  {canSeeStock && <td className="p-3 text-center"><VarianceBadge variance={row.variance_qty} /></td>}
-                  <td className="p-3 text-center text-muted-foreground text-xs">{row.event_count}</td>
+            {canSeeStock && (
+              <div className={`rounded-lg border p-3 text-center ${totalVariance === 0 ? 'bg-emerald-500/10 border-emerald-500/30' : Math.abs(totalVariance) <= 5 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-destructive/10 border-destructive/30'}`}>
+                <p className="text-lg font-bold">{totalVariance > 0 ? '+' : ''}{totalVariance}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{varianceItems} variances</p>
+              </div>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-muted-foreground border-b-2 border-border bg-muted/30">
+                  <th className="text-left p-3 font-semibold text-[11px] uppercase tracking-wider">Product</th>
+                  {canSeeStock && <th className="text-center p-3 font-semibold text-[11px] uppercase tracking-wider">Expected</th>}
+                  <th className="text-center p-3 font-semibold text-[11px] uppercase tracking-wider">Counted</th>
+                  {canSeeStock && <th className="text-center p-3 font-semibold text-[11px] uppercase tracking-wider">Variance</th>}
+                  <th className="text-center p-3 font-semibold text-[11px] uppercase tracking-wider">Events</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </TabsContent>
-
-      {userIds.length > 1 && (
-        <TabsContent value="by-user">
-          <div className="space-y-4 p-3">
-            {userIds.map(uid => {
-              const userName = userProfiles[uid] || uid.slice(0, 8);
-              const userItems = userBreakdown.get(uid)!;
-              const userTotal = Array.from(userItems.values()).reduce((s, v) => s + v.qty, 0);
-              return (
-                <div key={uid} className="rounded-lg border border-border/50 overflow-hidden">
-                  <div className="p-3 bg-secondary/30 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">{userName.charAt(0).toUpperCase()}</div>
-                      <span className="font-medium text-sm">{userName}</span>
-                    </div>
-                    <div className="flex gap-3 text-xs text-muted-foreground">
-                      <span>{userItems.size} products</span>
-                      <span>{userTotal} units</span>
-                    </div>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead><tr className="text-muted-foreground border-b border-border/30"><th className="text-left p-2 pl-3 font-medium text-xs">Product</th><th className="text-center p-2 font-medium text-xs">Qty</th><th className="text-center p-2 font-medium text-xs">Scans</th></tr></thead>
-                      <tbody>
-                        {Array.from(userItems.entries()).map(([pid, v]) => (
-                          <tr key={pid} className="border-b border-border/20">
-                            <td className="p-2 pl-3 text-xs truncate max-w-[180px]">{productNames[pid] || pid.slice(0, 8)}</td>
-                            <td className="p-2 text-center font-semibold text-xs">{v.qty}</td>
-                            <td className="p-2 text-center text-muted-foreground text-xs">{v.count}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              );
-            })}
+              </thead>
+              <tbody>
+                {diffRows.map((row, idx) => (
+                  <tr key={row.product_id} className={`border-b border-border/30 hover:bg-primary/5 transition-colors ${idx % 2 === 1 ? 'bg-muted/10' : ''}`}>
+                    <td className="p-3 font-medium text-xs max-w-[200px] truncate">{row.product_name}</td>
+                    {canSeeStock && <td className="p-3 text-center text-muted-foreground tabular-nums">{row.expected_qty}</td>}
+                    <td className="p-3 text-center font-semibold tabular-nums">{row.counted_qty}</td>
+                    {canSeeStock && <td className="p-3 text-center"><VarianceBadge variance={row.variance_qty} /></td>}
+                    <td className="p-3 text-center text-muted-foreground text-xs tabular-nums">{row.event_count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </TabsContent>
-      )}
-    </Tabs>
+
+        {userIds.length > 1 && (
+          <TabsContent value="by-user">
+            <div className="space-y-4 p-3">
+              {userIds.map(uid => {
+                const userName = userProfiles[uid] || uid.slice(0, 8);
+                const userItems = userBreakdown.get(uid)!;
+                const userTotal = Array.from(userItems.values()).reduce((s, v) => s + v.qty, 0);
+                return (
+                  <div key={uid} className="rounded-lg border border-border overflow-hidden">
+                    <div className="p-3 bg-muted/30 flex items-center justify-between border-b border-border">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">{userName.charAt(0).toUpperCase()}</div>
+                        <span className="font-medium text-sm">{userName}</span>
+                      </div>
+                      <div className="flex gap-3 text-xs text-muted-foreground">
+                        <span>{userItems.size} products</span>
+                        <span>{userTotal} units</span>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead><tr className="text-muted-foreground border-b border-border/50 bg-muted/20"><th className="text-left p-2 pl-3 font-semibold text-[10px] uppercase tracking-wider">Product</th><th className="text-center p-2 font-semibold text-[10px] uppercase tracking-wider">Qty</th><th className="text-center p-2 font-semibold text-[10px] uppercase tracking-wider">Scans</th></tr></thead>
+                        <tbody>
+                          {Array.from(userItems.entries()).map(([pid, v], idx) => (
+                            <tr key={pid} className={`border-b border-border/20 ${idx % 2 === 1 ? 'bg-muted/10' : ''}`}>
+                              <td className="p-2 pl-3 text-xs truncate max-w-[180px]">{productNames[pid] || pid.slice(0, 8)}</td>
+                              <td className="p-2 text-center font-semibold text-xs tabular-nums">{v.qty}</td>
+                              <td className="p-2 text-center text-muted-foreground text-xs tabular-nums">{v.count}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
   );
 }
 
@@ -428,6 +417,15 @@ function CheckReviewTab() {
   const approvedCount = sessions.filter(s => s.status === 'approved').length;
   const flaggedCount = sessions.filter(s => s.status === 'flagged').length;
 
+  // Quick filters
+  const quickCounts = useMemo(() => ({
+    all: sessions.length,
+    completed: pendingCount,
+    approved: approvedCount,
+    flagged: flaggedCount,
+    in_progress: sessions.filter(s => s.status === 'in_progress').length,
+  }), [sessions, pendingCount, approvedCount, flaggedCount]);
+
   const handleApprove = async (sessionId: string) => {
     try {
       await approveSession.mutateAsync({ id: sessionId, approvedBy: user!.id });
@@ -454,23 +452,43 @@ function CheckReviewTab() {
 
   return (
     <div className="space-y-4">
+      {/* Summary stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="wine-glass-effect rounded-xl p-4 text-center">
+        <div className="rounded-xl border border-border bg-card p-4 text-center">
           <p className="text-2xl font-bold">{sessions.length}</p>
-          <p className="text-xs text-muted-foreground">Total</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</p>
         </div>
-        <div className="wine-glass-effect rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-wine-warning">{pendingCount}</p>
-          <p className="text-xs text-muted-foreground">Pending</p>
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 text-center">
+          <p className="text-2xl font-bold text-amber-600">{pendingCount}</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Pending</p>
         </div>
-        <div className="wine-glass-effect rounded-xl p-4 text-center">
-          <p className="text-2xl font-bold text-[hsl(var(--wine-success))]">{approvedCount}</p>
-          <p className="text-xs text-muted-foreground">Approved</p>
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-center">
+          <p className="text-2xl font-bold text-emerald-600">{approvedCount}</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Approved</p>
         </div>
-        <div className="wine-glass-effect rounded-xl p-4 text-center">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center">
           <p className="text-2xl font-bold text-destructive">{flaggedCount}</p>
-          <p className="text-xs text-muted-foreground">Flagged</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Flagged</p>
         </div>
+      </div>
+
+      {/* Quick Filters */}
+      <div className="quick-filter-bar">
+        <button onClick={() => setStatusFilter('all')} className={`quick-filter-pill ${statusFilter === 'all' ? 'active' : ''}`}>
+          All <span className="text-[10px] opacity-70">({quickCounts.all})</span>
+        </button>
+        <button onClick={() => setStatusFilter('completed')} className={`quick-filter-pill ${statusFilter === 'completed' ? 'active' : ''}`}>
+          <AlertTriangle className="w-3 h-3" /> Pending <span className="text-[10px] opacity-70">({quickCounts.completed})</span>
+        </button>
+        <button onClick={() => setStatusFilter('approved')} className={`quick-filter-pill ${statusFilter === 'approved' ? 'active' : ''}`}>
+          <CheckCircle2 className="w-3 h-3" /> Approved <span className="text-[10px] opacity-70">({quickCounts.approved})</span>
+        </button>
+        <button onClick={() => setStatusFilter('flagged')} className={`quick-filter-pill ${statusFilter === 'flagged' ? 'active' : ''}`}>
+          <XCircle className="w-3 h-3" /> Flagged <span className="text-[10px] opacity-70">({quickCounts.flagged})</span>
+        </button>
+        <button onClick={() => setStatusFilter('in_progress')} className={`quick-filter-pill ${statusFilter === 'in_progress' ? 'active' : ''}`}>
+          <Play className="w-3 h-3" /> Active <span className="text-[10px] opacity-70">({quickCounts.in_progress})</span>
+        </button>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -478,16 +496,6 @@ function CheckReviewTab() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search session..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 bg-card border-border" />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-full sm:w-[160px] h-10 bg-card border-border"><Filter className="w-4 h-4 mr-2" /><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="completed">Pending Review</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="flagged">Flagged</SelectItem>
-            <SelectItem value="in_progress">In Progress</SelectItem>
-          </SelectContent>
-        </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-full sm:w-[140px] h-10 bg-card border-border"><SelectValue /></SelectTrigger>
           <SelectContent>
@@ -506,7 +514,7 @@ function CheckReviewTab() {
           {filteredSessions.map(session => {
             const isExpanded = expandedSession === session.id;
             return (
-              <div key={session.id} className="wine-glass-effect rounded-xl overflow-hidden">
+              <div key={session.id} className="rounded-xl border border-border bg-card overflow-hidden hover:border-primary/20 transition-all">
                 <button className="w-full p-4 text-left flex items-center gap-4" onClick={() => setExpandedSession(isExpanded ? null : session.id)}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -514,7 +522,7 @@ function CheckReviewTab() {
                       <SessionStatusBadge status={session.status} />
                     </div>
                     <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                      <span>{session.session_type || 'full'}</span>
+                      <span className="capitalize">{session.session_type || 'full'}</span>
                       <span>{session.started_at ? new Date(session.started_at).toLocaleDateString() : '—'}</span>
                       <span>{session.total_wines_counted}/{session.total_wines_expected}</span>
                       <span>{formatDuration(session.duration_seconds)}</span>
@@ -526,10 +534,10 @@ function CheckReviewTab() {
                   <div className="border-t border-border">
                     <SessionDiffTable sessionId={session.id} canSeeStock={isManager} />
                     {isManager && session.status === 'completed' && (
-                      <div className="p-4 border-t border-border/50 space-y-3">
+                      <div className="p-4 border-t border-border space-y-3">
                         {flagDialogSession === session.id ? (
                           <div className="space-y-2">
-                            <Textarea value={flagReason} onChange={e => setFlagReason(e.target.value)} placeholder="Reason for flagging..." className="bg-secondary border-border text-sm" rows={2} />
+                            <Textarea value={flagReason} onChange={e => setFlagReason(e.target.value)} placeholder="Reason for flagging..." className="bg-muted/30 border-border text-sm" rows={2} />
                             <div className="flex gap-2 justify-end">
                               <Button variant="ghost" size="sm" onClick={() => setFlagDialogSession(null)}>Cancel</Button>
                               <Button variant="destructive" size="sm" onClick={() => handleFlag(session.id)}><Flag className="w-3.5 h-3.5 mr-1" /> Confirm Flag</Button>
@@ -544,12 +552,12 @@ function CheckReviewTab() {
                       </div>
                     )}
                     {session.status === 'approved' && session.approval_notes && (
-                      <div className="p-3 border-t border-border/50 bg-[hsl(var(--wine-success))]/5">
+                      <div className="p-3 border-t border-emerald-500/30 bg-emerald-500/5">
                         <p className="text-xs text-muted-foreground">Approval Notes: {session.approval_notes}</p>
                       </div>
                     )}
                     {session.status === 'flagged' && session.flagged_reason && (
-                      <div className="p-3 border-t border-border/50 bg-destructive/5">
+                      <div className="p-3 border-t border-destructive/30 bg-destructive/5">
                         <p className="text-xs text-destructive">Flagged: {session.flagged_reason}</p>
                       </div>
                     )}
@@ -571,7 +579,7 @@ function CheckReviewTab() {
 }
 
 // ═══════════════════════════════════════════════
-// Start Count Tab (embedded InventoryCount)
+// Start Count Tab
 // ═══════════════════════════════════════════════
 
 function StartCountTab() {
@@ -658,7 +666,7 @@ function StartCountTab() {
 }
 
 // ═══════════════════════════════════════════════
-// Main Page: Inventarisation Check
+// Main Page
 // ═══════════════════════════════════════════════
 
 export default function CurrentStock() {
@@ -666,40 +674,42 @@ export default function CurrentStock() {
   const isManager = role?.id === 'admin' || role?.id === 'super_admin';
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       <div>
         <h1 className="text-2xl lg:text-3xl font-heading font-bold">Inventarisation Check</h1>
         <p className="text-muted-foreground mt-1">Manage inventory counts, review sessions, and track stock</p>
       </div>
 
-      <Tabs defaultValue="inventory" className="w-full">
-        <TabsList className="w-full sm:w-auto">
-          <TabsTrigger value="inventory" className="gap-1.5">
-            <Package className="w-4 h-4" />
-            Inventory
-          </TabsTrigger>
-          <TabsTrigger value="review" className="gap-1.5">
-            <ClipboardCheck className="w-4 h-4" />
-            Check Review
-          </TabsTrigger>
-          <TabsTrigger value="count" className="gap-1.5">
-            <Package className="w-4 h-4" />
-            Start Count
-          </TabsTrigger>
-        </TabsList>
+      <div className="modern-tabs">
+        <Tabs defaultValue="inventory" className="w-full">
+          <TabsList className="w-full sm:w-auto">
+            <TabsTrigger value="inventory" className="gap-1.5">
+              <Package className="w-4 h-4" />
+              Inventory
+            </TabsTrigger>
+            <TabsTrigger value="review" className="gap-1.5">
+              <ClipboardCheck className="w-4 h-4" />
+              Check Review
+            </TabsTrigger>
+            <TabsTrigger value="count" className="gap-1.5">
+              <Package className="w-4 h-4" />
+              Start Count
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="inventory" className="mt-4">
-          <InventoryTab isManager={isManager} />
-        </TabsContent>
+          <TabsContent value="inventory" className="mt-4">
+            <InventoryTab isManager={isManager} />
+          </TabsContent>
 
-        <TabsContent value="review" className="mt-4">
-          <CheckReviewTab />
-        </TabsContent>
+          <TabsContent value="review" className="mt-4">
+            <CheckReviewTab />
+          </TabsContent>
 
-        <TabsContent value="count" className="mt-4">
-          <StartCountTab />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="count" className="mt-4">
+            <StartCountTab />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
