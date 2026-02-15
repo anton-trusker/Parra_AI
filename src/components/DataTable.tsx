@@ -1,6 +1,8 @@
-import React, { useState, useCallback, useRef } from 'react';
-import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
+import { ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export interface DataTableColumn<T> {
   key: string;
@@ -23,6 +25,8 @@ interface DataTableProps<T> {
   keyExtractor: (item: T) => string;
   emptyMessage?: string;
   compact?: boolean;
+  paginated?: boolean;
+  defaultPageSize?: number;
 }
 
 export default function DataTable<T>({
@@ -36,9 +40,13 @@ export default function DataTable<T>({
   keyExtractor,
   emptyMessage = 'No data',
   compact = false,
+  paginated = true,
+  defaultPageSize = 25,
 }: DataTableProps<T>) {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
   const resizingRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
 
   const handleSort = (key: string) => {
@@ -50,9 +58,10 @@ export default function DataTable<T>({
       setSortColumn(key);
       setSortDir('asc');
     }
+    setPage(0);
   };
 
-  const sortedData = React.useMemo(() => {
+  const sortedData = useMemo(() => {
     if (!sortColumn) return data;
     const col = columns.find(c => c.key === sortColumn);
     if (!col?.sortFn) return data;
@@ -60,7 +69,11 @@ export default function DataTable<T>({
     return sortDir === 'desc' ? sorted.reverse() : sorted;
   }, [data, sortColumn, sortDir, columns]);
 
-  // Ordered visible columns
+  const totalPages = paginated ? Math.max(1, Math.ceil(sortedData.length / pageSize)) : 1;
+  const paginatedData = paginated ? sortedData.slice(page * pageSize, (page + 1) * pageSize) : sortedData;
+  const showFrom = paginated ? page * pageSize + 1 : 1;
+  const showTo = paginated ? Math.min((page + 1) * pageSize, sortedData.length) : sortedData.length;
+
   const orderedCols = visibleColumns
     .map(key => columns.find(c => c.key === key))
     .filter(Boolean) as DataTableColumn<T>[];
@@ -71,20 +84,17 @@ export default function DataTable<T>({
     const startX = e.clientX;
     const startW = columnWidths[key] || 150;
     resizingRef.current = { key, startX, startW };
-
     const onMove = (ev: MouseEvent) => {
       if (!resizingRef.current) return;
       const diff = ev.clientX - resizingRef.current.startX;
       const newW = Math.max(resizingRef.current.startW + diff, 60);
       onColumnResize(resizingRef.current.key, newW);
     };
-
     const onUp = () => {
       resizingRef.current = null;
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
-
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }, [columnWidths, onColumnResize]);
@@ -101,91 +111,133 @@ export default function DataTable<T>({
     );
   }
 
-  const cellPad = compact ? 'px-2 py-1.5' : 'p-4';
-  const headerPad = compact ? 'px-2 py-2' : 'p-4';
+  const cellPad = compact ? 'px-3 py-2' : 'px-4 py-3';
+  const headerPad = compact ? 'px-3 py-2.5' : 'px-4 py-3';
   const textSize = compact ? 'text-xs' : 'text-sm';
 
   const totalWidth = orderedCols.reduce((sum, col) => sum + (columnWidths[col.key] || col.minWidth || (compact ? 100 : 150)), 0);
 
   return (
-    <div className="overflow-x-auto overscroll-x-contain -webkit-overflow-scrolling-touch">
-      <table className={cn('w-full', textSize)} style={{ tableLayout: 'fixed', minWidth: Math.max(totalWidth, 600) }}>
-        <thead className="sticky top-0 z-10 bg-card">
-          <tr className="border-b border-border text-muted-foreground">
-            {orderedCols.map((col, idx) => {
-              const w = columnWidths[col.key] || col.minWidth || (compact ? 100 : 150);
-              const isSorted = sortColumn === col.key;
-              const isSortable = !!col.sortFn;
-              return (
-                <th
-                  key={col.key}
-                  className={cn(
-                    headerPad, 'font-medium relative group select-none whitespace-nowrap',
-                    alignClass(col.align),
-                    isSortable && 'cursor-pointer hover:text-foreground transition-colors',
-                    idx === 0 && 'sticky left-0 z-20 bg-card'
-                  )}
-                  style={{ width: w, minWidth: col.minWidth || (compact ? 80 : 100) }}
-                  onClick={() => !col.headerRender && handleSort(col.key)}
-                >
-                  {col.headerRender ? col.headerRender() : (
-                    <span className="inline-flex items-center gap-1">
-                      {col.label}
-                      {isSortable && (
-                        <span className="inline-flex opacity-50 group-hover:opacity-100 transition-opacity">
-                          {isSorted ? (
-                            sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3" />
-                          )}
-                        </span>
-                      )}
-                    </span>
-                  )}
-                  <div
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize bg-border/40 hover:bg-primary/50 hover:w-1.5 transition-all"
-                    onMouseDown={e => handleResizeStart(e, col.key)}
-                    onTouchStart={e => {
-                      const touch = e.touches[0];
-                      handleResizeStart({ preventDefault: () => e.preventDefault(), stopPropagation: () => e.stopPropagation(), clientX: touch.clientX } as React.MouseEvent, col.key);
-                    }}
-                    onClick={e => e.stopPropagation()}
-                  />
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          {sortedData.map(item => (
-            <tr
-              key={keyExtractor(item)}
-              className={cn(
-                'border-b border-border/50 hover:bg-muted/50 transition-colors',
-                onRowClick && 'cursor-pointer',
-                rowClassName?.(item)
-              )}
-              onClick={() => onRowClick?.(item)}
-            >
+    <div className="flex flex-col">
+      <div className="overflow-x-auto overscroll-x-contain -webkit-overflow-scrolling-touch">
+        <table className={cn('w-full', textSize)} style={{ tableLayout: 'fixed', minWidth: Math.max(totalWidth, 600) }}>
+          <thead className="sticky top-0 z-10">
+            <tr className="border-b border-border bg-muted/40 text-muted-foreground">
               {orderedCols.map((col, idx) => {
                 const w = columnWidths[col.key] || col.minWidth || (compact ? 100 : 150);
+                const isSorted = sortColumn === col.key;
+                const isSortable = !!col.sortFn;
                 return (
-                  <td
+                  <th
                     key={col.key}
                     className={cn(
-                      cellPad, alignClass(col.align),
-                      idx === 0 && 'sticky left-0 z-10 bg-card'
+                      headerPad, 'font-semibold relative group select-none whitespace-nowrap text-[11px] uppercase tracking-wider',
+                      alignClass(col.align),
+                      isSortable && 'cursor-pointer hover:text-foreground transition-colors',
+                      idx === 0 && 'sticky left-0 z-20 bg-muted/40'
                     )}
-                    style={{ width: w, maxWidth: w, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    style={{ width: w, minWidth: col.minWidth || (compact ? 80 : 100) }}
+                    onClick={() => !col.headerRender && handleSort(col.key)}
                   >
-                    {col.render(item)}
-                  </td>
+                    {col.headerRender ? col.headerRender() : (
+                      <span className="inline-flex items-center gap-1">
+                        {col.label}
+                        {isSortable && (
+                          <span className="inline-flex opacity-40 group-hover:opacity-100 transition-opacity">
+                            {isSorted ? (
+                              sortDir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                            ) : (
+                              <ArrowUpDown className="w-3 h-3" />
+                            )}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    <div
+                      className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize bg-border/40 hover:bg-primary/50 hover:w-1.5 transition-all"
+                      onMouseDown={e => handleResizeStart(e, col.key)}
+                      onTouchStart={e => {
+                        const touch = e.touches[0];
+                        handleResizeStart({ preventDefault: () => e.preventDefault(), stopPropagation: () => e.stopPropagation(), clientX: touch.clientX } as React.MouseEvent, col.key);
+                      }}
+                      onClick={e => e.stopPropagation()}
+                    />
+                  </th>
                 );
               })}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {paginatedData.map((item, rowIdx) => (
+              <tr
+                key={keyExtractor(item)}
+                className={cn(
+                  'border-b border-border/30 transition-colors',
+                  rowIdx % 2 === 1 && 'bg-muted/20',
+                  onRowClick && 'cursor-pointer hover:bg-primary/5',
+                  !onRowClick && 'hover:bg-muted/30',
+                  rowClassName?.(item)
+                )}
+                onClick={() => onRowClick?.(item)}
+              >
+                {orderedCols.map((col, idx) => {
+                  const w = columnWidths[col.key] || col.minWidth || (compact ? 100 : 150);
+                  return (
+                    <td
+                      key={col.key}
+                      className={cn(
+                        cellPad, alignClass(col.align),
+                        idx === 0 && 'sticky left-0 z-10 bg-card'
+                      )}
+                      style={{ width: w, maxWidth: w, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    >
+                      {col.render(item)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination footer */}
+      {paginated && sortedData.length > 0 && (
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-muted/20 text-sm">
+          <span className="text-muted-foreground text-xs">
+            {showFrom}–{showTo} of {sortedData.length}
+          </span>
+          <div className="flex items-center gap-2">
+            <Select value={String(pageSize)} onValueChange={v => { setPageSize(Number(v)); setPage(0); }}>
+              <SelectTrigger className="h-8 w-[70px] text-xs bg-card border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[10, 25, 50, 100].map(n => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={page === 0} onClick={() => setPage(0)}>
+                <ChevronsLeft className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={page === 0} onClick={() => setPage(p => p - 1)}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-xs text-muted-foreground px-2">
+                {page + 1} / {totalPages}
+              </span>
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={page >= totalPages - 1} onClick={() => setPage(p => p + 1)}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled={page >= totalPages - 1} onClick={() => setPage(totalPages - 1)}>
+                <ChevronsRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

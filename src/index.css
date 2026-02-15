@@ -6,7 +6,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 98%;
+    --background: 220 16% 96%;
     --foreground: 224 20% 14%;
 
     --card: 0 0% 100%;
@@ -21,7 +21,7 @@
     --secondary: 220 14% 94%;
     --secondary-foreground: 224 16% 28%;
 
-    --muted: 220 12% 95%;
+    --muted: 220 12% 93%;
     --muted-foreground: 220 10% 46%;
 
     --accent: 32 70% 50%;
@@ -137,16 +137,16 @@
   .wine-gradient { background: linear-gradient(135deg, hsl(var(--wine-red-dark)), hsl(var(--wine-burgundy))); }
 
   .glass-card {
-    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--popover)) 100%);
+    background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    backdrop-filter: blur(12px);
+    border-radius: var(--radius);
   }
 
   /* Legacy alias */
   .wine-glass-effect {
-    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--popover)) 100%);
+    background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
-    backdrop-filter: blur(12px);
+    border-radius: var(--radius);
   }
 
   .gold-shimmer {
@@ -159,23 +159,25 @@
   }
 
   .stat-card {
-    @apply glass-card rounded-xl p-5 transition-all duration-300;
+    @apply glass-card p-5 transition-all duration-300;
+    border-radius: var(--radius);
   }
 
   .stat-card:hover {
-    border-color: hsl(var(--wine-gold) / 0.3);
-    box-shadow: 0 4px 24px hsl(var(--wine-red) / 0.12);
-    transform: translateY(-1px);
+    border-color: hsl(var(--primary) / 0.25);
+    box-shadow: 0 4px 24px hsl(var(--primary) / 0.08);
+    transform: translateY(-2px);
   }
 
   .mode-card {
-    @apply glass-card rounded-2xl p-6 cursor-pointer transition-all duration-300;
+    @apply glass-card p-6 cursor-pointer transition-all duration-300;
+    border-radius: 1rem;
   }
 
   .mode-card:hover {
-    border-color: hsl(var(--wine-gold) / 0.4);
+    border-color: hsl(var(--primary) / 0.3);
     transform: translateY(-2px);
-    box-shadow: 0 8px 30px hsl(var(--wine-red) / 0.2);
+    box-shadow: 0 8px 30px hsl(var(--primary) / 0.12);
   }
 
   .nav-item {
@@ -189,10 +191,9 @@
   }
 
   .nav-item.active {
-    background: hsl(var(--wine-red) / 0.12);
-    color: hsl(var(--wine-gold));
-    border-left: 3px solid hsl(var(--wine-gold));
-    font-weight: 500;
+    background: hsl(var(--primary) / 0.12);
+    color: hsl(var(--primary));
+    font-weight: 600;
   }
 
   .stock-healthy {
@@ -231,5 +232,5 @@
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.4s ease-out forwards;
+  animation: fadeIn 0.35s ease-out forwards;
 }

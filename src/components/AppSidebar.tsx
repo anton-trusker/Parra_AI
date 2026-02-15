@@ -81,9 +81,7 @@ export default function AppSidebar() {
   const filterItems = (items: NavItemDef[]) =>
     items.filter(item => {
       if (!role) return false;
-      // Hide "Start Count" on desktop when setting enabled
       if (shouldHideScanner && item.path === '/count') return false;
-      // Admin sees everything, staff sees non-restricted
       if (role.id === 'admin' || role.id === 'super_admin') return true;
       const restricted: ModuleKey[] = ['settings' as ModuleKey, 'users' as ModuleKey];
       return !restricted.includes(item.module);
@@ -94,7 +92,7 @@ export default function AppSidebar() {
       {/* Mobile top header bar */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-sidebar/95 backdrop-blur-md border-b border-sidebar-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg wine-gradient flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg app-gradient flex items-center justify-center">
             <Package className="w-4 h-4 text-primary-foreground" />
           </div>
           <h1 className="font-heading text-base font-semibold text-foreground">Parra</h1>
@@ -112,32 +110,29 @@ export default function AppSidebar() {
         {/* Logo */}
         <div className="p-6 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl wine-gradient flex items-center justify-center shadow-lg shadow-primary/20">
+            <div className="w-10 h-10 rounded-xl app-gradient flex items-center justify-center shadow-lg shadow-primary/20">
               <Package className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
               <h1 className="font-heading text-lg font-semibold text-foreground">Parra</h1>
-              <p className="text-xs text-muted-foreground">by Trusker Solutions</p>
+              <p className="text-[11px] text-muted-foreground">by Trusker Solutions</p>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 overflow-y-auto space-y-1">
+        <nav className="flex-1 p-3 overflow-y-auto space-y-0.5">
           {navGroups.map((group, gi) => {
             const visibleItems = filterItems(group.items);
-            // Hide group if it has items but none are visible (except coming soon placeholders)
             if (group.items.length > 0 && visibleItems.length === 0) return null;
 
             return (
               <div key={gi}>
-                {/* Group separator line (not before first group) */}
-                {gi > 0 && <div className="my-2 mx-2 border-t border-sidebar-border/60" />}
+                {gi > 0 && <div className="my-3 mx-2 border-t border-sidebar-border/60" />}
 
-                {/* Group title */}
                 {group.title && (
-                  <div className="flex items-center gap-2 px-3 pt-2 pb-1">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  <div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
                       {group.title}
                     </span>
                     {group.comingSoon && (
@@ -148,7 +143,6 @@ export default function AppSidebar() {
                   </div>
                 )}
 
-                {/* Coming soon placeholder with no items */}
                 {group.comingSoon && group.items.length === 0 && (
                   <div className="px-3 py-2 flex items-center gap-3 text-muted-foreground/50">
                     <Truck className="w-5 h-5" />
@@ -156,7 +150,6 @@ export default function AppSidebar() {
                   </div>
                 )}
 
-                {/* Nav items */}
                 {visibleItems.map(item => (
                   <button
                     key={item.path}
@@ -166,7 +159,7 @@ export default function AppSidebar() {
                     }`}
                     disabled={group.comingSoon}
                   >
-                    <item.icon className="w-5 h-5" />
+                    <item.icon className="w-[18px] h-[18px]" />
                     {item.label}
                   </button>
                 ))}
@@ -179,12 +172,15 @@ export default function AppSidebar() {
         <div className="p-4 border-t border-sidebar-border">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => navigate('/profile')} className="flex items-center gap-3 flex-1 min-w-0 rounded-lg p-2 -mx-2 hover:bg-sidebar-accent transition-colors">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-sm font-bold text-primary-foreground shadow-md shadow-primary/20">
-                {user?.displayName?.charAt(0)}
+              <div className="relative">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-sm font-bold text-primary-foreground shadow-md shadow-primary/20">
+                  {user?.displayName?.charAt(0)}
+                </div>
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[hsl(var(--wine-success))] border-2 border-sidebar" />
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <p className="text-sm font-medium text-foreground truncate">{user?.displayName}</p>
-                <p className="text-xs text-muted-foreground capitalize">{role?.name}</p>
+                <p className="text-[11px] text-muted-foreground capitalize">{role?.name}</p>
               </div>
             </button>
             <ThemeToggle />
