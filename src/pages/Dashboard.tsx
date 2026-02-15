@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Package, AlertTriangle, Users, Clock, TrendingUp,
   ArrowRight, RefreshCw, CheckCircle2, XCircle, Loader2,
-  ClipboardCheck, Wifi, WifiOff, BarChart3
+  ClipboardCheck, Wifi, WifiOff, BarChart3, Bot, Store
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -16,6 +16,9 @@ import { useInventorySessions } from '@/hooks/useInventorySessions';
 import { useSyrveConfig, useSyrveSyncRuns } from '@/hooks/useSyrve';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { mockAiScans } from '@/data/mockAiScans';
+import { mockInventoryChecks } from '@/data/mockInventoryChecks';
+import { mockStores } from '@/data/mockStores';
 
 function StatCard({ icon: Icon, label, value, sub, color, onClick }: {
   icon: any; label: string; value: string | number; sub?: string; color?: string; onClick?: () => void;
@@ -76,6 +79,16 @@ export default function Dashboard() {
   const isConnected = syrveConfig?.connection_status === 'connected';
   const lastSync = syncRuns?.[0];
 
+  // Mock AI stats
+  const aiConfirmed = mockAiScans.filter(s => s.status === 'confirmed').length;
+  const aiWithConf = mockAiScans.filter(s => s.confidence > 0);
+  const aiAvgConf = aiWithConf.length > 0 ? Math.round((aiWithConf.reduce((sum, s) => sum + s.confidence, 0) / aiWithConf.length) * 100) : 0;
+
+  // Mock inventory health
+  const checksInProgress = mockInventoryChecks.filter(c => c.status === 'in_progress').length;
+  const checksPending = mockInventoryChecks.filter(c => c.status === 'pending_review').length;
+  const totalVariances = mockInventoryChecks.reduce((sum, c) => sum + c.varianceItems, 0);
+
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -100,76 +113,107 @@ export default function Dashboard() {
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
         </div>
       ) : (
-        <div className={`grid gap-4 ${isAdmin ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2'}`}>
+        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           <StatCard icon={Package} label="Products" value={totalProducts} sub={`${outOfStock} out of stock`} onClick={() => navigate('/products')} />
-          {isAdmin && (
-            <>
-              <StatCard icon={BarChart3} label="Total Stock" value={totalStock.toLocaleString()} sub="across all products" onClick={() => navigate('/stock')} />
-              <StatCard icon={AlertTriangle} label="Low Stock" value={lowStockProducts.length} color="bg-[hsl(var(--wine-warning))]/15 text-[hsl(var(--wine-warning))]" sub="below 5 units" onClick={() => navigate('/stock')} />
-              <StatCard icon={Users} label="Active Users" value={userCount ?? '—'} color="bg-[hsl(var(--wine-success))]/15 text-[hsl(var(--wine-success))]" onClick={() => navigate('/users')} />
-            </>
-          )}
-          {!isAdmin && (
-            <StatCard icon={TrendingUp} label="My Counts Today" value={0} />
-          )}
+          <StatCard icon={BarChart3} label="Total Stock" value={totalStock.toLocaleString()} sub="across all products" onClick={() => navigate('/inventory/by-store')} />
+          <StatCard icon={AlertTriangle} label="Low Stock" value={lowStockProducts.length} color="bg-amber-500/10 text-amber-500" sub="below 5 units" onClick={() => navigate('/products')} />
+          <StatCard icon={Users} label="Active Users" value={userCount ?? '—'} color="bg-emerald-500/10 text-emerald-500" onClick={() => navigate('/users')} />
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Quick Actions */}
+        {/* Left column */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Quick Actions */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {!shouldHideScanner && (
-              <button
-                onClick={() => navigate('/count')}
-                className="group relative overflow-hidden rounded-xl p-5 text-left app-gradient text-primary-foreground transition-all hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5"
-              >
+              <button onClick={() => navigate('/count')} className="group relative overflow-hidden rounded-xl p-5 text-left app-gradient text-primary-foreground transition-all hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5">
                 <ClipboardCheck className="w-8 h-8 mb-3 opacity-80" />
-                <p className="font-heading font-semibold text-lg">Start Inventory Count</p>
-                <p className="text-sm opacity-75 mt-1">Scan products or search manually</p>
+                <p className="font-heading font-semibold text-lg">Start Count</p>
+                <p className="text-sm opacity-75 mt-1">Scan or search</p>
                 <ArrowRight className="absolute top-5 right-5 w-5 h-5 opacity-50 group-hover:opacity-100 transition-opacity" />
               </button>
             )}
-            {isAdmin && (
-              <>
-                <button
-                  onClick={() => navigate('/stock')}
-                  className="group rounded-xl p-5 text-left border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all hover:-translate-y-0.5"
-                >
-                  <Package className="w-8 h-8 mb-3 text-primary opacity-70" />
-                  <p className="font-heading font-semibold">Current Stock</p>
-                  <p className="text-sm text-muted-foreground mt-1">View inventory levels</p>
-                </button>
-                <button
-                  onClick={() => navigate('/products')}
-                  className="group rounded-xl p-5 text-left border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all hover:-translate-y-0.5"
-                >
-                  <Package className="w-8 h-8 mb-3 text-accent opacity-70" />
-                  <p className="font-heading font-semibold">Product Catalog</p>
-                  <p className="text-sm text-muted-foreground mt-1">Browse synced products</p>
-                </button>
-                <button
-                  onClick={() => navigate('/settings/syrve/sync')}
-                  className="group rounded-xl p-5 text-left border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all hover:-translate-y-0.5"
-                >
-                  <RefreshCw className="w-8 h-8 mb-3 text-primary opacity-70" />
-                  <p className="font-heading font-semibold">Sync Data</p>
-                  <p className="text-sm text-muted-foreground mt-1">Import from Syrve</p>
-                </button>
-              </>
-            )}
+            <button onClick={() => navigate('/inventory/checks')} className="group rounded-xl p-5 text-left border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all hover:-translate-y-0.5">
+              <ClipboardCheck className="w-8 h-8 mb-3 text-primary opacity-70" />
+              <p className="font-heading font-semibold">Inventory Checks</p>
+              <p className="text-sm text-muted-foreground mt-1">{checksInProgress} in progress</p>
+            </button>
+            <button onClick={() => navigate('/inventory/ai-scans')} className="group rounded-xl p-5 text-left border border-border bg-card hover:bg-muted/50 hover:border-primary/20 transition-all hover:-translate-y-0.5">
+              <Bot className="w-8 h-8 mb-3 text-primary opacity-70" />
+              <p className="font-heading font-semibold">AI Scans</p>
+              <p className="text-sm text-muted-foreground mt-1">{mockAiScans.length} total scans</p>
+            </button>
           </div>
 
+          {/* Inventory Health */}
+          <Card className="border-border/60 rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <ClipboardCheck className="w-4 h-4 text-primary" />
+                  <h3 className="font-heading font-semibold text-sm">Inventory Health</h3>
+                </div>
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7" onClick={() => navigate('/inventory/checks')}>
+                  View all <ArrowRight className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{checksInProgress}</p>
+                  <p className="text-xs text-muted-foreground">In Progress</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-amber-500">{checksPending}</p>
+                  <p className="text-xs text-muted-foreground">Pending Review</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-destructive">{totalVariances}</p>
+                  <p className="text-xs text-muted-foreground">Total Variances</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* AI Activity Monitor */}
+          <Card className="border-border/60 rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-primary" />
+                  <h3 className="font-heading font-semibold text-sm">AI Activity Monitor</h3>
+                </div>
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7" onClick={() => navigate('/inventory/ai-scans')}>
+                  View all <ArrowRight className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{mockAiScans.length}</p>
+                  <p className="text-xs text-muted-foreground">Total Scans</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-emerald-500">{aiConfirmed}</p>
+                  <p className="text-xs text-muted-foreground">Confirmed</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{aiAvgConf}%</p>
+                  <p className="text-xs text-muted-foreground">Avg Confidence</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Low Stock Alerts */}
-          {isAdmin && lowStockProducts.length > 0 && (
-            <Card className="border-border/60">
+          {lowStockProducts.length > 0 && (
+            <Card className="border-border/60 rounded-xl">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-[hsl(var(--wine-warning))]" />
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
                     <h3 className="font-heading font-semibold text-sm">Low Stock Alerts</h3>
                   </div>
-                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7" onClick={() => navigate('/stock')}>
+                  <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7" onClick={() => navigate('/products')}>
                     View all <ArrowRight className="w-3 h-3 ml-1" />
                   </Button>
                 </div>
@@ -179,12 +223,9 @@ export default function Dashboard() {
                       <span className="text-sm truncate flex-1 mr-3">{p.name}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-[hsl(var(--wine-warning))]"
-                            style={{ width: `${Math.min(((p.current_stock || 0) / 5) * 100, 100)}%` }}
-                          />
+                          <div className="h-full rounded-full bg-amber-500" style={{ width: `${Math.min(((p.current_stock || 0) / 5) * 100, 100)}%` }} />
                         </div>
-                        <span className="text-xs font-mono font-semibold text-[hsl(var(--wine-warning))] w-6 text-right">{p.current_stock}</span>
+                        <span className="text-xs font-mono font-semibold text-amber-500 w-6 text-right">{p.current_stock}</span>
                       </div>
                     </div>
                   ))}
@@ -196,57 +237,74 @@ export default function Dashboard() {
 
         {/* Right sidebar */}
         <div className="space-y-4">
-          {/* Syrve Status */}
-          {isAdmin && (
-            <Card className="border-border/60">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  {isConnected ? <Wifi className="w-4 h-4 text-[hsl(var(--wine-success))]" /> : <WifiOff className="w-4 h-4 text-muted-foreground" />}
-                  <h3 className="font-heading font-semibold text-sm">Syrve Integration</h3>
+          {/* Integration Status */}
+          <Card className="border-border/60 rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-2 mb-4">
+                {isConnected ? <Wifi className="w-4 h-4 text-emerald-500" /> : <WifiOff className="w-4 h-4 text-muted-foreground" />}
+                <h3 className="font-heading font-semibold text-sm">Syrve Integration</h3>
+              </div>
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Status</span>
+                  <Badge variant={isConnected ? 'default' : 'secondary'} className="text-[10px]">
+                    {isConnected ? 'Connected' : 'Disconnected'}
+                  </Badge>
                 </div>
-                <div className="space-y-3 text-sm">
+                {isConnected && syrveConfig?.default_store_name && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Status</span>
-                    <Badge variant={isConnected ? 'default' : 'secondary'} className="text-[10px]">
-                      {isConnected ? 'Connected' : 'Disconnected'}
-                    </Badge>
+                    <span className="text-muted-foreground">Store</span>
+                    <span className="text-xs truncate max-w-[120px]">{syrveConfig.default_store_name}</span>
                   </div>
-                  {isConnected && syrveConfig?.default_store_name && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Store</span>
-                      <span className="text-xs truncate max-w-[120px]">{syrveConfig.default_store_name}</span>
-                    </div>
-                  )}
+                )}
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Last Sync</span>
+                  <span className="text-xs">{lastSync?.finished_at ? new Date(lastSync.finished_at).toLocaleDateString() : 'Never'}</span>
+                </div>
+                {lastSync && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Last Sync</span>
-                    <span className="text-xs">
-                      {lastSync?.finished_at
-                        ? new Date(lastSync.finished_at).toLocaleDateString()
-                        : 'Never'}
+                    <span className="text-muted-foreground">Result</span>
+                    <span className={`text-xs font-medium ${lastSync.status === 'success' || lastSync.status === 'completed' ? 'text-emerald-500' : lastSync.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      {lastSync.status === 'completed' ? 'Success' : lastSync.status}
                     </span>
                   </div>
-                  {lastSync && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Result</span>
-                      <span className={`text-xs font-medium ${lastSync.status === 'success' || lastSync.status === 'completed' ? 'text-[hsl(var(--wine-success))]' : lastSync.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
-                        {lastSync.status === 'completed' ? 'Success' : lastSync.status}
-                      </span>
-                    </div>
-                  )}
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Stores Overview */}
+          <Card className="border-border/60 rounded-xl">
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Store className="w-4 h-4 text-muted-foreground" />
+                  <h3 className="font-heading font-semibold text-sm">Stores</h3>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7" onClick={() => navigate('/inventory/by-store')}>
+                  View all <ArrowRight className="w-3 h-3 ml-1" />
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {mockStores.map(store => (
+                  <div key={store.id} className="flex items-center justify-between py-1.5">
+                    <span className="text-sm">{store.name}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{store.productCount} products</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Recent Activity */}
-          <Card className="border-border/60">
+          <Card className="border-border/60 rounded-xl">
             <CardContent className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <Clock className="w-4 h-4 text-muted-foreground" />
                   <h3 className="font-heading font-semibold text-sm">Recent Activity</h3>
                 </div>
-                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7" onClick={() => navigate('/stock')}>
+                <Button variant="ghost" size="sm" className="text-xs text-muted-foreground h-7" onClick={() => navigate('/history')}>
                   View all <ArrowRight className="w-3 h-3 ml-1" />
                 </Button>
               </div>
