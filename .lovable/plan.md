@@ -1,271 +1,116 @@
 
 
-# Platform-Wide UI/UX Improvement + Store Integration Fix
+# Store Documents and Create New Supabase Project Implementation Plan
 
-## Context
+## Overview
 
-The user identified two key issues:
-1. **Syrve "Store" = Warehouse/Location** -- The "By Store" page currently uses hardcoded mock stores with fake addresses/cities. In Syrve, a "Store" is actually a warehouse/storage location (e.g., "Bar storage", "Kitchen storage", "Boa Hora storage"). The real `stores` table in the database already has this data. The By Store page, store selectors, and mock data all need to use real DB stores instead of fake mock data.
-2. **UI/UX quality is poor** -- Filters feel clunky, tables lack polish, pages have inconsistent spacing, cards blend together, and the overall platform feels unfinished. A comprehensive visual polish pass is needed.
+This plan covers two main tasks:
+1. Store the three uploaded specification documents in the `new/syrve_integration` folder
+2. Create a new organized documentation folder with implementation guides for building the full Syrve integration on a **new Supabase project** (`aysdomtvoxizusmmxfug`)
 
----
-
-## 1. Replace Mock Stores with Real Database Stores
-
-### Problem
-- `mockStores.ts` has fake stores ("Main Restaurant", "Wine Bar Downtown", "Beach Club Cascais") with addresses/cities
-- Real `stores` table has actual Syrve warehouses: "Bar storage", "Kitchen storage", "Boa Hora storage", etc.
-- The TopBar, CountSetup, ByStorePage, InventoryChecksPage, AiScansPage, and Dashboard all reference mock stores
-
-### Solution
-- Create a `useStores()` hook that fetches from the real `stores` table
-- Replace all `mockStores` imports with the real hook
-- Update the `MockStore` interface to match the real `stores` table shape (no address/city, add syrve_store_id, store_type, code)
-- Update `ByStorePage` to use real stores and real products (join products with stores via stock data, or show all products per store)
-- Update `TopBar` store selector to use real stores
-- Update `CountSetup` store selector to use real stores
-- Keep `mockStockByStore.ts` for per-store stock breakdown (since per-store stock isn't in the DB yet), but map it to real store IDs where possible
-
-### Files
-- **Create**: `src/hooks/useStores.ts`
-- **Modify**: `src/components/TopBar.tsx`, `src/components/count/CountSetup.tsx`, `src/pages/ByStorePage.tsx`, `src/pages/Dashboard.tsx`
-- **Delete**: `src/data/mockStores.ts` (or repurpose as fallback)
+The uploaded documents define a significantly expanded architecture compared to the current project -- moving from a single-tenant wine inventory system to a **multi-tenant restaurant operations SaaS platform** with measurement units, warehouses, storage areas, multi-integration support, billing, and more.
 
 ---
 
-## 2. By Store Page Redesign
+## Part 1: Store Uploaded Documents
 
-### Current problems
-- Uses fake stores with addresses
-- Empty state is just an icon and text with no visual interest
-- Product table after selecting a store is basic SimpleDataTable with no search/filter
-- No aggregate overview before selecting a store
+Copy the three uploaded specification documents into `new/syrve_integration/`:
 
-### Improvements
-- Use real stores from DB
-- Show store cards with: name, store type badge, product count, total stock, last sync time, active/inactive indicator
-- Add search bar to filter products within selected store
-- Add category filter pills within store view
-- Show "All Stores" comparison mode: table with one column per store showing stock levels
-- Better empty state with EmptyState component
-- Add store stats summary row at top (total stores, total products, total stock)
+| Source File | Destination |
+|---|---|
+| `Complete-Platform-Database-Specification.md` | `new/syrve_integration/complete_platform_db_spec.md` |
+| `Phase_1_Extended_Integration.md` | `new/syrve_integration/phase_1_extended_integration.md` |
+| `Phase_1A_Syrve_Integration_Data_Import_-_Complete_Technical_Specification.md` | `new/syrve_integration/phase_1a_data_import_spec.md` |
 
 ---
 
-## 3. Filter & Search UX Overhaul
+## Part 2: Create Implementation Documentation
 
-### Current problems
-- MultiSelectFilter popover is functional but visually cramped
-- Filter panel toggle is hidden behind a button with no visual cue that filters exist
-- Active filter pills exist but are small and easy to miss
-- No quick-filter presets for common operations
+Create a new folder `new/implementation/` with structured, actionable documents that break down the full integration into implementable phases for the new Supabase project.
 
-### Improvements across all pages
+### Document Structure
 
-**Search bar**:
-- Larger, more prominent with subtle glass effect background
-- Always visible on every page that has data
-- Placeholder text more descriptive per context
+```
+new/implementation/
+  00-overview.md              -- Master index, architecture summary, new project details
+  01-database-schema.md       -- Complete SQL migrations for the new Supabase project
+  02-enums-and-types.md       -- All custom PostgreSQL enums and types
+  03-tenant-security-layer.md -- Tenants, profiles, user_roles, RLS policies, helper functions
+  04-syrve-integration-tables.md  -- syrve_config, raw_objects, sync_runs, api_logs, outbox
+  05-organization-warehouses.md   -- org_nodes, stores, warehouses, storage_areas
+  06-measurement-units.md     -- measurement_units table, conversion functions, import logic
+  07-catalog-products.md      -- categories, products, barcodes, containers, modifiers, mappings
+  08-stock-levels.md          -- stock_levels (warehouse-aware), stock history
+  09-inventory-operations.md  -- sessions, baseline, count_events, aggregates, review_notes, adjustments, variances
+  10-rls-policies.md          -- Complete RLS policy set for all tables
+  11-triggers-functions.md    -- Aggregate triggers, audit triggers, search vectors, helper functions
+  12-edge-functions.md        -- All edge function specifications (connect-test, sync-bootstrap, stock-snapshot, submit-inventory, AI recognition, outbox processor)
+  13-api-endpoints.md         -- Complete API surface with request/response contracts
+  14-react-hooks.md           -- Frontend hooks (useProducts, useInventory, useStores, useAI, useSyrveSync)
+  15-migration-from-current.md -- Delta analysis: what exists vs what's needed, migration path
+```
 
-**Filter triggers**:
-- Replace generic "Filters" button with inline filter chips that show available filter types
-- When no filters active: show filter type labels as outline pills (e.g., "Type", "Category", "Stock")
-- When filter active: pill becomes filled with count badge
-- Clicking pill opens the MultiSelectFilter popover directly
+### Key Content Per Document
 
-**MultiSelectFilter improvements**:
-- Wider popover (280px instead of 224px)
-- Better checkbox alignment and spacing
-- Show option count next to each option (e.g., "GOODS (42)")
-- Add "Select All" / "Clear" footer actions
-- Smooth max-height transition
+**00-overview.md**: New Supabase project URL, three-layer architecture diagram, technology stack, implementation phases (Phase 1A: Data Import, Phase 1B: Inventory Counting, Phase 1C: Syrve Document Submission), excluded features list.
 
-**Active filter pills**:
-- More prominent styling with colored background matching filter type
-- Larger touch targets for mobile
-- "Clear all" button always visible when filters active
+**01-database-schema.md**: Ordered SQL migration files ready to run on the new project. Migration order:
+1. Extensions (pgcrypto, uuid-ossp, pg_trgm, btree_gin)
+2. Enums and types
+3. Layer 1: Tenants, profiles, user_roles, app_settings, tenant_modules
+4. Layer 2: Integration providers, tenant_integrations, categories, products, product_barcodes, product_containers, product_modifiers, product_integration_mappings, stock_levels
+5. Syrve-specific: syrve_config, syrve_raw_objects, syrve_sync_runs, syrve_api_logs, syrve_outbox_jobs
+6. Organization: org_nodes, stores, warehouses, storage_areas
+7. Measurement: measurement_units
+8. Layer 3: inventory_sessions, inventory_baseline_items, inventory_count_events, inventory_product_aggregates, inventory_review_notes, inventory_product_adjustments, inventory_variances
+9. AI: ai_operations, custom_field_definitions
+10. Indexes and performance optimizations
 
-**Quick filter presets** (on Product Catalog):
-- "Low Stock", "Out of Stock", "No Price", "Inactive" as one-click toggle pills above the table
-- These are pre-configured filter shortcuts
+**03-tenant-security-layer.md**: Multi-tenant isolation using `tenant_id` on all tables, `auth.get_user_tenant_id()` helper function, `auth.is_admin()` and `auth.has_role()` functions, RLS policy patterns.
 
-### Files modified
-- `src/components/MultiSelectFilter.tsx`
-- `src/pages/ProductCatalog.tsx`
-- `src/pages/InventoryChecksPage.tsx`
-- `src/pages/AiScansPage.tsx`
-- `src/pages/ByStorePage.tsx`
+**05-organization-warehouses.md**: Syrve store = warehouse mapping, warehouse types (MAIN, STORE, PRODUCTION, EXTERNAL, VIRTUAL), storage areas (BAR, CELLAR, KITCHEN, etc.), hierarchy relationships.
 
----
+**06-measurement-units.md**: Import ALL units from Syrve `/units/list`, conversion factor system with base units, `convert_quantity()` function, `convert_count_to_syrve_unit()` function for inventory submission.
 
-## 4. DataTable & SimpleDataTable Visual Polish
+**09-inventory-operations.md**: Complete lifecycle -- draft -> in_progress -> counting_complete -> under_review -> pending_approval -> approved -> sending -> synced. Event-sourced counting model, manager review notes and adjustments, variance computation.
 
-### Current problems
-- Table headers are plain and lack hierarchy
-- Row hover states are too subtle
-- Pagination controls are functional but cramped
-- No visual density options
-- SimpleDataTable lacks pagination entirely
+**12-edge-functions.md**: Specifications for:
+- `syrve-connect-test`: Test credentials, fetch stores/departments
+- `syrve-sync-bootstrap`: Full data import (org -> units -> categories -> products -> stock)
+- `syrve-sync-products`: Incremental product sync
+- `syrve-stock-snapshot`: Fetch current stock per warehouse
+- `syrve-submit-inventory`: Build XML, submit via outbox pattern
+- `process-outbox-jobs`: Background worker for reliable Syrve document delivery
+- `ai-recognize-product`: Multi-model AI image recognition
 
-### Improvements
-
-**DataTable**:
-- Header row: stronger background color, more padding, better border separation
-- Row hover: more visible highlight
-- Alternating rows: slightly more contrast
-- Pagination bar: cleaner layout with better spacing
-- Add row count text: "Showing 1-25 of 347"
-
-**SimpleDataTable**:
-- Add optional pagination support (reuse pagination logic)
-- Better empty state integration
-- Row hover improvements
-- Header styling consistency with DataTable
-
-### Files modified
-- `src/components/DataTable.tsx`
-- `src/components/SimpleDataTable.tsx`
-
----
-
-## 5. Dashboard Visual Improvements
-
-### Current problems
-- Cards are visually flat and blend together
-- Quick action cards could use more visual weight
-- Spacing between sections inconsistent
-- Welcome header has no visual anchor
-
-### Improvements
-- Add subtle gradient or border accent to stat cards
-- Quick action "Start Count" card: larger, more prominent with gradient background
-- Card sections: add section headers with subtle dividers
-- Store list: use real stores from DB
-- Better spacing rhythm (consistent gap-6 between major sections)
-
-### Files modified
-- `src/pages/Dashboard.tsx`
-
----
-
-## 6. Sidebar & Navigation Polish
-
-### Current problems
-- Active state indicator could be stronger
-- Group labels are small and easy to miss
-- Collapsible sections lack visual feedback
-- Mobile menu transition feels basic
-
-### Improvements
-- Active nav item: add left border accent + filled background
-- Group labels: slightly larger with more top spacing
-- Hover states: smoother transitions
-- User section: cleaner layout with role badge
-- "Count Now" quick-action item with accent styling in Inventory group
-
-### Files modified
-- `src/components/AppSidebar.tsx`
-
----
-
-## 7. Session Pages Polish
-
-### Inventory Checks List
-- Improve filter bar layout: search + filters in a single cohesive row
-- Store filter should use real stores from DB
-- Better table row styling with hover states
-- Status badges: more consistent sizing
-
-### Inventory Check Detail
-- Summary cards: add subtle accent borders matching status
-- Timeline: improve step connector lines
-- Counting tab: better inline editing affordance
-- Variances tab: color-code entire row background for high variances
-
-### Count Setup
-- Store selector: use real stores from DB
-- Better visual grouping with card sections
-- Improve radio group styling for baseline config
-
-### Files modified
-- `src/pages/InventoryChecksPage.tsx`
-- `src/pages/InventoryCheckDetail.tsx`
-- `src/components/count/CountSetup.tsx`
-
----
-
-## 8. Categories Page Polish
-
-### Current problems
-- Tree view rows are visually thin
-- Context menu items lack visual hierarchy
-- Edit dialog is functional but plain
-- No visual distinction between active/inactive categories
-
-### Improvements
-- Tree rows: slightly more height, better indentation guides
-- Inactive categories: dimmed text + "Inactive" mini badge
-- Edit dialog: add active/inactive toggle switch, better layout with form fields
-- Context menu: icon alignment, separator before delete
-- Category count badge: more readable sizing
-
-### Files modified
-- `src/pages/CategoriesPage.tsx`
-
----
-
-## 9. Global CSS & Theme Improvements
-
-### Improvements
-- Refine card hover states globally
-- Better focus-visible rings across all interactive elements
-- Improve dark mode contrast for status colors
-- Standardize animation timing (all transitions 200ms)
-- Add subtle box-shadow to cards on hover
-- Clean up any remaining `wine-glass-effect` references
-
-### Files modified
-- `src/index.css`
+**15-migration-from-current.md**: Maps current project tables to new schema, identifies gaps (no tenants, no measurement_units, no warehouses, no stock_levels, simplified inventory model), recommends migration strategy.
 
 ---
 
 ## Technical Details
 
-### New files
-| File | Purpose |
-|------|---------|
-| `src/hooks/useStores.ts` | Hook to fetch real stores from Supabase `stores` table |
+### New Supabase Project
+- URL: `https://aysdomtvoxizusmmxfug.supabase.co`
+- This is a separate project from the current one (`uzymtgcklmunettdiucs`)
+- The documentation will contain ready-to-run SQL for the new project
 
-### Modified files (summary)
-| File | Key Changes |
-|------|-------------|
-| `src/hooks/useStores.ts` | New hook for real store data |
-| `src/components/TopBar.tsx` | Use real stores |
-| `src/components/count/CountSetup.tsx` | Use real stores |
-| `src/pages/ByStorePage.tsx` | Complete redesign with real stores, search, filters |
-| `src/pages/Dashboard.tsx` | Real stores, visual polish |
-| `src/pages/ProductCatalog.tsx` | Inline filter chips, quick presets, polish |
-| `src/pages/InventoryChecksPage.tsx` | Real stores in filters, table polish |
-| `src/pages/InventoryCheckDetail.tsx` | Visual polish, variance row highlighting |
-| `src/pages/AiScansPage.tsx` | Real stores in filters, search bar |
-| `src/pages/CategoriesPage.tsx` | Tree row polish, inactive indicators |
-| `src/components/MultiSelectFilter.tsx` | Wider, better spacing, option counts |
-| `src/components/DataTable.tsx` | Header styling, row hover, pagination polish |
-| `src/components/SimpleDataTable.tsx` | Optional pagination, styling consistency |
-| `src/components/AppSidebar.tsx` | Active state, Count Now item, spacing |
-| `src/index.css` | Global polish, animation refinement |
+### Key Architectural Differences from Current Project
 
-### Dependencies
-No new packages needed.
+| Aspect | Current Project | New Architecture |
+|---|---|---|
+| Multi-tenancy | None (single tenant) | Full tenant isolation via `tenant_id` |
+| Stores/Warehouses | Simple `stores` table | `org_nodes` + `stores` + `warehouses` + `storage_areas` |
+| Measurement Units | None (hardcoded) | Full `measurement_units` table with conversions |
+| Stock Tracking | `current_stock` field on products | Separate `stock_levels` table (per warehouse, per unit) |
+| Product Model | Wine-focused with `wines` table | Universal product model with `product_type` enum |
+| Inventory | Basic event logging | Full lifecycle with review notes, adjustments, variances |
+| Integration | Syrve-only, tightly coupled | Multi-provider adapter pattern |
+| RLS | Role-based (admin/super_admin) | Tenant-scoped + role-based |
 
-### Implementation order
-1. `useStores` hook + store integration across all pages
-2. By Store page redesign
-3. MultiSelectFilter + filter UX improvements
-4. DataTable/SimpleDataTable polish
-5. Dashboard visual improvements
-6. Sidebar navigation polish
-7. Session pages polish
-8. Categories polish
-9. Global CSS refinements
+### Files Created (Total: 18)
+- 3 copied specification documents
+- 15 new implementation guide documents
+
+### No Code Changes
+This plan only creates documentation files. No application code, database migrations, or edge functions are modified.
 
