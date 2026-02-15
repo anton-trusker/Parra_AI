@@ -1,171 +1,229 @@
 
 
-# UI/UX Modernization -- Platform-Wide Upgrade
+# Frontend Restructure -- Document-Driven Implementation
 
-## Overview
-
-This plan covers a comprehensive UI/UX modernization across the entire Parra platform: an enhanced Dashboard, improved Settings health cards, modernized DataTable with pagination and row density, better filter UX, and polished visual consistency throughout.
+This plan restructures the entire frontend to match the uploaded Frontend Structure Guide, adding new pages, reorganizing navigation, and populating everything with mock data for a complete working UI.
 
 ---
 
-## 1. Dashboard Overhaul
+## What Changes
 
-**Current state:** 4 stat cards + 3 quick action buttons. Minimal, no recent activity or trends.
+### Navigation Restructure
 
-**New design:**
+**Current sidebar:**
+- Dashboard
+- Inventory > Inventarisation Check
+- Syrve Data > Products, Categories
+- History & Logs
+- Reports (coming soon)
+- Suppliers / Orders (coming soon)
+- Settings
 
-- **Welcome header** with greeting, current date, and a subtle "last login" indicator
-- **Stat cards** redesigned with micro-sparkline trends (using recharts already installed), subtle gradient backgrounds, and percentage change indicators (e.g., "+12% vs last count")
-- **Recent Activity feed**: Last 5 inventory sessions with status badges, timestamps, and user avatars (queried from `inventory_sessions` + `profiles`)
-- **Syrve Status widget**: Connection status, last sync time, product count -- compact inline card
-- **Quick Actions** redesigned as icon-prominent action cards with descriptions instead of flat buttons
-- **Low Stock Alert list**: Top 5 low-stock products with stock level bars (only for admin)
+**New sidebar (per document):**
+- Dashboard
+- Inventory (section)
+  - Products
+  - Categories
+  - By Store
+  - Inventory Checks
+  - AI Scans
+- Reports (coming soon)
+- Orders (coming soon)
+- Settings
 
-### Data sources (all existing)
-- `useProducts()` for stock stats
-- `useInventorySessions()` for recent activity
-- `useSyrveConfig()` + `useSyrveSyncRuns()` for sync status
-- `profiles` table for user count
+**Top Bar** (new): Add a global top bar inside AppLayout with:
+- Tenant/location switcher placeholder (dropdown, future)
+- Date range selector placeholder
+- Global search (Cmd+K style trigger)
 
----
-
-## 2. Settings Home -- Fix Status Cards vs Buttons Problem
-
-**Current problem:** The health status cards at the top of `/settings` look identical to the navigation cards below them. No visual hierarchy.
-
-**Fix:**
-- **Health cards**: Redesign as horizontal "status bar" with colored left border indicators (green/red/yellow), no card shadow, inline layout. Use distinct background tinting per status (success = green tint, error = red tint, neutral = muted).
-- **Alert banners**: Keep but style as proper alert components with left color strip
-- **Navigation grid cards**: Add subtle right-arrow indicator, larger icon with colored background, hover lift effect. Clear visual distinction from status indicators above.
-
----
-
-## 3. DataTable Modernization
-
-**Current state:** Basic table with sorting, column resize, sticky first column. No pagination, no row count display, no density toggle.
-
-**Upgrades:**
-
-- **Pagination**: Add configurable rows-per-page (10/25/50/100) with page navigation controls at the bottom
-- **Row density toggle**: Compact / Default / Comfortable modes (affects padding and font size)
-- **Row count indicator**: "Showing 1-25 of 347 products" at bottom-left
-- **Striped rows option**: Alternate row backgrounds for readability
-- **Empty state improvement**: Illustrated empty states with action suggestions
-- **Header improvements**: Better visual separation, subtle background color for header row
-- **Selection support**: Optional checkbox column for bulk operations (already partially exists in ProductCatalog)
-
-### Files affected
-- `src/components/DataTable.tsx` -- add pagination, density, row count
-- `src/pages/ProductCatalog.tsx` -- integrate new DataTable features
-- `src/pages/CurrentStock.tsx` -- integrate new DataTable features
+**Mobile bottom nav** updated to match: Home, Products, Checks, Scans, More
 
 ---
 
-## 4. Filter & Search UX Improvements
+### New Pages to Create
 
-**Current state:** Filters hidden behind a toggle button. MultiSelectFilter uses popover checkboxes.
+| Page | Route | Description |
+|------|-------|-------------|
+| By Store | `/inventory/by-store` | Store-focused inventory view with store selector and product table filtered per store |
+| Inventory Checks | `/inventory/checks` | List of all inventory check sessions with status, filters, and "New check" button |
+| Inventory Check Detail | `/inventory/checks/:id` | Detailed check view with Counting tab, Review/Variances tab, and Activity Log tab |
+| AI Scans | `/inventory/ai-scans` | History table of AI recognition operations with confidence, product linking |
+| Orders | `/orders` | Coming soon placeholder with tabs structure |
 
-**Upgrades:**
+### Existing Pages to Modify
 
-- **Persistent search bar**: Always visible, with keyboard shortcut hint (Cmd+K style)
-- **Active filter pills**: Show active filters as dismissible pills below the search bar (always visible when active, no need to open filter panel)
-- **Filter panel**: When opened, use a cleaner grid layout with labeled sections
-- **Quick filter presets**: "Low Stock", "Out of Stock", "Recently Synced" as one-click pills above the table
-- **Clear all filters** button always visible when any filter is active
-
-### Files affected
-- `src/components/MultiSelectFilter.tsx` -- visual polish
-- `src/components/FilterManager.tsx` -- layout improvements
-- New: `src/components/ActiveFilterPills.tsx` -- shows active filters as dismissible badges
-- New: `src/components/QuickFilterBar.tsx` -- preset filter buttons
-
----
-
-## 5. Global Visual Polish
-
-### Typography & Spacing
-- Consistent page header pattern: `h1` + subtitle + optional action buttons, all pages
-- Section dividers using subtle borders instead of relying on spacing alone
-- Card border radius consistency (all `rounded-xl`)
-
-### Color & Theme
-- Replace remaining `wine-*` class references in components with semantic aliases (already started)
-- Improve dark mode contrast: ensure all text on tinted backgrounds is readable
-- Status colors: Standardize green/amber/red across all badges and indicators
-
-### Component-level improvements
-- **Badges**: Consistent sizing and padding across `SessionStatusBadge`, `TypeBadge`, `StockStatusBadge`, `VarianceBadge`
-- **Cards**: Consistent padding (p-5 or p-6), consistent header pattern
-- **Buttons**: Ensure all icon+text buttons have consistent gap and sizing
-- **Loading states**: Replace "Loading..." text with proper Skeleton patterns everywhere
-- **Empty states**: Consistent pattern with icon + title + description + optional CTA
-
-### Sidebar
-- Active item: stronger visual indicator (filled background instead of just border-left)
-- Group labels: slightly larger, better spacing
-- User section: cleaner avatar with online indicator dot
+| Page | Changes |
+|------|---------|
+| **Dashboard** | Add Inventory Health block (variance summary, top 5 shortages/surpluses), AI Activity Monitor (7/30 day counts, avg confidence), Integration Status tiles (Syrve + future placeholders), improve Quick Actions |
+| **Products** (`/products`) | Add grouping mode selector (Flat, By Category, Goods-to-Dishes, By Store, Hierarchy), row actions menu (view, edit, AI scan, exclude), bulk actions bar, saved views concept |
+| **Product Detail** | Restructure into tabs: Overview, Images & AI, Integrations, History. Add mock data for AI recognition results and stock history timeline |
+| **Categories** | Add right panel with category details: Products tab (table of products in category) and Mappings tab (future placeholder). Support drag-to-reorder (visual only) |
+| **CurrentStock** | Rename/repurpose -- this page's inventory tab content moves to the new Inventory Checks flow. The current "Inventarisation Check" becomes the Checks list page |
+| **Settings** | Add Billing & Usage card (subscription tier, AI usage). Add Telegram/AI Assistant card (future placeholder) |
+| **Reports** | Add Orders tab placeholder in addition to existing report cards |
 
 ---
 
-## 6. Page-Specific Improvements
+### Mock Data
 
-### Product Catalog
-- Card view: Add subtle hover animation, image placeholder with product initial
-- Table view: Integrate pagination and density controls
-- Add "Export CSV" button in toolbar
+All new pages will use local mock data (no database changes):
 
-### Inventarisation Check (CurrentStock)
-- Tab design: Use underline-style tabs instead of pill tabs for cleaner look
-- Inventory tab: Add summary row at bottom of table (totals)
-- Check Review tab: Session cards with better visual hierarchy, progress indicators
-- Start Count tab: Larger, more prominent CTA with visual illustration
+```text
+mockStores.ts        -- 3 stores with IDs, names, addresses
+mockInventoryChecks.ts -- 8 checks with various statuses (draft, in_progress, pending_review, approved, synced)
+mockAiScans.ts       -- 15 AI scan records with timestamps, products, confidence levels
+mockCheckItems.ts    -- 30 items per check with expected/counted/variance
+mockStockByStore.ts  -- Products with per-store stock levels
+mockActivityLog.ts   -- 20 activity entries for check detail
+```
 
-### Sync Management (SyrveSyncPage)
-- Timeline-style sync history instead of flat list
-- Better visual distinction between running/completed/failed syncs
-- Progress bar for active syncs
+---
 
-### Reports page
-- Better "coming soon" placeholder with illustration
+### Product Page Grouping Modes
+
+The Products page gets a view mode selector with 5 options:
+
+1. **Flat List** -- current table (default)
+2. **By Category** -- collapsible category headers with aggregate rows, products nested under each
+3. **Goods to Dishes** -- parent goods rows expand to show child dish/prepared items that consume them (mock parent-child relationships)
+4. **By Store** -- store header rows with per-store stock columns
+5. **Hierarchy Tree** -- nested tree combining category + subcategory (similar to current Categories page but inline)
+
+Each mode renders a different table layout component but shares the same filter/search bar.
+
+---
+
+### Product Detail Tabs
+
+Restructured into 4 tabs:
+
+- **Overview**: Basic info, pricing, current stock per store (mini table with mock per-store data)
+- **Images & AI**: Image gallery placeholder, last AI recognition results (mock: product name, category, quantity, confidence), "Run AI Recognition" button
+- **Integrations**: Syrve mapping info (external ID, last sync, raw payload snippet -- already exists)
+- **History**: Stock level changes timeline (mock entries), inventory check participation list, AI operations log
+
+---
+
+### Inventory Checks List Page
+
+New page at `/inventory/checks`:
+
+- Top bar: "New inventory check" button, filters (store, status, date range)
+- Table columns: Title, Store, Status, Created by, Started at, Completed at, Approved by
+- Row actions: Open details, Duplicate, Cancel, Send to Syrve
+- Status badges: draft, in_progress, pending_review, approved, synced (color-coded)
+
+---
+
+### Inventory Check Detail Page
+
+New page at `/inventory/checks/:id`:
+
+Header section with title, store, status, dates, action buttons (Start/Resume, Complete, Approve, Reject, Send to Syrve -- visibility based on status and role).
+
+Three tabs:
+1. **Counting**: Search/scan mode + table mode toggle. Search box for product lookup, quick-add controls per row (unopened units, open quantity), counting method badge
+2. **Review & Variances**: Manager-only expected vs counted table with variance highlighting, filters for "only variances" and "only shortages"
+3. **Activity Log**: Chronological feed of count events, status changes, AI scans, manager adjustments
+
+---
+
+### AI Scans Page
+
+New page at `/inventory/ai-scans`:
+
+- Filters: date range, store, confidence threshold, operation type
+- Table: Timestamp, Product (linked), Detected name, Quantity, Confidence %, Status (confirmed/pending/rejected), User, Image thumbnail
+- Click to expand: shows full AI response details, image preview, product match suggestions
+
+---
+
+### By Store Page
+
+New page at `/inventory/by-store`:
+
+- Top: store selector (cards or dropdown showing 3 mock stores)
+- When store selected: product table filtered to that store with store-specific stock column, last counted date
+- "All stores" toggle: shows all products grouped by store headers with per-store aggregates
+
+---
+
+### Orders Page (Coming Soon)
+
+New page at `/orders`:
+
+- Disabled tabs: Live Orders, Historical Orders, Sales by Product
+- Placeholder explaining Syrve order sync is planned
+- Future filter hints: date, store, order type, channel
 
 ---
 
 ## Technical Details
 
-### Files to create
+### Files to Create
+
 | File | Purpose |
 |------|---------|
-| `src/components/ActiveFilterPills.tsx` | Dismissible active filter badges |
-| `src/components/QuickFilterBar.tsx` | Preset filter buttons (Low Stock, etc.) |
-| `src/components/PageHeader.tsx` | Consistent page header component |
-| `src/components/EmptyState.tsx` | Reusable empty state with icon + text + CTA |
-| `src/components/StatusIndicator.tsx` | Reusable status dot/badge for settings health cards |
+| `src/data/mockStores.ts` | 3 store objects with name, address, product counts |
+| `src/data/mockInventoryChecks.ts` | 8 inventory check sessions |
+| `src/data/mockAiScans.ts` | 15 AI scan records |
+| `src/data/mockCheckDetail.ts` | Check items, activity log entries |
+| `src/data/mockStockByStore.ts` | Per-store stock data |
+| `src/pages/ByStorePage.tsx` | Store-focused inventory view |
+| `src/pages/InventoryChecksPage.tsx` | Checks list page |
+| `src/pages/InventoryCheckDetail.tsx` | Single check detail with 3 tabs |
+| `src/pages/AiScansPage.tsx` | AI scans history |
+| `src/pages/OrdersPage.tsx` | Coming soon placeholder |
+| `src/components/TopBar.tsx` | Global top bar with tenant switcher, search |
+| `src/components/ProductGroupedView.tsx` | Grouped table views (by category, goods-to-dishes, by store) |
 
-### Files to modify
+### Files to Modify
+
 | File | Changes |
 |------|---------|
-| `src/pages/Dashboard.tsx` | Complete redesign with activity feed, status widget, sparklines |
-| `src/pages/AppSettings.tsx` | Redesign health cards as status bar, improve nav card hierarchy |
-| `src/components/DataTable.tsx` | Add pagination, density toggle, row count, header styling |
-| `src/pages/ProductCatalog.tsx` | Integrate new DataTable features, active filter pills |
-| `src/pages/CurrentStock.tsx` | Integrate new DataTable features, tab styling |
-| `src/components/MultiSelectFilter.tsx` | Visual polish, better mobile UX |
-| `src/components/FilterManager.tsx` | Cleaner layout |
-| `src/components/AppSidebar.tsx` | Active state styling, group spacing |
-| `src/components/CollapsibleSection.tsx` | Subtle visual polish |
-| `src/index.css` | New utility classes, animation keyframes, status color tokens |
-| `src/pages/SyrveSyncPage.tsx` | Timeline history, better stat cards |
-| `src/pages/Reports.tsx` | Better placeholder design |
+| `src/App.tsx` | Add new routes: `/inventory/by-store`, `/inventory/checks`, `/inventory/checks/:id`, `/inventory/ai-scans`, `/orders` |
+| `src/components/AppLayout.tsx` | Add TopBar component above Outlet |
+| `src/components/AppSidebar.tsx` | Restructure nav groups to match document hierarchy |
+| `src/components/MobileBottomNav.tsx` | Update primary items to Home, Products, Checks, Scans |
+| `src/pages/Dashboard.tsx` | Add Inventory Health block, AI Activity Monitor, Integration Status tiles |
+| `src/pages/ProductCatalog.tsx` | Add grouping mode selector, row actions dropdown, bulk actions |
+| `src/pages/ProductDetail.tsx` | Restructure into 4 tabs with mock AI and history data |
+| `src/pages/CategoriesPage.tsx` | Add right panel with products tab and mappings tab |
+| `src/pages/AppSettings.tsx` | Add Billing & Usage and Telegram cards |
+| `src/pages/Reports.tsx` | Polish with coming soon structure |
+| `src/pages/CurrentStock.tsx` | Route redirect -- "Inventarisation Check" becomes `/inventory/checks` |
+
+### Routes Map
+
+| Route | Component |
+|-------|-----------|
+| `/dashboard` | Dashboard |
+| `/products` | ProductCatalog |
+| `/products/:id` | ProductDetail |
+| `/categories` | CategoriesPage |
+| `/inventory/by-store` | ByStorePage |
+| `/inventory/checks` | InventoryChecksPage |
+| `/inventory/checks/:id` | InventoryCheckDetail |
+| `/inventory/ai-scans` | AiScansPage |
+| `/count` | InventoryCount (scanning flow, launched from check detail) |
+| `/orders` | OrdersPage |
+| `/reports` | Reports |
+| `/settings` | AppSettings |
+| `/settings/*` | (unchanged) |
+| `/users` | UserManagement |
+| `/history` | InventoryHistory |
 
 ### Dependencies
-- No new dependencies needed. Uses existing `recharts` for sparklines, existing shadcn components for all UI.
+No new packages needed. Everything uses existing shadcn components, recharts, and lucide icons.
 
-### Approach
-Changes will be implemented incrementally:
-1. Shared components first (PageHeader, EmptyState, StatusIndicator, ActiveFilterPills)
-2. DataTable pagination and density
-3. Dashboard redesign
-4. Settings page hierarchy fix
-5. Filter UX improvements across pages
-6. Global visual polish pass
+### Implementation Order
+1. Mock data files (all 5)
+2. TopBar component
+3. Navigation restructure (sidebar + mobile nav + routes)
+4. New pages (ByStore, InventoryChecks, InventoryCheckDetail, AiScans, Orders)
+5. Dashboard enhancements
+6. ProductCatalog grouping modes
+7. ProductDetail tabs restructure
+8. CategoriesPage right panel
+9. Settings additions
 
