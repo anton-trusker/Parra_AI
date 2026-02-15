@@ -1,17 +1,29 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useColumnStore } from '@/stores/columnStore';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
-import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X } from 'lucide-react';
+import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, MoreHorizontal, Eye, Copy, History, Trash2, CheckSquare, Download, Tag, Power, FolderTree, Store, Layers } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
 import FilterManager, { FilterDef } from '@/components/FilterManager';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import DataTable, { DataTableColumn } from '@/components/DataTable';
+import ProductGroupedView from '@/components/ProductGroupedView';
 import { Skeleton } from '@/components/ui/skeleton';
+
+type ViewMode = 'all' | 'category' | 'store' | 'type';
+
+const VIEW_MODES: { value: ViewMode; label: string; icon: React.ElementType }[] = [
+  { value: 'all', label: 'All', icon: Layers },
+  { value: 'category', label: 'By Category', icon: FolderTree },
+  { value: 'store', label: 'By Store', icon: Store },
+  { value: 'type', label: 'By Type', icon: Tag },
+];
 
 const PRODUCT_COLUMN_DEFS: ColumnDef[] = [
   { key: 'name', label: 'Name' },
@@ -111,6 +123,26 @@ function ProductCard({ product, onClick }: { product: Product; onClick: () => vo
   );
 }
 
+function RowActionsMenu({ product }: { product: Product }) {
+  const navigate = useNavigate();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
+        <Button variant="ghost" size="icon" className="h-7 w-7">
+          <MoreHorizontal className="w-4 h-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/products/${product.id}`); }}><Eye className="w-3.5 h-3.5 mr-2" />View Details</DropdownMenuItem>
+        <DropdownMenuItem onClick={e => e.stopPropagation()}><Copy className="w-3.5 h-3.5 mr-2" />Duplicate</DropdownMenuItem>
+        <DropdownMenuItem onClick={e => e.stopPropagation()}><History className="w-3.5 h-3.5 mr-2" />View History</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="text-destructive" onClick={e => e.stopPropagation()}><Trash2 className="w-3.5 h-3.5 mr-2" />Delete</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export default function ProductCatalog() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -123,7 +155,9 @@ export default function ProductCatalog() {
   const [volumeFilter, setVolumeFilter] = useState<string[]>([]);
   const [hasPriceFilter, setHasPriceFilter] = useState(false);
   const [view, setView] = useState<'cards' | 'table'>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const categoryFromUrl = searchParams.get('category') || undefined;
 
@@ -140,20 +174,15 @@ export default function ProductCatalog() {
   const volumeOptions = useMemo(() => [...new Set(products.map(p => p.unit_capacity != null ? String(p.unit_capacity) : null).filter(Boolean) as string[])].sort((a, b) => Number(a) - Number(b)), [products]);
   const stockStatusOptions = useMemo(() => {
     const opts: string[] = [];
-    const hasZero = products.some(p => (p.current_stock ?? 0) <= 0);
-    const hasLow = products.some(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5);
-    const hasOk = products.some(p => (p.current_stock ?? 0) >= 5);
-    if (hasZero) opts.push('Out of Stock');
-    if (hasLow) opts.push('Low Stock');
-    if (hasOk) opts.push('In Stock');
+    if (products.some(p => (p.current_stock ?? 0) <= 0)) opts.push('Out of Stock');
+    if (products.some(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5)) opts.push('Low Stock');
+    if (products.some(p => (p.current_stock ?? 0) >= 5)) opts.push('In Stock');
     return opts;
   }, [products]);
 
   const filteredProducts = useMemo(() => {
     let result = products;
-    if (categoryFilter.length > 0) {
-      result = result.filter(p => categoryFilter.includes(p.categories?.name || ''));
-    }
+    if (categoryFilter.length > 0) result = result.filter(p => categoryFilter.includes(p.categories?.name || ''));
     if (stockStatusFilter.length > 0) {
       result = result.filter(p => {
         const s = p.current_stock ?? 0;
@@ -162,31 +191,54 @@ export default function ProductCatalog() {
         return stockStatusFilter.includes('In Stock');
       });
     }
-    if (volumeFilter.length > 0) {
-      result = result.filter(p => p.unit_capacity != null && volumeFilter.includes(String(p.unit_capacity)));
-    }
-    if (hasPriceFilter) {
-      result = result.filter(p => p.sale_price != null && p.sale_price > 0);
-    }
+    if (volumeFilter.length > 0) result = result.filter(p => p.unit_capacity != null && volumeFilter.includes(String(p.unit_capacity)));
+    if (hasPriceFilter) result = result.filter(p => p.sale_price != null && p.sale_price > 0);
     return result;
   }, [products, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter]);
 
   const activeFilterCount = [typeFilter, categoryFilter, stockStatusFilter, volumeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (hasPriceFilter ? 1 : 0);
   const fv = (key: string) => productFilters.includes(key);
 
+  // Active filter pills data
+  const activeFilterPills = useMemo(() => {
+    const pills: { key: string; label: string; onRemove: () => void }[] = [];
+    typeFilter.forEach(t => pills.push({ key: `type-${t}`, label: `Type: ${t}`, onRemove: () => setTypeFilter(prev => prev.filter(x => x !== t)) }));
+    categoryFilter.forEach(c => pills.push({ key: `cat-${c}`, label: `Category: ${c}`, onRemove: () => setCategoryFilter(prev => prev.filter(x => x !== c)) }));
+    stockStatusFilter.forEach(s => pills.push({ key: `stock-${s}`, label: s, onRemove: () => setStockStatusFilter(prev => prev.filter(x => x !== s)) }));
+    volumeFilter.forEach(v => pills.push({ key: `vol-${v}`, label: `${v}L`, onRemove: () => setVolumeFilter(prev => prev.filter(x => x !== v)) }));
+    if (hasPriceFilter) pills.push({ key: 'price', label: 'Has Price', onRemove: () => setHasPriceFilter(false) });
+    if (categoryFromUrl) {
+      const catName = categories.find(c => c.id === categoryFromUrl)?.name || categoryFromUrl;
+      pills.push({ key: 'url-cat', label: `Category: ${catName}`, onRemove: () => navigate('/products') });
+    }
+    return pills;
+  }, [typeFilter, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter, categoryFromUrl, categories, navigate]);
+
   const clearFilters = () => {
-    setTypeFilter([]);
-    setCategoryFilter([]);
-    setStockStatusFilter([]);
-    setVolumeFilter([]);
-    setHasPriceFilter(false);
+    setTypeFilter([]); setCategoryFilter([]); setStockStatusFilter([]); setVolumeFilter([]); setHasPriceFilter(false);
     if (categoryFromUrl) navigate('/products');
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredProducts.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filteredProducts.map(p => p.id)));
+  };
+
   const tableColumns = useMemo((): DataTableColumn<Product>[] => [
-    { key: 'name', label: 'Name', minWidth: 180, render: p => (
-      <span className="font-medium">{p.name}</span>
-    ), sortFn: (a, b) => a.name.localeCompare(b.name) },
+    { key: 'select', label: '', minWidth: 40, render: p => (
+      <div onClick={e => e.stopPropagation()}>
+        <Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} />
+      </div>
+    ) },
+    { key: 'name', label: 'Name', minWidth: 180, render: p => <span className="font-medium">{p.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
     { key: 'sku', label: 'SKU', render: p => <span className="text-muted-foreground font-mono text-xs">{p.sku || '—'}</span> },
     { key: 'code', label: 'Code', render: p => <span className="text-muted-foreground text-xs">{p.code || '—'}</span> },
     { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{p.categories?.name || '—'}</span> },
@@ -197,15 +249,33 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
-  ], []);
+    { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
+  ], [selectedIds]);
+
+  // For DataTable: include select + actions columns always
+  const visibleCols = useMemo(() => ['select', ...productColumns, 'actions'], [productColumns]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl lg:text-3xl font-heading font-bold">Product Catalog</h1>
           <p className="text-muted-foreground mt-1">{filteredProducts.length} products from Syrve</p>
         </div>
+      </div>
+
+      {/* View Mode Selector */}
+      <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit">
+        {VIEW_MODES.map(m => (
+          <button
+            key={m.value}
+            onClick={() => setViewMode(m.value)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === m.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            <m.icon className="w-3.5 h-3.5" />
+            {m.label}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -219,13 +289,15 @@ export default function ProductCatalog() {
             <span className="hidden sm:inline">Filters</span>
             {activeFilterCount > 0 && <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">{activeFilterCount}</span>}
           </Button>
-          {view === 'table' && (
+          {viewMode === 'all' && view === 'table' && (
             <ColumnManager columns={PRODUCT_COLUMN_DEFS} visibleColumns={productColumns} onChange={setProductColumns} />
           )}
-          <div className="flex border border-border rounded-lg overflow-hidden">
-            <button onClick={() => setView('cards')} className={`p-2.5 transition-colors ${view === 'cards' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><LayoutGrid className="w-5 h-5" /></button>
-            <button onClick={() => setView('table')} className={`p-2.5 transition-colors ${view === 'table' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><Table2 className="w-5 h-5" /></button>
-          </div>
+          {viewMode === 'all' && (
+            <div className="flex border border-border rounded-lg overflow-hidden">
+              <button onClick={() => setView('cards')} className={`p-2.5 transition-colors ${view === 'cards' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><LayoutGrid className="w-5 h-5" /></button>
+              <button onClick={() => setView('table')} className={`p-2.5 transition-colors ${view === 'table' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><Table2 className="w-5 h-5" /></button>
+            </div>
+          )}
         </div>
 
         {showFilters && (
@@ -243,22 +315,24 @@ export default function ProductCatalog() {
               {fv('stock') && <MultiSelectFilter label="Stock" options={stockStatusOptions} selected={stockStatusFilter} onChange={setStockStatusFilter} />}
               {fv('volume') && <MultiSelectFilter label="Volume (L)" options={volumeOptions} selected={volumeFilter} onChange={setVolumeFilter} />}
               {fv('has_price') && (
-                <Button
-                  variant={hasPriceFilter ? 'default' : 'outline'}
-                  size="sm"
-                  className="h-8 gap-1.5 text-xs"
-                  onClick={() => setHasPriceFilter(!hasPriceFilter)}
-                >
-                  Has Price
-                </Button>
-              )}
-              {categoryFromUrl && (
-                <Badge variant="secondary" className="gap-1 cursor-pointer" onClick={() => navigate('/products')}>
-                  Category: {categories.find(c => c.id === categoryFromUrl)?.name || categoryFromUrl}
-                  <X className="w-3 h-3" />
-                </Badge>
+                <Button variant={hasPriceFilter ? 'default' : 'outline'} size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setHasPriceFilter(!hasPriceFilter)}>Has Price</Button>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Active Filter Pills */}
+        {activeFilterPills.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {activeFilterPills.map(pill => (
+              <Badge key={pill.key} variant="secondary" className="gap-1 cursor-pointer text-xs hover:bg-secondary/80" onClick={pill.onRemove}>
+                {pill.label}
+                <X className="w-3 h-3" />
+              </Badge>
+            ))}
+            {activeFilterPills.length > 1 && (
+              <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground px-2" onClick={clearFilters}>Clear all</Button>
+            )}
           </div>
         )}
       </div>
@@ -267,14 +341,12 @@ export default function ProductCatalog() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
         </div>
+      ) : viewMode !== 'all' ? (
+        <ProductGroupedView products={filteredProducts} mode={viewMode} />
       ) : view === 'cards' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredProducts.map(p => (
-            <ProductCard
-              key={p.id}
-              product={p}
-              onClick={() => navigate(`/products/${p.id}`)}
-            />
+            <ProductCard key={p.id} product={p} onClick={() => navigate(`/products/${p.id}`)} />
           ))}
         </div>
       ) : (
@@ -282,7 +354,7 @@ export default function ProductCatalog() {
           <DataTable
             data={filteredProducts}
             columns={tableColumns}
-            visibleColumns={productColumns}
+            visibleColumns={visibleCols}
             columnWidths={columnWidths}
             onColumnResize={setColumnWidth}
             keyExtractor={p => p.id}
@@ -292,10 +364,25 @@ export default function ProductCatalog() {
         </div>
       )}
 
-      {!isLoading && filteredProducts.length === 0 && (
+      {!isLoading && filteredProducts.length === 0 && viewMode === 'all' && (
         <div className="text-center py-16 text-muted-foreground">
           <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
           <p>No products found. Run a Syrve sync first.</p>
+        </div>
+      )}
+
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card border border-border rounded-xl shadow-xl px-5 py-3 flex items-center gap-4 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckSquare className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          </div>
+          <div className="h-5 w-px bg-border" />
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs"><Download className="w-3.5 h-3.5" />Export</Button>
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs"><Tag className="w-3.5 h-3.5" />Change Category</Button>
+          <Button variant="outline" size="sm" className="gap-1.5 text-xs"><Power className="w-3.5 h-3.5" />Deactivate</Button>
+          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setSelectedIds(new Set())}>Cancel</Button>
         </div>
       )}
     </div>
