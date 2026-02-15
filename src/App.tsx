@@ -28,6 +28,11 @@ import AiSettings from "./pages/AiSettings";
 import ProductCatalog from "./pages/ProductCatalog";
 import ProductDetail from "./pages/ProductDetail";
 import CategoriesPage from "./pages/CategoriesPage";
+import ByStorePage from "./pages/ByStorePage";
+import InventoryChecksPage from "./pages/InventoryChecksPage";
+import InventoryCheckDetail from "./pages/InventoryCheckDetail";
+import AiScansPage from "./pages/AiScansPage";
+import OrdersPage from "./pages/OrdersPage";
 import NotFound from "./pages/NotFound";
 import { useThemeStore } from "./stores/themeStore";
 
@@ -59,10 +64,15 @@ const App = () => (
                 <Route path="/products" element={<ProductCatalog />} />
                 <Route path="/products/:id" element={<ProductDetail />} />
                 <Route path="/categories" element={<CategoriesPage />} />
+                <Route path="/inventory/by-store" element={<ByStorePage />} />
+                <Route path="/inventory/checks" element={<InventoryChecksPage />} />
+                <Route path="/inventory/checks/:id" element={<InventoryCheckDetail />} />
+                <Route path="/inventory/ai-scans" element={<AiScansPage />} />
                 <Route path="/count" element={<InventoryCount />} />
-                <Route path="/stock" element={<CurrentStock />} />
+                <Route path="/stock" element={<Navigate to="/inventory/checks" replace />} />
                 <Route path="/history" element={<InventoryHistory />} />
-                <Route path="/sessions" element={<Navigate to="/stock" replace />} />
+                <Route path="/sessions" element={<Navigate to="/inventory/checks" replace />} />
+                <Route path="/orders" element={<OrdersPage />} />
                 <Route path="/users" element={<UserManagement />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings" element={<AppSettings />} />

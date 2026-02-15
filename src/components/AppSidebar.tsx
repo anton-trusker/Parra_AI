@@ -1,66 +1,62 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import {
-  LayoutDashboard, Package, History, BarChart3, ClipboardCheck,
-  LogOut, Settings, User, Plus, ScanLine, Truck, FolderTree
+  LayoutDashboard, Package, FolderTree, Store, ClipboardCheck, Bot, History,
+  BarChart3, ShoppingCart, Settings, Users, LogOut, User, ChevronDown, Menu, X
 } from 'lucide-react';
-import ThemeToggle from './ThemeToggle';
-import type { ModuleKey } from '@/data/referenceData';
-import { useAppSetting } from '@/hooks/useAppSettings';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { useState } from 'react';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import ThemeToggle from '@/components/ThemeToggle';
 
-interface NavItemDef {
+interface NavItem {
   label: string;
   icon: React.ElementType;
   path: string;
-  module: ModuleKey;
+  roles?: string[];
 }
 
 interface NavGroup {
-  title?: string;
-  items: NavItemDef[];
-  comingSoon?: boolean;
+  label: string;
+  items: NavItem[];
+  defaultOpen?: boolean;
 }
 
 const navGroups: NavGroup[] = [
   {
+    label: '',
+    defaultOpen: true,
     items: [
-      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', module: 'dashboard' },
+      { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     ],
   },
   {
-    title: 'Inventory',
+    label: 'Inventory',
+    defaultOpen: true,
     items: [
-      { label: 'Inventarisation Check', icon: ClipboardCheck, path: '/stock', module: 'stock' },
+      { label: 'Products', icon: Package, path: '/products' },
+      { label: 'Categories', icon: FolderTree, path: '/categories' },
+      { label: 'By Store', icon: Store, path: '/inventory/by-store' },
+      { label: 'Inventory Checks', icon: ClipboardCheck, path: '/inventory/checks' },
+      { label: 'AI Scans', icon: Bot, path: '/inventory/ai-scans' },
     ],
   },
   {
-    title: 'Syrve Data',
+    label: 'Analytics',
+    defaultOpen: false,
     items: [
-      { label: 'Products', icon: Package, path: '/products', module: 'catalog' },
-      { label: 'Categories', icon: FolderTree, path: '/categories', module: 'catalog' },
+      { label: 'History & Logs', icon: History, path: '/history' },
+      { label: 'Reports', icon: BarChart3, path: '/reports' },
+      { label: 'Orders', icon: ShoppingCart, path: '/orders' },
     ],
   },
   {
+    label: 'Administration',
+    defaultOpen: false,
     items: [
-      { label: 'History & Logs', icon: History, path: '/history', module: 'history' },
-    ],
-  },
-  {
-    title: 'Reports',
-    comingSoon: true,
-    items: [
-      { label: 'Reports', icon: BarChart3, path: '/reports', module: 'reports' },
-    ],
-  },
-  {
-    title: 'Suppliers / Orders',
-    comingSoon: true,
-    items: [],
-  },
-  {
-    items: [
-      { label: 'Settings', icon: Settings, path: '/settings', module: 'settings' },
+      { label: 'Users', icon: Users, path: '/users', roles: ['admin', 'super_admin'] },
+      { label: 'Settings', icon: Settings, path: '/settings', roles: ['admin', 'super_admin'] },
     ],
   },
 ];
@@ -70,127 +66,125 @@ export default function AppSidebar() {
   const role = useUserRole();
   const navigate = useNavigate();
   const location = useLocation();
-  const isMobile = useIsMobile();
-  const { data: hideScannerDesktop } = useAppSetting('inventory_hide_scanner_desktop', false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const shouldHideScanner = !isMobile && hideScannerDesktop === true;
+  const isActive = (path: string) => location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path + '/'));
+  const isGroupActive = (items: NavItem[]) => items.some((i) => isActive(i.path));
 
-  const isActive = (path: string) =>
-    location.pathname === path || (path !== '/dashboard' && location.pathname.startsWith(path));
+  const canSee = (item: NavItem) => {
+    if (!item.roles) return true;
+    if (!role) return false;
+    return item.roles.includes(role.id);
+  };
 
-  const filterItems = (items: NavItemDef[]) =>
-    items.filter(item => {
-      if (!role) return false;
-      if (shouldHideScanner && item.path === '/count') return false;
-      if (role.id === 'admin' || role.id === 'super_admin') return true;
-      const restricted: ModuleKey[] = ['settings' as ModuleKey, 'users' as ModuleKey];
-      return !restricted.includes(item.module);
-    });
+  const initials = user?.email ? user.email.substring(0, 2).toUpperCase() : (user as any)?.displayName?.charAt(0) ?? 'U';
+
+  const sidebarContent = (
+    <div className="flex flex-col h-full">
+      <div className="px-5 py-5 border-b border-sidebar-border">
+        <h1 className="text-xl font-bold tracking-tight text-foreground">Parra</h1>
+        <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mt-0.5">Inventory Platform</p>
+      </div>
+
+      <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-1">
+        {navGroups.map((group) => {
+          const visibleItems = group.items.filter(canSee);
+          if (visibleItems.length === 0) return null;
+
+          if (!group.label) {
+            return visibleItems.map((item) => (
+              <NavButton key={item.path} item={item} active={isActive(item.path)} onClick={() => { navigate(item.path); setMobileOpen(false); }} />
+            ));
+          }
+
+          return (
+            <Collapsible key={group.label} defaultOpen={group.defaultOpen || isGroupActive(visibleItems)}>
+              <CollapsibleTrigger className="flex items-center justify-between w-full px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors group">
+                {group.label}
+                <ChevronDown className="w-3.5 h-3.5 transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-0.5 mt-0.5">
+                {visibleItems.map((item) => (
+                  <NavButton key={item.path} item={item} active={isActive(item.path)} onClick={() => { navigate(item.path); setMobileOpen(false); }} />
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
+      </nav>
+
+      <div className="border-t border-sidebar-border p-3 space-y-2">
+        <ThemeToggle />
+        <div className="flex items-center gap-3 px-2 py-2">
+          <div className="relative">
+            <Avatar className="h-8 w-8 border border-border">
+              <AvatarFallback className="text-xs bg-primary/10 text-primary">{initials}</AvatarFallback>
+            </Avatar>
+            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-sidebar" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">{(user as any)?.displayName ?? user?.email ?? 'User'}</p>
+            <p className="text-[10px] text-muted-foreground capitalize">{(role as any)?.label ?? (role as any)?.name ?? 'user'}</p>
+          </div>
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => navigate('/profile')}>
+            <User className="w-4 h-4" />
+          </Button>
+        </div>
+        <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive" onClick={() => { logout(); navigate('/login'); }}>
+          <LogOut className="w-4 h-4" />Sign Out
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <>
-      {/* Mobile top header bar */}
+      {/* Mobile top header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-sidebar/95 backdrop-blur-md border-b border-sidebar-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg app-gradient flex items-center justify-center">
-            <Package className="w-4 h-4 text-primary-foreground" />
-          </div>
-          <h1 className="font-heading text-base font-semibold text-foreground">Parra</h1>
+          <button onClick={() => setMobileOpen(!mobileOpen)} className="p-1">
+            {mobileOpen ? <X className="w-5 h-5 text-foreground" /> : <Menu className="w-5 h-5 text-foreground" />}
+          </button>
+          <h1 className="font-bold text-base text-foreground">Parra</h1>
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle className="p-1.5" />
-          <button onClick={() => navigate('/profile')} className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-xs font-bold text-primary-foreground">
-            {user?.displayName?.charAt(0)}
+          <button onClick={() => navigate('/profile')} className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-xs font-bold text-primary">
+            {initials}
           </button>
         </div>
       </div>
 
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+      )}
+
+      {/* Mobile slide-out */}
+      <aside className={`lg:hidden fixed top-0 left-0 z-50 h-screen w-64 bg-sidebar border-r border-sidebar-border transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        {sidebarContent}
+      </aside>
+
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex fixed top-0 left-0 h-full w-64 bg-sidebar z-50 border-r border-sidebar-border flex-col">
-        {/* Logo */}
-        <div className="p-6 border-b border-sidebar-border">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl app-gradient flex items-center justify-center shadow-lg shadow-primary/20">
-              <Package className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="font-heading text-lg font-semibold text-foreground">Parra</h1>
-              <p className="text-[11px] text-muted-foreground">by Trusker Solutions</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 p-3 overflow-y-auto space-y-0.5">
-          {navGroups.map((group, gi) => {
-            const visibleItems = filterItems(group.items);
-            if (group.items.length > 0 && visibleItems.length === 0) return null;
-
-            return (
-              <div key={gi}>
-                {gi > 0 && <div className="my-3 mx-2 border-t border-sidebar-border/60" />}
-
-                {group.title && (
-                  <div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
-                      {group.title}
-                    </span>
-                    {group.comingSoon && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
-                        Soon
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {group.comingSoon && group.items.length === 0 && (
-                  <div className="px-3 py-2 flex items-center gap-3 text-muted-foreground/50">
-                    <Truck className="w-5 h-5" />
-                    <span className="text-sm">Coming soon</span>
-                  </div>
-                )}
-
-                {visibleItems.map(item => (
-                  <button
-                    key={item.path}
-                    onClick={() => !group.comingSoon && navigate(item.path)}
-                    className={`nav-item w-full ${isActive(item.path) ? 'active' : ''} ${
-                      group.comingSoon ? 'opacity-50 cursor-not-allowed' : ''
-                    }`}
-                    disabled={group.comingSoon}
-                  >
-                    <item.icon className="w-[18px] h-[18px]" />
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            );
-          })}
-        </nav>
-
-        {/* User section */}
-        <div className="p-4 border-t border-sidebar-border">
-          <div className="flex items-center justify-between mb-3">
-            <button onClick={() => navigate('/profile')} className="flex items-center gap-3 flex-1 min-w-0 rounded-lg p-2 -mx-2 hover:bg-sidebar-accent transition-colors">
-              <div className="relative">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary to-wine-burgundy flex items-center justify-center text-sm font-bold text-primary-foreground shadow-md shadow-primary/20">
-                  {user?.displayName?.charAt(0)}
-                </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[hsl(var(--wine-success))] border-2 border-sidebar" />
-              </div>
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-sm font-medium text-foreground truncate">{user?.displayName}</p>
-                <p className="text-[11px] text-muted-foreground capitalize">{role?.name}</p>
-              </div>
-            </button>
-            <ThemeToggle />
-          </div>
-          <button onClick={() => { logout(); navigate('/login'); }} className="nav-item w-full text-destructive hover:bg-destructive/10">
-            <LogOut className="w-4 h-4" />
-            Logout
-          </button>
-        </div>
+        {sidebarContent}
       </aside>
     </>
+  );
+}
+
+function NavButton({ item, active, onClick }: { item: NavItem; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm transition-all ${
+        active
+          ? 'bg-primary/10 text-primary font-medium'
+          : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+      }`}
+    >
+      <item.icon className={`w-[18px] h-[18px] flex-shrink-0 ${active ? 'text-primary' : ''}`} />
+      <span className="truncate">{item.label}</span>
+    </button>
   );
 }
