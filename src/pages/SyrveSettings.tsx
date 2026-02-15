@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, Loader2,
   Store, Building2, Beaker, Eye, EyeOff, Package, Clock, Zap, ChevronDown,
-  ChevronRight, Wine, FileText, ArrowRightLeft, Filter,
+  ChevronRight, FileText, ArrowRightLeft, Filter,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

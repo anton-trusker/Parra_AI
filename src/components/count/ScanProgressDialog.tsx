@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, CheckCircle2, AlertTriangle, Search, Wine } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertTriangle, Search, Package } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 
@@ -138,8 +138,8 @@ export default function ScanProgressDialog({ open, aiResult, onComplete, onManua
 
         {stage === 'variants' && aiResult?.variants && (
           <>
-            <Wine className="w-10 h-10 mx-auto mb-3 text-primary" />
-            <p className="font-heading font-semibold mb-1">Wine found — select vintage</p>
+            <Package className="w-10 h-10 mx-auto mb-3 text-primary" />
+            <p className="font-heading font-semibold mb-1">Product found — select variant</p>
             {aiResult.extracted?.product_name && (
               <p className="text-sm text-muted-foreground mb-3 truncate">{aiResult.extracted.product_name}</p>
             )}

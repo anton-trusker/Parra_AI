@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
-import { ArrowLeft, Brain, Eye, Sliders, Image, Loader2, RefreshCw, Key } from 'lucide-react';
+import { ArrowLeft, Brain, Sliders, Image, Loader2, Key } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,23 +41,10 @@ function useUpdateAiConfig() {
   });
 }
 
-function useWineStats() {
-  return useQuery({
-    queryKey: ['wine_stats_for_ai'],
-    queryFn: async () => {
-      const { count: total } = await supabase.from('wines').select('id', { count: 'exact', head: true }).eq('is_active', true);
-      const { count: withEmbedding } = await supabase.from('wines').select('id', { count: 'exact', head: true }).eq('is_active', true).not('embedding', 'is', null);
-      const { count: withSearchText } = await supabase.from('wines').select('id', { count: 'exact', head: true }).eq('is_active', true).not('search_text', 'is', null);
-      return { total: total || 0, withEmbedding: withEmbedding || 0, withSearchText: withSearchText || 0 };
-    },
-  });
-}
-
 export default function AiSettings() {
   const { user } = useAuthStore();
   const { data: config, isLoading } = useAiConfig();
   const updateConfig = useUpdateAiConfig();
-  const { data: stats } = useWineStats();
 
   const [form, setForm] = useState({
     is_active: true,
@@ -82,7 +69,6 @@ export default function AiSettings() {
   }, [config]);
 
   const [saving, setSaving] = useState(false);
-  const [reindexing, setReindexing] = useState(false);
 
   if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
@@ -107,23 +93,6 @@ export default function AiSettings() {
       toast.error(e.message || 'Failed to save');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleReindex = async () => {
-    setReindexing(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await supabase.functions.invoke('generate-wine-embeddings', {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (res.error) throw res.error;
-      const result = res.data;
-      toast.success(`Reindexed ${result?.updated || 0} wines`);
-    } catch (e: any) {
-      toast.error(e.message || 'Reindex failed');
-    } finally {
-      setReindexing(false);
     }
   };
 
@@ -157,24 +126,6 @@ export default function AiSettings() {
           Save Changes
         </Button>
       </div>
-
-      {/* Index Stats */}
-      {stats && (
-        <div className="grid gap-3 grid-cols-3">
-          <div className="rounded-lg bg-secondary/50 p-3 text-center">
-            <p className="text-2xl font-bold">{stats.total}</p>
-            <p className="text-xs text-muted-foreground">Total wines</p>
-          </div>
-          <div className="rounded-lg bg-secondary/50 p-3 text-center">
-            <p className="text-2xl font-bold">{stats.withSearchText}</p>
-            <p className="text-xs text-muted-foreground">Text indexed</p>
-          </div>
-          <div className="rounded-lg bg-secondary/50 p-3 text-center">
-            <p className="text-2xl font-bold">{stats.withEmbedding}</p>
-            <p className="text-xs text-muted-foreground">Embeddings</p>
-          </div>
-        </div>
-      )}
 
       <CollapsibleSection icon={Brain} title="Recognition Pipeline" defaultOpen>
         <div className="space-y-4">
@@ -269,14 +220,6 @@ export default function AiSettings() {
             </Button>
           )}
         </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection icon={RefreshCw} title="Search Index">
-        <p className="text-sm text-muted-foreground mb-3">Rebuild the text search index for all active wines. This enables fuzzy matching during label recognition.</p>
-        <Button onClick={handleReindex} disabled={reindexing} variant="outline">
-          {reindexing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-          Rebuild Search Index
-        </Button>
       </CollapsibleSection>
     </div>
   );

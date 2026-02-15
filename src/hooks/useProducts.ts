@@ -12,8 +12,6 @@ export interface Product {
   category_id: string | null;
   is_active: boolean | null;
   is_deleted: boolean | null;
-  is_marked: boolean;
-  is_by_glass: boolean;
   sale_price: number | null;
   purchase_price: number | null;
   default_sale_price: number | null;
@@ -47,8 +45,6 @@ export function useProducts(filters?: {
   productType?: string[];
   categoryId?: string;
   stockStatus?: string;
-  isMarked?: boolean;
-  isByGlass?: boolean;
 }) {
   return useQuery({
     queryKey: ['products', filters],
@@ -69,44 +65,15 @@ export function useProducts(filters?: {
       if (filters?.categoryId) {
         query = query.eq('category_id', filters.categoryId);
       }
-      if (filters?.isMarked === true) {
-        query = query.eq('is_marked', true);
-      }
-      if (filters?.isByGlass === true) {
-        query = query.eq('is_by_glass', true);
-      }
 
       const { data, error } = await query.limit(500);
       if (error) throw error;
-      // Hide products whose category was soft-deleted
       return ((data || []) as Product[]).filter(p => {
-        if (!p.categories) return true; // uncategorized products are shown
+        if (!p.categories) return true;
         const cat = p.categories as any;
         return cat.is_active !== false && cat.is_deleted !== true;
       });
     },
-  });
-}
-
-export function useToggleProductFlag() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, field, value }: { id: string; field: 'is_marked' | 'is_by_glass'; value: boolean }) => {
-      const { error } = await supabase.from('products').update({ [field]: value }).eq('id', id);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
-  });
-}
-
-export function useBulkToggleProductFlag() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ ids, field, value }: { ids: string[]; field: 'is_marked' | 'is_by_glass'; value: boolean }) => {
-      const { error } = await supabase.from('products').update({ [field]: value }).in('id', ids);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['products'] }),
   });
 }
 
@@ -148,7 +115,6 @@ export function useDeleteCategory() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (categoryId: string) => {
-      // Soft-delete: set is_active=false, is_deleted=true on category and children
       const { data: children } = await supabase
         .from('categories')
         .select('id')
@@ -157,7 +123,6 @@ export function useDeleteCategory() {
       const ids = [categoryId, ...(children || []).map(c => c.id)];
       
       for (const id of ids) {
-        // Also get grandchildren recursively
         const { data: grandchildren } = await supabase
           .from('categories')
           .select('id')

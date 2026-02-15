@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Wine as WineIcon, Clock, CheckCircle2, BarChart3, ArrowRight, Scan, Camera, Search } from 'lucide-react';
+import { Package, Clock, CheckCircle2, BarChart3, ArrowRight, Scan, Camera, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { InventoryItem } from '@/hooks/useInventorySessions';
 
@@ -15,10 +15,10 @@ interface SessionSummaryProps {
 export default function SessionSummary({ sessionId, sessionName, items, duration, onStartNew, onClose }: SessionSummaryProps) {
   const navigate = useNavigate();
 
-  const totalWines = items.length;
+  const totalProducts = items.length;
   const totalUnopened = items.reduce((s, i) => s + (i.counted_quantity_unopened || 0), 0);
   const totalOpened = items.reduce((s, i) => s + (i.counted_quantity_opened || 0), 0);
-  const totalBottles = totalUnopened + totalOpened;
+  const totalItems = totalUnopened + totalOpened;
 
   const methodBreakdown = {
     barcode: items.filter(i => i.counting_method === 'barcode').length,
@@ -36,7 +36,7 @@ export default function SessionSummary({ sessionId, sessionName, items, duration
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-background/90 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-md mx-4 bg-card border border-border rounded-2xl overflow-hidden shadow-2xl">
-        <div className="wine-gradient p-6 text-center">
+        <div className="app-gradient p-6 text-center">
           <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-primary-foreground" />
           <h2 className="font-heading text-xl font-bold text-primary-foreground">Session Complete</h2>
           <p className="text-primary-foreground/70 text-sm mt-1">{sessionName}</p>
@@ -44,19 +44,19 @@ export default function SessionSummary({ sessionId, sessionName, items, duration
 
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="wine-glass-effect rounded-lg p-3 text-center">
-              <WineIcon className="w-5 h-5 mx-auto mb-1 text-accent" />
-              <p className="font-heading text-2xl font-bold">{totalWines}</p>
-              <p className="text-xs text-muted-foreground">Wines Counted</p>
+            <div className="glass-card rounded-lg p-3 text-center">
+              <Package className="w-5 h-5 mx-auto mb-1 text-accent" />
+              <p className="font-heading text-2xl font-bold">{totalProducts}</p>
+              <p className="text-xs text-muted-foreground">Products Counted</p>
             </div>
-            <div className="wine-glass-effect rounded-lg p-3 text-center">
+            <div className="glass-card rounded-lg p-3 text-center">
               <BarChart3 className="w-5 h-5 mx-auto mb-1 text-accent" />
-              <p className="font-heading text-2xl font-bold">{totalBottles}</p>
-              <p className="text-xs text-muted-foreground">Total Bottles</p>
+              <p className="font-heading text-2xl font-bold">{totalItems}</p>
+              <p className="text-xs text-muted-foreground">Total Items</p>
             </div>
           </div>
 
-          <div className="wine-glass-effect rounded-lg p-3">
+          <div className="glass-card rounded-lg p-3">
             <div className="flex justify-between text-sm mb-1">
               <span className="text-muted-foreground">Unopened</span>
               <span className="font-semibold">{totalUnopened}</span>
@@ -71,7 +71,7 @@ export default function SessionSummary({ sessionId, sessionName, items, duration
             </div>
           </div>
 
-          <div className="wine-glass-effect rounded-lg p-3">
+          <div className="glass-card rounded-lg p-3">
             <p className="text-xs text-muted-foreground mb-2">Recognition Methods</p>
             <div className="flex gap-3">
               {methodBreakdown.barcode > 0 && (
@@ -97,8 +97,8 @@ export default function SessionSummary({ sessionId, sessionName, items, duration
         </div>
 
         <div className="p-5 pt-0 space-y-2">
-          <Button className="w-full wine-gradient text-primary-foreground hover:opacity-90" onClick={onStartNew}>
-            <WineIcon className="w-4 h-4 mr-2" /> Start New Count
+          <Button className="w-full app-gradient text-primary-foreground hover:opacity-90" onClick={onStartNew}>
+            <Package className="w-4 h-4 mr-2" /> Start New Count
           </Button>
           <Button variant="outline" className="w-full border-border" onClick={() => navigate('/sessions')}>
             View Sessions <ArrowRight className="w-4 h-4 ml-2" />
