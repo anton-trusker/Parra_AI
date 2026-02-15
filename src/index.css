@@ -234,6 +234,78 @@
   .wine-badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
+
+  /* Quick filter pills - always visible bar */
+  .quick-filter-bar {
+    @apply flex items-center gap-2 flex-wrap;
+  }
+
+  .quick-filter-pill {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition-all duration-200;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+    color: hsl(var(--muted-foreground));
+  }
+
+  .quick-filter-pill:hover {
+    border-color: hsl(var(--primary) / 0.4);
+    color: hsl(var(--foreground));
+    background: hsl(var(--primary) / 0.05);
+  }
+
+  .quick-filter-pill.active {
+    border-color: hsl(var(--primary) / 0.5);
+    background: hsl(var(--primary) / 0.1);
+    color: hsl(var(--primary));
+    font-weight: 600;
+  }
+
+  /* Modern tabs override */
+  .modern-tabs [role="tablist"] {
+    background: hsl(var(--muted) / 0.5);
+    border: 1px solid hsl(var(--border));
+    border-radius: 10px;
+    padding: 3px;
+    gap: 2px;
+  }
+
+  .modern-tabs [role="tab"] {
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 13px;
+    padding: 6px 14px;
+    transition: all 0.2s ease;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .modern-tabs [role="tab"][data-state="active"] {
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
+    box-shadow: 0 1px 3px hsl(var(--foreground) / 0.08);
+    font-weight: 600;
+  }
+
+  .modern-tabs [role="tab"]:hover:not([data-state="active"]) {
+    color: hsl(var(--foreground));
+    background: hsl(var(--muted) / 0.5);
+  }
+
+  /* Enhanced card with left accent */
+  .accent-card {
+    @apply glass-card;
+    border-left: 3px solid hsl(var(--primary) / 0.3);
+  }
+
+  .accent-card:hover {
+    border-left-color: hsl(var(--primary));
+  }
+
+  /* Filter section container */
+  .filter-section {
+    @apply rounded-xl p-4;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+  }
 }
 
 @keyframes shimmer {

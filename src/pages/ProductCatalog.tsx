@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useColumnStore } from '@/stores/columnStore';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
-import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, MoreHorizontal, Eye, Copy, History, Trash2, CheckSquare, Download, Tag, Power, FolderTree, Store, Layers } from 'lucide-react';
+import { useStores } from '@/hooks/useStores';
+import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, MoreHorizontal, Eye, Copy, History, Trash2, CheckSquare, Download, Tag, Power, FolderTree, Store, Layers, Warehouse, AlertTriangle, Ban, DollarSign } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,20 +50,20 @@ const PRODUCT_FILTER_DEFS: FilterDef[] = [
 
 function TypeBadge({ type }: { type: string | null }) {
   const colors: Record<string, string> = {
-    GOODS: 'bg-emerald-500/20 text-emerald-400',
-    DISH: 'bg-amber-500/20 text-amber-400',
-    MODIFIER: 'bg-sky-500/20 text-sky-400',
-    OUTER: 'bg-purple-500/20 text-purple-400',
-    PREPARED: 'bg-orange-500/20 text-orange-400',
+    GOODS: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+    DISH: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+    MODIFIER: 'bg-sky-500/20 text-sky-400 border border-sky-500/30',
+    OUTER: 'bg-purple-500/20 text-purple-400 border border-purple-500/30',
+    PREPARED: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
   };
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[type || ''] || 'bg-secondary text-secondary-foreground'}`}>{type || '—'}</span>;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${colors[type || ''] || 'bg-secondary text-secondary-foreground border border-border'}`}>{type || '—'}</span>;
 }
 
 function StockIndicator({ stock }: { stock: number | null }) {
   if (stock === null || stock === undefined) return <span className="text-muted-foreground">—</span>;
-  if (stock <= 0) return <span className="text-destructive font-medium">{stock}</span>;
-  if (stock < 5) return <span className="text-amber-400 font-medium">{stock}</span>;
-  return <span className="text-emerald-400 font-medium">{stock}</span>;
+  if (stock <= 0) return <span className="inline-flex items-center gap-1 text-destructive font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-destructive" />{stock}</span>;
+  if (stock < 5) return <span className="inline-flex items-center gap-1 text-amber-500 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />{stock}</span>;
+  return <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'hsl(var(--wine-success))' }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: 'hsl(var(--wine-success))' }} />{stock}</span>;
 }
 
 function ContainerInfo({ syrveData }: { syrveData: any }) {
@@ -83,7 +84,7 @@ function ContainerInfo({ syrveData }: { syrveData: any }) {
 function ProductCard({ product, onClick }: { product: Product; onClick: () => void }) {
   const containers = product.syrve_data?.containers;
   return (
-    <div className="rounded-xl overflow-hidden group transition-all duration-300 border border-border hover:border-accent/30 hover:shadow-lg cursor-pointer bg-card" onClick={onClick}>
+    <div className="rounded-xl overflow-hidden group transition-all duration-300 border border-border hover:border-primary/30 hover:shadow-lg cursor-pointer bg-card" onClick={onClick}>
       <div className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <h3 className="font-heading font-semibold text-sm line-clamp-2">{product.name}</h3>
@@ -159,6 +160,9 @@ export default function ProductCatalog() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // Quick filters
+  const [quickFilter, setQuickFilter] = useState<string | null>(null);
+
   const categoryFromUrl = searchParams.get('category') || undefined;
 
   const { data: products = [], isLoading } = useProducts({
@@ -168,6 +172,7 @@ export default function ProductCatalog() {
   });
 
   const { data: categories = [] } = useSyrveCategories();
+  const { data: stores = [] } = useStores();
 
   const productTypes = useMemo(() => [...new Set(products.map(p => p.product_type).filter(Boolean) as string[])].sort(), [products]);
   const categoryOptions = useMemo(() => [...new Set(products.map(p => p.categories?.name).filter(Boolean) as string[])].sort(), [products]);
@@ -179,6 +184,14 @@ export default function ProductCatalog() {
     if (products.some(p => (p.current_stock ?? 0) >= 5)) opts.push('In Stock');
     return opts;
   }, [products]);
+
+  // Quick filter counts
+  const quickFilterCounts = useMemo(() => ({
+    lowStock: products.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5).length,
+    outOfStock: products.filter(p => (p.current_stock ?? 0) <= 0).length,
+    noPrice: products.filter(p => p.sale_price == null || p.sale_price === 0).length,
+    inactive: products.filter(p => !p.is_active).length,
+  }), [products]);
 
   const filteredProducts = useMemo(() => {
     let result = products;
@@ -193,13 +206,19 @@ export default function ProductCatalog() {
     }
     if (volumeFilter.length > 0) result = result.filter(p => p.unit_capacity != null && volumeFilter.includes(String(p.unit_capacity)));
     if (hasPriceFilter) result = result.filter(p => p.sale_price != null && p.sale_price > 0);
+
+    // Apply quick filter
+    if (quickFilter === 'lowStock') result = result.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5);
+    if (quickFilter === 'outOfStock') result = result.filter(p => (p.current_stock ?? 0) <= 0);
+    if (quickFilter === 'noPrice') result = result.filter(p => p.sale_price == null || p.sale_price === 0);
+    if (quickFilter === 'inactive') result = result.filter(p => !p.is_active);
+
     return result;
-  }, [products, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter]);
+  }, [products, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter, quickFilter]);
 
   const activeFilterCount = [typeFilter, categoryFilter, stockStatusFilter, volumeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (hasPriceFilter ? 1 : 0);
   const fv = (key: string) => productFilters.includes(key);
 
-  // Active filter pills data
   const activeFilterPills = useMemo(() => {
     const pills: { key: string; label: string; onRemove: () => void }[] = [];
     typeFilter.forEach(t => pills.push({ key: `type-${t}`, label: `Type: ${t}`, onRemove: () => setTypeFilter(prev => prev.filter(x => x !== t)) }));
@@ -215,7 +234,7 @@ export default function ProductCatalog() {
   }, [typeFilter, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter, categoryFromUrl, categories, navigate]);
 
   const clearFilters = () => {
-    setTypeFilter([]); setCategoryFilter([]); setStockStatusFilter([]); setVolumeFilter([]); setHasPriceFilter(false);
+    setTypeFilter([]); setCategoryFilter([]); setStockStatusFilter([]); setVolumeFilter([]); setHasPriceFilter(false); setQuickFilter(null);
     if (categoryFromUrl) navigate('/products');
   };
 
@@ -243,7 +262,7 @@ export default function ProductCatalog() {
     { key: 'code', label: 'Code', render: p => <span className="text-muted-foreground text-xs">{p.code || '—'}</span> },
     { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{p.categories?.name || '—'}</span> },
     { key: 'type', label: 'Type', render: p => <TypeBadge type={p.product_type} />, sortFn: (a, b) => (a.product_type || '').localeCompare(b.product_type || '') },
-    { key: 'sale_price', label: 'Sale Price', align: 'right', render: p => <span className="text-accent">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.sale_price || 0) - (b.sale_price || 0) },
+    { key: 'sale_price', label: 'Sale Price', align: 'right', render: p => <span className="text-accent font-medium">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.sale_price || 0) - (b.sale_price || 0) },
     { key: 'purchase_price', label: 'Purchase Price', align: 'right', render: p => <span className="text-muted-foreground">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
     { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
     { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
@@ -252,8 +271,11 @@ export default function ProductCatalog() {
     { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
   ], [selectedIds]);
 
-  // For DataTable: include select + actions columns always
   const visibleCols = useMemo(() => ['select', ...productColumns, 'actions'], [productColumns]);
+
+  const toggleQuickFilter = (key: string) => {
+    setQuickFilter(prev => prev === key ? null : key);
+  };
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -265,17 +287,39 @@ export default function ProductCatalog() {
       </div>
 
       {/* View Mode Selector */}
-      <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg w-fit">
+      <div className="flex items-center gap-1 p-1 rounded-lg w-fit border border-border bg-card">
         {VIEW_MODES.map(m => (
           <button
             key={m.value}
             onClick={() => setViewMode(m.value)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === m.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${viewMode === m.value ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'}`}
           >
             <m.icon className="w-3.5 h-3.5" />
             {m.label}
           </button>
         ))}
+      </div>
+
+      {/* Quick Filters - Always Visible */}
+      <div className="quick-filter-bar">
+        <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mr-1">Quick:</span>
+        <button onClick={() => toggleQuickFilter('lowStock')} className={`quick-filter-pill ${quickFilter === 'lowStock' ? 'active' : ''}`}>
+          <AlertTriangle className="w-3 h-3" /> Low Stock <span className="text-[10px] opacity-70">({quickFilterCounts.lowStock})</span>
+        </button>
+        <button onClick={() => toggleQuickFilter('outOfStock')} className={`quick-filter-pill ${quickFilter === 'outOfStock' ? 'active' : ''}`}>
+          <Ban className="w-3 h-3" /> Out of Stock <span className="text-[10px] opacity-70">({quickFilterCounts.outOfStock})</span>
+        </button>
+        <button onClick={() => toggleQuickFilter('noPrice')} className={`quick-filter-pill ${quickFilter === 'noPrice' ? 'active' : ''}`}>
+          <DollarSign className="w-3 h-3" /> No Price <span className="text-[10px] opacity-70">({quickFilterCounts.noPrice})</span>
+        </button>
+        <button onClick={() => toggleQuickFilter('inactive')} className={`quick-filter-pill ${quickFilter === 'inactive' ? 'active' : ''}`}>
+          <Power className="w-3 h-3" /> Inactive <span className="text-[10px] opacity-70">({quickFilterCounts.inactive})</span>
+        </button>
+        {quickFilter && (
+          <button onClick={() => setQuickFilter(null)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 ml-1">
+            <X className="w-3 h-3" /> Clear
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col gap-3">
@@ -284,48 +328,30 @@ export default function ProductCatalog() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input placeholder="Search by name, SKU, code..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-11 bg-card border-border" />
           </div>
-          <Button variant="outline" className={`h-11 border-border gap-2 ${showFilters ? 'bg-primary/10 text-primary border-primary/30' : ''}`} onClick={() => setShowFilters(!showFilters)}>
-            <SlidersHorizontal className="w-4 h-4" />
-            <span className="hidden sm:inline">Filters</span>
-            {activeFilterCount > 0 && <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">{activeFilterCount}</span>}
-          </Button>
+          <div className="flex items-center gap-2">
+            <MultiSelectFilter label="Type" options={productTypes} selected={typeFilter} onChange={setTypeFilter} />
+            <MultiSelectFilter label="Category" options={categoryOptions} selected={categoryFilter} onChange={setCategoryFilter} />
+            <MultiSelectFilter label="Stock" options={stockStatusOptions} selected={stockStatusFilter} onChange={setStockStatusFilter} />
+            {stores.length > 0 && (
+              <MultiSelectFilter label="Store" options={stores.map(s => s.name)} selected={[]} onChange={() => {}} />
+            )}
+          </div>
           {viewMode === 'all' && view === 'table' && (
             <ColumnManager columns={PRODUCT_COLUMN_DEFS} visibleColumns={productColumns} onChange={setProductColumns} />
           )}
           {viewMode === 'all' && (
-            <div className="flex border border-border rounded-lg overflow-hidden">
-              <button onClick={() => setView('cards')} className={`p-2.5 transition-colors ${view === 'cards' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><LayoutGrid className="w-5 h-5" /></button>
-              <button onClick={() => setView('table')} className={`p-2.5 transition-colors ${view === 'table' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><Table2 className="w-5 h-5" /></button>
+            <div className="flex border border-border rounded-lg overflow-hidden bg-card">
+              <button onClick={() => setView('cards')} className={`p-2.5 transition-all duration-200 ${view === 'cards' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'}`}><LayoutGrid className="w-5 h-5" /></button>
+              <button onClick={() => setView('table')} className={`p-2.5 transition-all duration-200 ${view === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/30'}`}><Table2 className="w-5 h-5" /></button>
             </div>
           )}
         </div>
-
-        {showFilters && (
-          <div className="rounded-xl border border-border bg-card p-4 animate-fade-in">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Filters</p>
-              <div className="flex items-center gap-2">
-                {activeFilterCount > 0 && <Button variant="ghost" size="sm" className="text-xs h-7 text-muted-foreground" onClick={clearFilters}><X className="w-3 h-3 mr-1" /> Clear</Button>}
-                <FilterManager filters={PRODUCT_FILTER_DEFS} visibleFilters={productFilters} onChange={setProductFilters} />
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {fv('type') && <MultiSelectFilter label="Type" options={productTypes} selected={typeFilter} onChange={setTypeFilter} />}
-              {fv('category') && <MultiSelectFilter label="Category" options={categoryOptions} selected={categoryFilter} onChange={setCategoryFilter} />}
-              {fv('stock') && <MultiSelectFilter label="Stock" options={stockStatusOptions} selected={stockStatusFilter} onChange={setStockStatusFilter} />}
-              {fv('volume') && <MultiSelectFilter label="Volume (L)" options={volumeOptions} selected={volumeFilter} onChange={setVolumeFilter} />}
-              {fv('has_price') && (
-                <Button variant={hasPriceFilter ? 'default' : 'outline'} size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setHasPriceFilter(!hasPriceFilter)}>Has Price</Button>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Active Filter Pills */}
         {activeFilterPills.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {activeFilterPills.map(pill => (
-              <Badge key={pill.key} variant="secondary" className="gap-1 cursor-pointer text-xs hover:bg-secondary/80" onClick={pill.onRemove}>
+              <Badge key={pill.key} variant="secondary" className="gap-1 cursor-pointer text-xs hover:bg-destructive/10 hover:text-destructive transition-colors border border-border" onClick={pill.onRemove}>
                 {pill.label}
                 <X className="w-3 h-3" />
               </Badge>
@@ -350,7 +376,7 @@ export default function ProductCatalog() {
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="rounded-xl border border-border overflow-hidden bg-card">
           <DataTable
             data={filteredProducts}
             columns={tableColumns}
@@ -373,7 +399,7 @@ export default function ProductCatalog() {
 
       {/* Bulk Actions Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card border border-border rounded-xl shadow-xl px-5 py-3 flex items-center gap-4 animate-fade-in">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card border-2 border-primary/30 rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 animate-fade-in">
           <div className="flex items-center gap-2">
             <CheckSquare className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium">{selectedIds.size} selected</span>
