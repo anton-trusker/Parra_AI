@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import {
-  LayoutDashboard, Wine, History, BarChart3, Settings, Users, MoreHorizontal, ClipboardCheck, User
+  LayoutDashboard, Package, History, BarChart3, Settings, Users, MoreHorizontal, ClipboardCheck, User
 } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -20,7 +20,7 @@ interface NavItem {
 const allNavItems: NavItem[] = [
   { label: 'Home', icon: LayoutDashboard, path: '/dashboard', module: 'dashboard', primary: true },
   { label: 'Check', icon: ClipboardCheck, path: '/stock', module: 'stock', primary: true },
-  { label: 'Wines', icon: Wine, path: '/catalog', module: 'catalog', primary: true },
+  { label: 'Products', icon: Package, path: '/products', module: 'catalog', primary: true },
   { label: 'History', icon: History, path: '/history', module: 'history', primary: true },
   { label: 'Users', icon: Users, path: '/users', module: 'users' },
   { label: 'Reports', icon: BarChart3, path: '/reports', module: 'reports' },

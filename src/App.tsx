@@ -8,9 +8,6 @@ import AuthProvider from "./components/AuthProvider";
 import AppLayout from "./components/AppLayout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import WineCatalog from "./pages/WineCatalog";
-import WineDetail from "./pages/WineDetail";
-import WineForm from "./pages/WineForm";
 import ImportInventory from "./pages/ImportInventory";
 import InventoryCount from "./pages/InventoryCount";
 import CurrentStock from "./pages/CurrentStock";
@@ -59,11 +56,6 @@ const App = () => (
               <Route path="/" element={<Navigate to="/login" replace />} />
               <Route element={<AppLayout />}>
                 <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/catalog" element={<WineCatalog />} />
-                <Route path="/catalog/new" element={<WineForm />} />
-                <Route path="/catalog/:id" element={<WineDetail />} />
-                <Route path="/catalog/:id/edit" element={<WineForm />} />
-                <Route path="/catalog/import" element={<ImportInventory />} />
                 <Route path="/products" element={<ProductCatalog />} />
                 <Route path="/products/:id" element={<ProductDetail />} />
                 <Route path="/categories" element={<CategoriesPage />} />

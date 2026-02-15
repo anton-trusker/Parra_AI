@@ -165,7 +165,7 @@ export default function InventorySettings() {
       <CollapsibleSection icon={ScanBarcode} title="Counting Methods" defaultOpen>
         <div className="space-y-4">
           <ToggleRow label="Barcode Scanner" description="Enable barcode scanning to identify products during counting" checked={form.barcode_scanner_enabled} onChange={v => setForm(f => ({ ...f, barcode_scanner_enabled: v }))} />
-          <ToggleRow label="AI Label Recognition" description="Use camera-based AI recognition to identify wine labels" checked={form.ai_scanner_enabled} onChange={v => setForm(f => ({ ...f, ai_scanner_enabled: v }))} />
+          <ToggleRow label="AI Label Recognition" description="Use camera-based AI recognition to identify product labels" checked={form.ai_scanner_enabled} onChange={v => setForm(f => ({ ...f, ai_scanner_enabled: v }))} />
           <ToggleRow label="Manual Search" description="Allow staff to search for products manually by name" checked={form.allow_manual_search} onChange={v => setForm(f => ({ ...f, allow_manual_search: v }))} />
 
           <div className="space-y-1 pt-2 border-t">
@@ -183,7 +183,7 @@ export default function InventorySettings() {
             </Select>
           </div>
 
-          <ToggleRow label="Track opened bottles" description="Separately track opened bottles with glass-level measurement" checked={form.track_opened_bottles} onChange={v => setForm(f => ({ ...f, track_opened_bottles: v }))} />
+          <ToggleRow label="Track opened items" description="Separately track opened items with measurement" checked={form.track_opened_bottles} onChange={v => setForm(f => ({ ...f, track_opened_bottles: v }))} />
           <ToggleRow label="Show litres equivalent" description="Display litre equivalent alongside bottle counts" checked={form.show_litres_equivalent} onChange={v => setForm(f => ({ ...f, show_litres_equivalent: v }))} />
           <ToggleRow label="Hide scanner on desktop" description="Hide the barcode/AI scanner interface on desktop browsers. Scanning will only be available on mobile devices." checked={form.hide_scanner_desktop} onChange={v => setForm(f => ({ ...f, hide_scanner_desktop: v }))} />
         </div>

@@ -59,7 +59,7 @@ export default function AppSettings() {
 
   const sections = [
     { icon: Building2, title: 'Business', desc: 'Business profile, locale, currency, and timezone', href: '/settings/business' },
-    { icon: SlidersHorizontal, title: 'General', desc: 'Glass dimensions, locations, bottle volumes, measurement units', href: '/settings/general' },
+    { icon: SlidersHorizontal, title: 'General', desc: 'Measurement units and general configuration', href: '/settings/general' },
     { icon: ClipboardCheck, title: 'Inventory Rules', desc: 'Approval workflows, variance thresholds, counting rules', href: '/settings/inventory' },
     { icon: RefreshCw, title: 'Syrve Integration', desc: 'Connect to Syrve Server API for product catalog sync', href: '/settings/syrve' },
     { icon: Brain, title: 'AI Recognition', desc: 'Configure label recognition pipeline and thresholds', href: '/settings/ai' },

@@ -711,36 +711,8 @@ export default function SyrveSettings() {
 
               <Separator />
 
-              {/* Wine Category Mapping */}
+              {/* Import inactive toggle */}
               <div className="space-y-3">
-                <Label className="text-sm font-medium">Wine Catalog Integration</Label>
-                <div className="p-3 rounded-lg border space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Wine className="w-4 h-4 text-primary" />
-                    <p className="text-sm font-medium">Wine Categories</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Select which Syrve categories contain wines. Products in these categories will be auto-linked to the Wine Catalog during sync.
-                  </p>
-                  {categories && categories.length > 0 ? (
-                    <CategoryTreePicker
-                      categories={(selectedCategoryIds.length > 0
-                        ? (categories as any[]).filter((c: any) => selectedCategoryIds.includes(c.id))
-                        : categories) as any}
-                      selectedIds={fieldMapping.wine_category_ids || []}
-                      onSelectionChange={(ids) => setFieldMapping((prev: any) => ({ ...prev, wine_category_ids: ids }))}
-                      title="Wine Categories"
-                      summaryPrefix="Selected"
-                    />
-                  ) : (
-                    <p className="text-xs text-muted-foreground italic">No categories synced yet. Run a sync first.</p>
-                  )}
-                  {(fieldMapping.wine_category_ids?.length > 0) && (
-                    <Badge variant="secondary" className="text-xs">
-                      {fieldMapping.wine_category_ids.length} wine {fieldMapping.wine_category_ids.length === 1 ? 'category' : 'categories'} selected
-                    </Badge>
-                  )}
-                </div>
                 <div className="flex items-center justify-between p-3 rounded-lg border">
                   <div>
                     <p className="text-sm font-medium">Import Inactive Products</p>

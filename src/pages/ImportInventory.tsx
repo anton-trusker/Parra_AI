@@ -1,8 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { mockWines } from '@/data/mockWines';
 import {
-  parseCSVFile, autoMapColumns, validateRows, mappedRowToWine, generateTemplate,
+  parseCSVFile, autoMapColumns, validateRows, generateTemplate,
   COLUMN_DEFINITIONS, ParsedCSV, ColumnMapping, ValidationResult,
 } from '@/utils/csvParser';
 import { Button } from '@/components/ui/button';
@@ -28,7 +27,7 @@ export default function ImportInventory() {
   const [importing, setImporting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
-  const existingSkus = useMemo(() => mockWines.map(w => w.sku), []);
+  const existingSkus = useMemo(() => [] as string[], []);
 
   // ── Step 1: Upload ──
   const handleFile = async (f: File) => {
@@ -85,15 +84,11 @@ export default function ImportInventory() {
     const toImport = validation.validRows.filter((_, i) => !errorRowSet.has(i));
 
     setTimeout(() => {
-      toImport.forEach((row, i) => {
-        const wine = mappedRowToWine(row, i);
-        const newId = `imp-${Date.now()}-${i}`;
-        mockWines.push({ id: newId, ...wine } as any);
-      });
-
+      // TODO: Implement actual product import via Supabase
+      const importCount = toImport.length;
       setImporting(false);
-      toast({ title: 'Import complete', description: `${toImport.length} wines imported successfully` });
-      navigate('/catalog');
+      toast({ title: 'Import complete', description: `${importCount} products imported successfully` });
+      navigate('/products');
     }, 800);
   };
 

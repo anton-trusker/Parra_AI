@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { mockUsers, MockUser } from '@/data/mockWines';
+import { mockUsers, MockUser } from '@/data/mockUsers';
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate } from 'react-router-dom';
 import { Plus, UserCheck, UserX, Shield, User, Search, Filter } from 'lucide-react';
