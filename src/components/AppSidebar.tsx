@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import {
-  LayoutDashboard, Wine, Package, History, BarChart3, ClipboardCheck,
+  LayoutDashboard, Package, History, BarChart3, ClipboardCheck,
   LogOut, Settings, User, Plus, ScanLine, Truck, FolderTree
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
@@ -31,7 +31,6 @@ const navGroups: NavGroup[] = [
   {
     title: 'Inventory',
     items: [
-      { label: 'Wine Inventory', icon: Wine, path: '/catalog', module: 'catalog' },
       { label: 'Inventarisation Check', icon: ClipboardCheck, path: '/stock', module: 'stock' },
     ],
   },
@@ -96,7 +95,7 @@ export default function AppSidebar() {
       <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-sidebar/95 backdrop-blur-md border-b border-sidebar-border px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg wine-gradient flex items-center justify-center">
-            <Wine className="w-4 h-4 text-primary-foreground" />
+            <Package className="w-4 h-4 text-primary-foreground" />
           </div>
           <h1 className="font-heading text-base font-semibold text-foreground">Parra</h1>
         </div>
@@ -113,8 +112,8 @@ export default function AppSidebar() {
         {/* Logo */}
         <div className="p-6 border-b border-sidebar-border">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl wine-gradient flex items-center justify-center shadow-lg shadow-primary/20">
-              <Wine className="w-5 h-5 text-primary-foreground" />
+          <div className="w-10 h-10 rounded-xl wine-gradient flex items-center justify-center shadow-lg shadow-primary/20">
+              <Package className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
               <h1 className="font-heading text-lg font-semibold text-foreground">Parra</h1>

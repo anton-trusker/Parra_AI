@@ -1,13 +1,15 @@
 import { useAuthStore } from '@/stores/authStore';
-import { mockWines, mockMovements } from '@/data/mockWines';
 import { useNavigate } from 'react-router-dom';
 import {
-  Wine, Package, AlertTriangle, Users, Clock, Scan, Search, Camera,
+  Package, AlertTriangle, Users, Clock,
   TrendingUp, ArrowRight
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAppSetting } from '@/hooks/useAppSettings';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useProducts } from '@/hooks/useProducts';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 
 function StatCard({ icon: Icon, label, value, sub, color, onClick }: {
   icon: any; label: string; value: string | number; sub?: string; color?: string; onClick?: () => void;
@@ -27,21 +29,6 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }: {
   );
 }
 
-function MethodBadge({ method }: { method: string }) {
-  const config: Record<string, { label: string; icon: any; cls: string }> = {
-    manual: { label: 'Search', icon: Search, cls: 'bg-secondary text-secondary-foreground' },
-    barcode: { label: 'Barcode', icon: Scan, cls: 'bg-primary/15 text-primary' },
-    image_ai: { label: 'Image AI', icon: Camera, cls: 'bg-accent/15 text-accent' },
-  };
-  const c = config[method] || config.manual;
-  return (
-    <span className={`wine-badge ${c.cls}`}>
-      <c.icon className="w-3 h-3 mr-1" />
-      {c.label}
-    </span>
-  );
-}
-
 export default function Dashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -50,22 +37,18 @@ export default function Dashboard() {
   const { data: hideScannerDesktop } = useAppSetting('inventory_hide_scanner_desktop', false);
   const shouldHideScanner = !isMobile && hideScannerDesktop === true;
 
-  const totalWines = mockWines.filter(w => w.isActive).length;
-  const totalStock = mockWines.reduce((s, w) => s + w.stockUnopened + w.stockOpened, 0);
-  const lowStock = mockWines.filter(w => (w.stockUnopened + w.stockOpened) > 0 && (w.stockUnopened + w.stockOpened) < w.minStockLevel).length;
-  const outOfStock = mockWines.filter(w => (w.stockUnopened + w.stockOpened) === 0).length;
-  const totalValue = mockWines.reduce((s, w) => s + (w.stockUnopened + w.stockOpened) * w.price, 0);
+  const { data: products = [] } = useProducts();
+  const { data: userCount } = useQuery({
+    queryKey: ['user_count_dashboard'],
+    queryFn: async () => {
+      const { count } = await supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_active', true);
+      return count || 0;
+    },
+  });
 
-  const movements = isAdmin ? mockMovements : mockMovements.filter(m => m.userId === user?.id);
-
-  const timeAgo = (ts: string) => {
-    const diff = Date.now() - new Date(ts).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    return `${Math.floor(hrs / 24)}d ago`;
-  };
+  const totalProducts = products.filter(p => p.is_active).length;
+  const totalStock = products.reduce((s, p) => s + (Number(p.current_stock) || 0), 0);
+  const lowStock = products.filter(p => (Number(p.current_stock) || 0) > 0 && (Number(p.current_stock) || 0) < 5).length;
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -74,22 +57,22 @@ export default function Dashboard() {
           {isAdmin ? 'Admin Dashboard' : `Welcome, ${user?.displayName?.split(' ')[0]}!`}
         </h1>
         <p className="text-muted-foreground mt-1">
-          {isAdmin ? 'Complete overview of your wine inventory' : 'Ready to count inventory'}
+          {isAdmin ? 'Complete overview of your inventory' : 'Ready to count inventory'}
         </p>
       </div>
 
       {/* Stats */}
       <div className={`grid gap-4 ${isAdmin ? 'grid-cols-2 lg:grid-cols-4' : 'grid-cols-2'}`}>
-        <StatCard icon={Wine} label="Wines in Catalog" value={totalWines} onClick={() => navigate('/catalog')} />
+        <StatCard icon={Package} label="Products" value={totalProducts} onClick={() => navigate('/products')} />
         {isAdmin && (
           <>
-            <StatCard icon={Package} label="Total Bottles" value={totalStock.toLocaleString()} sub={`Value: $${totalValue.toLocaleString()}`} onClick={() => navigate('/stock')} />
-            <StatCard icon={AlertTriangle} label="Low Stock" value={lowStock} sub={`${outOfStock} out of stock`} color="bg-wine-warning/15 text-wine-warning" onClick={() => navigate('/stock')} />
-            <StatCard icon={Users} label="Active Staff" value={3} color="bg-wine-success/15 text-wine-success" onClick={() => navigate('/users')} />
+            <StatCard icon={Package} label="Total Stock" value={totalStock.toLocaleString()} onClick={() => navigate('/stock')} />
+            <StatCard icon={AlertTriangle} label="Low Stock" value={lowStock} color="bg-wine-warning/15 text-wine-warning" onClick={() => navigate('/stock')} />
+            <StatCard icon={Users} label="Active Users" value={userCount ?? '—'} color="bg-wine-success/15 text-wine-success" onClick={() => navigate('/users')} />
           </>
         )}
         {!isAdmin && (
-          <StatCard icon={TrendingUp} label="My Counts Today" value={movements.length} />
+          <StatCard icon={TrendingUp} label="My Counts Today" value={0} />
         )}
       </div>
 
@@ -100,7 +83,7 @@ export default function Dashboard() {
             onClick={() => navigate('/count')}
             className="h-16 text-lg font-semibold wine-gradient text-primary-foreground hover:opacity-90"
           >
-            <Wine className="w-5 h-5 mr-2" />
+            <Package className="w-5 h-5 mr-2" />
             Start Inventory Count
           </Button>
         )}
@@ -116,54 +99,14 @@ export default function Dashboard() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => navigate('/catalog')}
+              onClick={() => navigate('/products')}
               className="h-16 text-lg font-semibold border-border hover:bg-card"
             >
-              <Wine className="w-5 h-5 mr-2" />
-              Manage Catalog
+              <Package className="w-5 h-5 mr-2" />
+              Product Catalog
             </Button>
           </>
         )}
-      </div>
-
-      {/* Recent Activity */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-heading text-xl font-semibold">Recent Activity</h2>
-          <Button variant="ghost" size="sm" onClick={() => navigate('/history')} className="text-accent">
-            View All <ArrowRight className="w-4 h-4 ml-1" />
-          </Button>
-        </div>
-        <div className="space-y-3">
-          {movements.slice(0, 5).map((m) => (
-            <div key={m.id} className="wine-glass-effect rounded-lg p-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-accent">
-                {m.userName.charAt(0)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {isAdmin && <span className="text-accent">{m.userName}</span>}
-                  {isAdmin && ' counted '}
-                  {!isAdmin && 'You counted '}
-                  <span className="text-foreground">{m.wineName}</span>
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <MethodBadge method={m.method} />
-                  <span className="text-xs text-muted-foreground">
-                    {m.unopened + m.opened} bottles
-                  </span>
-                  {m.confidence && (
-                    <span className="text-xs text-accent">{m.confidence}% match</span>
-                  )}
-                </div>
-              </div>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                <Clock className="w-3 h-3 inline mr-1" />
-                {timeAgo(m.timestamp)}
-              </span>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import { useColumnStore } from '@/stores/columnStore';
-import { useWines, Wine } from '@/hooks/useWines';
+import { useProducts, Product } from '@/hooks/useProducts';
 import { useInventorySessions, useApproveSession, useFlagSession } from '@/hooks/useInventorySessions';
 import { useBaselineItems, useProductAggregates, useCountEvents } from '@/hooks/useInventoryEvents';
 import { useCreateSession, useCompleteSession, useSessionItems } from '@/hooks/useInventorySessions';
@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import {
   Search, Download, SlidersHorizontal, X, ClipboardCheck, Plus, Package,
   Clock, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp,
-  ThumbsUp, Flag, Users, Filter, Send, Wine as WineIcon, Loader2
+  ThumbsUp, Flag, Users, Filter, Send, Loader2
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -40,94 +40,52 @@ type SessionStatus = Database['public']['Enums']['session_status_enum'];
 // ═══════════════════════════════════════════════
 
 const STOCK_COLUMN_DEFS: ColumnDef[] = [
-  { key: 'wine', label: 'Wine' },
-  { key: 'producer', label: 'Producer' },
-  { key: 'vintage', label: 'Year' },
-  { key: 'type', label: 'Type' },
-  { key: 'volume', label: 'Volume' },
-  { key: 'country', label: 'Country' },
-  { key: 'region', label: 'Region' },
-  { key: 'closed', label: 'Closed' },
-  { key: 'open', label: 'Open' },
-  { key: 'total', label: 'Total' },
-  { key: 'totalLitres', label: 'Total (L)' },
-  { key: 'par', label: 'Par Level' },
-  { key: 'status', label: 'Status' },
-  { key: 'value', label: 'Value' },
+  { key: 'name', label: 'Product' },
   { key: 'sku', label: 'SKU' },
-  { key: 'barcode', label: 'Barcode' },
-  { key: 'location', label: 'Location' },
-  { key: 'source', label: 'Source' },
+  { key: 'code', label: 'Code' },
+  { key: 'category', label: 'Category' },
+  { key: 'type', label: 'Type' },
+  { key: 'stock', label: 'Stock' },
+  { key: 'sale_price', label: 'Sale Price' },
+  { key: 'purchase_price', label: 'Purchase Price' },
+  { key: 'synced', label: 'Last Synced' },
 ];
-
-const TYPE_DISPLAY: Record<string, string> = {
-  red: 'Red', white: 'White', rose: 'Rosé', sparkling: 'Sparkling', fortified: 'Fortified', dessert: 'Dessert',
-};
 
 // ═══════════════════════════════════════════════
 // Shared components
 // ═══════════════════════════════════════════════
 
-function StockStatusBadge({ wine }: { wine: Wine }) {
-  if (wine.stock_status === 'out_of_stock') return <span className="wine-badge stock-out">✗ Out</span>;
-  if (wine.stock_status === 'low_stock') return <span className="wine-badge stock-low">⚠ Low</span>;
+function StockStatusBadge({ stock }: { stock: number | null }) {
+  const s = stock ?? 0;
+  if (s <= 0) return <span className="wine-badge stock-out">✗ Out</span>;
+  if (s < 5) return <span className="wine-badge stock-low">⚠ Low</span>;
   return <span className="wine-badge stock-healthy">✓ In Stock</span>;
 }
 
 function TypeBadge({ type }: { type: string | null }) {
-  const display = type ? TYPE_DISPLAY[type] || type : '—';
-  const colors: Record<string, string> = {
-    red: 'bg-primary/20 text-primary',
-    white: 'bg-accent/20 text-accent',
-    rose: 'bg-pink-500/20 text-pink-400',
-    sparkling: 'bg-sky-500/20 text-sky-400',
-    fortified: 'bg-amber-600/20 text-amber-500',
-    dessert: 'bg-orange-500/20 text-orange-400',
-  };
-  return <span className={`wine-badge ${colors[type || ''] || 'bg-secondary text-secondary-foreground'}`}>{display}</span>;
-}
-
-function EnrichmentBadge({ source }: { source: string | null | undefined }) {
-  if (!source || source === 'manual') return null;
-  const colors: Record<string, string> = { syrve_auto: 'bg-sky-500/20 text-sky-400', ai: 'bg-purple-500/20 text-purple-400', csv: 'bg-emerald-500/20 text-emerald-400' };
-  const labels: Record<string, string> = { syrve_auto: 'Auto', ai: 'AI', csv: 'CSV' };
-  return <span className={`wine-badge ${colors[source] || 'bg-secondary text-secondary-foreground'}`}>{labels[source] || source}</span>;
+  if (!type) return <span className="text-muted-foreground">—</span>;
+  return <span className="wine-badge bg-secondary text-secondary-foreground">{type}</span>;
 }
 
 // ═══════════════════════════════════════════════
 // Inventory Tab
 // ═══════════════════════════════════════════════
 
-function buildStockColumns(isManager: boolean): DataTableColumn<Wine>[] {
+function buildStockColumns(isManager: boolean): DataTableColumn<Product>[] {
   return [
-    { key: 'wine', label: 'Wine', minWidth: 140, render: w => <span className="font-medium">{w.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
-    { key: 'producer', label: 'Producer', render: w => <span className="text-muted-foreground">{w.producer || '—'}</span>, sortFn: (a, b) => (a.producer || '').localeCompare(b.producer || '') },
-    { key: 'vintage', label: 'Year', align: 'center', render: w => w.vintage || 'NV', sortFn: (a, b) => (b.vintage || 0) - (a.vintage || 0) },
-    { key: 'type', label: 'Type', render: w => <TypeBadge type={w.wine_type} />, sortFn: (a, b) => (a.wine_type || '').localeCompare(b.wine_type || '') },
-    { key: 'volume', label: 'Volume', render: w => <span className="text-muted-foreground">{w.volume_ml || 750}ml</span> },
-    { key: 'country', label: 'Country', render: w => <span className="text-muted-foreground">{w.country || '—'}</span>, sortFn: (a, b) => (a.country || '').localeCompare(b.country || '') },
-    { key: 'region', label: 'Region', render: w => <span className="text-muted-foreground">{w.region || '—'}</span>, sortFn: (a, b) => (a.region || '').localeCompare(b.region || '') },
+    { key: 'name', label: 'Product', minWidth: 180, render: p => <span className="font-medium">{p.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
+    { key: 'sku', label: 'SKU', render: p => <span className="text-xs text-muted-foreground font-mono">{p.sku || '—'}</span> },
+    { key: 'code', label: 'Code', render: p => <span className="text-xs text-muted-foreground">{p.code || '—'}</span> },
+    { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{(p as any).categories?.name || '—'}</span> },
+    { key: 'type', label: 'Type', render: p => <TypeBadge type={p.product_type} /> },
     ...(isManager ? [
-      { key: 'closed', label: 'Closed', align: 'center' as const, render: (w: Wine) => <span className="font-medium">{w.current_stock_unopened}</span>, sortFn: (a: Wine, b: Wine) => a.current_stock_unopened - b.current_stock_unopened },
-      { key: 'open', label: 'Open', align: 'center' as const, render: (w: Wine) => <span className="text-muted-foreground">{w.current_stock_opened}</span> },
-      { key: 'total', label: 'Total', align: 'center' as const, render: (w: Wine) => <span className="font-semibold">{w.current_stock_unopened + w.current_stock_opened}</span>, sortFn: (a: Wine, b: Wine) => (a.current_stock_unopened + a.current_stock_opened) - (b.current_stock_unopened + b.current_stock_opened) },
-      { key: 'totalLitres', label: 'Total (L)', align: 'right' as const, render: (w: Wine) => {
-        const volL = (w.volume_ml || 750) / 1000;
-        const litres = (w.current_stock_unopened + w.current_stock_opened) * volL;
-        return <span className="font-medium text-accent">{litres.toFixed(2)}L</span>;
-      }},
-      { key: 'par', label: 'Par', align: 'center' as const, render: (w: Wine) => <span className="text-muted-foreground">{w.min_stock_level ?? '—'}</span> },
-      { key: 'value', label: 'Value', align: 'right' as const, render: (w: Wine) => {
-        const total = w.current_stock_unopened + w.current_stock_opened;
-        const val = total * (w.sale_price || 0);
-        return <span className="text-accent">{val > 0 ? `${w.currency || 'AED'} ${val.toLocaleString()}` : '—'}</span>;
-      }},
-    ] : []),
-    { key: 'status', label: 'Status', render: w => <StockStatusBadge wine={w} /> },
-    { key: 'sku', label: 'SKU', render: w => <span className="text-xs text-muted-foreground font-mono">{w.sku || '—'}</span> },
-    { key: 'barcode', label: 'Barcode', render: w => <span className="text-xs text-muted-foreground font-mono">{w.primary_barcode || '—'}</span> },
-    { key: 'location', label: 'Location', render: w => <span className="text-muted-foreground">{w.bin_location || '—'}</span> },
-    { key: 'source', label: 'Source', render: w => <EnrichmentBadge source={w.enrichment_source} /> },
+      { key: 'stock', label: 'Stock', align: 'right' as const, render: (p: Product) => <span className="font-semibold">{p.current_stock ?? 0}</span>, sortFn: (a: Product, b: Product) => (a.current_stock || 0) - (b.current_stock || 0) },
+      { key: 'sale_price', label: 'Sale Price', align: 'right' as const, render: (p: Product) => <span className="text-accent">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a: Product, b: Product) => (a.sale_price || 0) - (b.sale_price || 0) },
+      { key: 'purchase_price', label: 'Purchase Price', align: 'right' as const, render: (p: Product) => <span className="text-muted-foreground">{p.purchase_price?.toFixed(2) ?? '—'}</span> },
+    ] : [
+      { key: 'stock', label: 'Stock', align: 'right' as const, render: (p: Product) => <StockStatusBadge stock={p.current_stock} /> },
+    ]),
+    { key: 'synced', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
   ];
 }
 
@@ -138,35 +96,25 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
   const [filterValues, setFilterValues] = useState<Record<string, string[]>>({});
   const [showFilters, setShowFilters] = useState(false);
 
-  const { data: wines = [], isLoading } = useWines({
+  const { data: products = [], isLoading } = useProducts({
     search: search || undefined,
-    type: filterValues.type?.length ? filterValues.type : undefined,
-    country: filterValues.country?.length ? filterValues.country : undefined,
-    region: filterValues.region?.length ? filterValues.region : undefined,
-    stockStatus: filterValues.stock?.length ? filterValues.stock : undefined,
-    producer: filterValues.producer?.length ? filterValues.producer : undefined,
+    productType: filterValues.type?.length ? filterValues.type : undefined,
   });
 
-  const totalBottles = useMemo(() => wines.reduce((s, w) => s + w.current_stock_unopened + w.current_stock_opened, 0), [wines]);
+  const totalStock = useMemo(() => products.reduce((s, p) => s + (Number(p.current_stock) || 0), 0), [products]);
 
   const optionsMap = useMemo(() => {
-    const extract = (fn: (w: Wine) => string | null | undefined) =>
-      [...new Set(wines.map(fn).filter(Boolean) as string[])].sort();
+    const extract = (fn: (p: Product) => string | null | undefined) =>
+      [...new Set(products.map(fn).filter(Boolean) as string[])].sort();
     return {
-      type: ['Red', 'White', 'Rosé', 'Sparkling', 'Fortified', 'Dessert'],
-      country: extract(w => w.country),
-      region: extract(w => w.region),
-      producer: extract(w => w.producer),
-      stock: ['In Stock', 'Low Stock', 'Out of Stock'],
+      type: extract(p => p.product_type),
+      category: extract(p => (p as any).categories?.name),
     };
-  }, [wines]);
+  }, [products]);
 
   const filterDefs: FilterDef[] = [
     { key: 'type', label: 'Type' },
-    { key: 'country', label: 'Country' },
-    { key: 'region', label: 'Region' },
-    { key: 'producer', label: 'Producer' },
-    { key: 'stock', label: 'Stock Status' },
+    { key: 'category', label: 'Category' },
   ];
 
   const activeFilterCount = Object.values(filterValues).filter(f => f.length > 0).length;
@@ -175,20 +123,14 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
   const setFilter = (key: string, values: string[]) => setFilterValues(prev => ({ ...prev, [key]: values }));
   const tableColumns = useMemo(() => buildStockColumns(isManager), [isManager]);
 
-  const getRowBg = (w: Wine) => {
-    if (w.stock_status === 'out_of_stock') return 'bg-destructive/5 border-l-2 border-l-destructive/40';
-    if (w.stock_status === 'low_stock') return 'bg-[hsl(var(--wine-warning)/0.04)] border-l-2 border-l-wine-warning/40';
-    return 'border-l-2 border-l-transparent';
-  };
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-        <span>{wines.length} wines</span>
+        <span>{products.length} products</span>
         {isManager && (
           <>
             <span>•</span>
-            <span>{totalBottles} bottles</span>
+            <span>{totalStock} total stock</span>
           </>
         )}
       </div>
@@ -196,7 +138,7 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
       <div className="flex items-center gap-2">
         <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search wine or producer..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 bg-card border-border" />
+          <Input placeholder="Search product..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 bg-card border-border" />
         </div>
         <Button
           variant="outline" size="icon"
@@ -243,15 +185,14 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
       ) : (
         <div className="wine-glass-effect rounded-xl overflow-hidden">
           <DataTable
-            data={wines}
+            data={products}
             columns={tableColumns}
             visibleColumns={stockColumns}
             columnWidths={columnWidths}
             onColumnResize={setColumnWidth}
-            keyExtractor={w => w.id}
-            rowClassName={getRowBg}
-            onRowClick={w => navigate(`/catalog/${w.id}`)}
-            emptyMessage="No wines match your filters"
+            keyExtractor={p => p.id}
+            onRowClick={p => navigate(`/products/${p.id}`)}
+            emptyMessage="No products match your filters"
             compact
           />
         </div>
@@ -283,14 +224,14 @@ function VarianceBadge({ variance }: { variance: number }) {
   return <span className="text-xs px-2 py-0.5 rounded-full bg-destructive/15 text-destructive">{variance > 0 ? '+' : ''}{variance}</span>;
 }
 
-function useWineNames(productIds: string[]) {
+function useProductNames(productIds: string[]) {
   return useQuery({
-    queryKey: ['wine_names_for_review', productIds.sort().join(',')],
+    queryKey: ['product_names_for_review', productIds.sort().join(',')],
     queryFn: async () => {
       if (productIds.length === 0) return {};
-      const { data } = await supabase.from('wines').select('id, name, producer, vintage, volume_ml').in('id', productIds);
+      const { data } = await supabase.from('products').select('id, name').in('id', productIds);
       const map: Record<string, string> = {};
-      (data || []).forEach(w => { map[w.id] = [w.name, w.vintage ? String(w.vintage) : null, w.volume_ml ? `${w.volume_ml}ml` : null].filter(Boolean).join(' · '); });
+      (data || []).forEach(p => { map[p.id] = p.name; });
       return map;
     },
     enabled: productIds.length > 0,
@@ -309,7 +250,7 @@ function SessionDiffTable({ sessionId, canSeeStock }: { sessionId: string; canSe
     return Array.from(ids);
   }, [baseline, aggregates]);
 
-  const { data: wineNames = {} } = useWineNames(allProductIds);
+  const { data: productNames = {} } = useProductNames(allProductIds);
 
   const userBreakdown = useMemo(() => {
     const map = new Map<string, Map<string, { qty: number; liters: number; count: number }>>();
@@ -346,12 +287,10 @@ function SessionDiffTable({ sessionId, canSeeStock }: { sessionId: string; canSe
       const b = baselineMap.get(pid);
       const a = aggregateMap.get(pid);
       const expectedQty = Number(b?.expected_qty) || 0;
-      const expectedLiters = Number(b?.expected_liters) || 0;
       const countedQty = Number(a?.counted_qty_total) || 0;
-      const countedLiters = Number(a?.counted_liters_total) || 0;
-      return { product_id: pid, wine_name: wineNames[pid] || pid.slice(0, 8) + '…', expected_qty: expectedQty, expected_liters: expectedLiters, counted_qty: countedQty, counted_liters: countedLiters, variance_qty: countedQty - expectedQty, variance_liters: Math.round((countedLiters - expectedLiters) * 100) / 100, event_count: Number(a?.event_count) || 0 };
+      return { product_id: pid, product_name: productNames[pid] || pid.slice(0, 8) + '…', expected_qty: expectedQty, counted_qty: countedQty, variance_qty: countedQty - expectedQty, event_count: Number(a?.event_count) || 0 };
     }).sort((a, b) => Math.abs(b.variance_qty) - Math.abs(a.variance_qty));
-  }, [allProductIds, baseline, aggregates, wineNames]);
+  }, [allProductIds, baseline, aggregates, productNames]);
 
   const totalExpected = diffRows.reduce((s, r) => s + r.expected_qty, 0);
   const totalCounted = diffRows.reduce((s, r) => s + r.counted_qty, 0);
@@ -396,7 +335,7 @@ function SessionDiffTable({ sessionId, canSeeStock }: { sessionId: string; canSe
           <table className="w-full text-sm">
             <thead>
               <tr className="text-muted-foreground border-b border-border/50">
-                <th className="text-left p-3 font-medium">Wine</th>
+                <th className="text-left p-3 font-medium">Product</th>
                 {canSeeStock && <th className="text-center p-3 font-medium">Expected</th>}
                 <th className="text-center p-3 font-medium">Counted</th>
                 {canSeeStock && <th className="text-center p-3 font-medium">Variance</th>}
@@ -406,7 +345,7 @@ function SessionDiffTable({ sessionId, canSeeStock }: { sessionId: string; canSe
             <tbody>
               {diffRows.map(row => (
                 <tr key={row.product_id} className="border-b border-border/30 hover:bg-secondary/30">
-                  <td className="p-3 font-medium text-xs max-w-[200px] truncate">{row.wine_name}</td>
+                  <td className="p-3 font-medium text-xs max-w-[200px] truncate">{row.product_name}</td>
                   {canSeeStock && <td className="p-3 text-center text-muted-foreground">{row.expected_qty}</td>}
                   <td className="p-3 text-center font-semibold">{row.counted_qty}</td>
                   {canSeeStock && <td className="p-3 text-center"><VarianceBadge variance={row.variance_qty} /></td>}
@@ -434,18 +373,17 @@ function SessionDiffTable({ sessionId, canSeeStock }: { sessionId: string; canSe
                     </div>
                     <div className="flex gap-3 text-xs text-muted-foreground">
                       <span>{userItems.size} products</span>
-                      <span>{userTotal} bottles</span>
+                      <span>{userTotal} units</span>
                     </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
-                      <thead><tr className="text-muted-foreground border-b border-border/30"><th className="text-left p-2 pl-3 font-medium text-xs">Wine</th><th className="text-center p-2 font-medium text-xs">Qty</th><th className="text-center p-2 font-medium text-xs">Litres</th><th className="text-center p-2 font-medium text-xs">Scans</th></tr></thead>
+                      <thead><tr className="text-muted-foreground border-b border-border/30"><th className="text-left p-2 pl-3 font-medium text-xs">Product</th><th className="text-center p-2 font-medium text-xs">Qty</th><th className="text-center p-2 font-medium text-xs">Scans</th></tr></thead>
                       <tbody>
                         {Array.from(userItems.entries()).map(([pid, v]) => (
                           <tr key={pid} className="border-b border-border/20">
-                            <td className="p-2 pl-3 text-xs truncate max-w-[180px]">{wineNames[pid] || pid.slice(0, 8)}</td>
+                            <td className="p-2 pl-3 text-xs truncate max-w-[180px]">{productNames[pid] || pid.slice(0, 8)}</td>
                             <td className="p-2 text-center font-semibold text-xs">{v.qty}</td>
-                            <td className="p-2 text-center text-muted-foreground text-xs">{v.liters.toFixed(2)}</td>
                             <td className="p-2 text-center text-muted-foreground text-xs">{v.count}</td>
                           </tr>
                         ))}
@@ -745,7 +683,7 @@ export default function CurrentStock() {
             Check Review
           </TabsTrigger>
           <TabsTrigger value="count" className="gap-1.5">
-            <WineIcon className="w-4 h-4" />
+            <Package className="w-4 h-4" />
             Start Count
           </TabsTrigger>
         </TabsList>
