@@ -129,10 +129,20 @@
 }
 
 @layer components {
-  .wine-gradient {
+  .app-gradient {
     background: linear-gradient(135deg, hsl(var(--wine-red-dark)), hsl(var(--wine-burgundy)));
   }
 
+  /* Legacy alias */
+  .wine-gradient { background: linear-gradient(135deg, hsl(var(--wine-red-dark)), hsl(var(--wine-burgundy))); }
+
+  .glass-card {
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--popover)) 100%);
+    border: 1px solid hsl(var(--border));
+    backdrop-filter: blur(12px);
+  }
+
+  /* Legacy alias */
   .wine-glass-effect {
     background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--popover)) 100%);
     border: 1px solid hsl(var(--border));
@@ -149,7 +159,7 @@
   }
 
   .stat-card {
-    @apply wine-glass-effect rounded-xl p-5 transition-all duration-300;
+    @apply glass-card rounded-xl p-5 transition-all duration-300;
   }
 
   .stat-card:hover {
@@ -159,7 +169,7 @@
   }
 
   .mode-card {
-    @apply wine-glass-effect rounded-2xl p-6 cursor-pointer transition-all duration-300;
+    @apply glass-card rounded-2xl p-6 cursor-pointer transition-all duration-300;
   }
 
   .mode-card:hover {
@@ -200,6 +210,11 @@
     background: hsl(var(--destructive) / 0.1);
   }
 
+  .status-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  /* Legacy alias */
   .wine-badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }

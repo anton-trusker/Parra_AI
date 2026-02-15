@@ -1,6 +1,6 @@
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate } from 'react-router-dom';
-import { BarChart3, TrendingUp, Wine, Download } from 'lucide-react';
+import { BarChart3, TrendingUp, Package, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function Reports() {
@@ -8,9 +8,9 @@ export default function Reports() {
   if (user?.role !== 'admin' && user?.role !== 'super_admin') return <Navigate to="/dashboard" replace />;
 
   const reportTypes = [
-    { icon: BarChart3, title: 'Stock Summary', desc: 'Current stock levels across all wines', color: 'text-primary' },
+    { icon: BarChart3, title: 'Stock Summary', desc: 'Current stock levels across all products', color: 'text-primary' },
     { icon: TrendingUp, title: 'Inventory Trends', desc: 'Stock movement patterns over time', color: 'text-accent' },
-    { icon: Wine, title: 'Consumption Report', desc: 'Wine consumption analysis by period', color: 'text-wine-gold' },
+    { icon: Package, title: 'Consumption Report', desc: 'Product consumption analysis by period', color: 'text-wine-gold' },
   ];
 
   return (

@@ -1,6 +1,6 @@
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Shield, Wine, Clock, BarChart3, LogOut, Settings } from 'lucide-react';
+import { User, Mail, Shield, Package, Clock, BarChart3, LogOut, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
@@ -11,7 +11,7 @@ export default function Profile() {
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
 
   const stats = [
-    { label: 'Total Counts', value: '47', icon: Wine },
+    { label: 'Total Counts', value: '47', icon: Package },
     { label: 'This Week', value: '12', icon: BarChart3 },
     { label: 'Avg/Day', value: '3.2', icon: Clock },
   ];

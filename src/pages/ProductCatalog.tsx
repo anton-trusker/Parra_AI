@@ -1,13 +1,12 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useColumnStore } from '@/stores/columnStore';
-import { useProducts, useToggleProductFlag, useBulkToggleProductFlag, Product } from '@/hooks/useProducts';
+import { useProducts, Product } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
-import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, Wine, Star, CheckSquare, GlassWater } from 'lucide-react';
+import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
 import FilterManager, { FilterDef } from '@/components/FilterManager';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
@@ -15,9 +14,6 @@ import DataTable, { DataTableColumn } from '@/components/DataTable';
 import { Skeleton } from '@/components/ui/skeleton';
 
 const PRODUCT_COLUMN_DEFS: ColumnDef[] = [
-  { key: 'select', label: 'Select' },
-  { key: 'marked', label: 'Marked' },
-  { key: 'by_glass', label: 'By Glass' },
   { key: 'name', label: 'Name' },
   { key: 'sku', label: 'SKU' },
   { key: 'code', label: 'Code' },
@@ -37,8 +33,6 @@ const PRODUCT_FILTER_DEFS: FilterDef[] = [
   { key: 'stock', label: 'Stock Status' },
   { key: 'volume', label: 'Volume (L)' },
   { key: 'has_price', label: 'Has Price' },
-  { key: 'marked', label: 'Marked' },
-  { key: 'by_glass', label: 'By Glass' },
 ];
 
 function TypeBadge({ type }: { type: string | null }) {
@@ -49,7 +43,7 @@ function TypeBadge({ type }: { type: string | null }) {
     OUTER: 'bg-purple-500/20 text-purple-400',
     PREPARED: 'bg-orange-500/20 text-orange-400',
   };
-  return <span className={`wine-badge ${colors[type || ''] || 'bg-secondary text-secondary-foreground'}`}>{type || '—'}</span>;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[type || ''] || 'bg-secondary text-secondary-foreground'}`}>{type || '—'}</span>;
 }
 
 function StockIndicator({ stock }: { stock: number | null }) {
@@ -74,20 +68,13 @@ function ContainerInfo({ syrveData }: { syrveData: any }) {
   );
 }
 
-function ProductCard({ product, onClick, selected, onSelect }: { product: Product; onClick: () => void; selected: boolean; onSelect: (id: string) => void }) {
+function ProductCard({ product, onClick }: { product: Product; onClick: () => void }) {
   const containers = product.syrve_data?.containers;
   return (
-    <div className="wine-glass-effect rounded-xl overflow-hidden group transition-all duration-300 hover:border-accent/30 hover:shadow-lg cursor-pointer relative">
-      <div className="absolute top-3 left-3 z-10" onClick={e => { e.stopPropagation(); onSelect(product.id); }}>
-        <Checkbox checked={selected} className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary" />
-      </div>
-      <div onClick={onClick} className="p-4 pl-10 space-y-2">
+    <div className="rounded-xl overflow-hidden group transition-all duration-300 border border-border hover:border-accent/30 hover:shadow-lg cursor-pointer bg-card" onClick={onClick}>
+      <div className="p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            {product.is_marked && <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />}
-            {product.is_by_glass && <Wine className="w-3.5 h-3.5 text-primary shrink-0" />}
-            <h3 className="font-heading font-semibold text-sm line-clamp-2">{product.name}</h3>
-          </div>
+          <h3 className="font-heading font-semibold text-sm line-clamp-2">{product.name}</h3>
           <TypeBadge type={product.product_type} />
         </div>
         <p className="text-xs text-muted-foreground truncate">{product.categories?.name || 'Uncategorized'}</p>
@@ -135,24 +122,16 @@ export default function ProductCatalog() {
   const [stockStatusFilter, setStockStatusFilter] = useState<string[]>([]);
   const [volumeFilter, setVolumeFilter] = useState<string[]>([]);
   const [hasPriceFilter, setHasPriceFilter] = useState(false);
-  const [markedFilter, setMarkedFilter] = useState<'all' | 'marked' | 'not_marked'>('all');
-  const [byGlassFilter, setByGlassFilter] = useState<'all' | 'yes' | 'no'>('all');
   const [view, setView] = useState<'cards' | 'table'>('table');
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const categoryFromUrl = searchParams.get('category') || undefined;
-
-  const toggleFlag = useToggleProductFlag();
-  const bulkToggle = useBulkToggleProductFlag();
 
   const { data: products = [], isLoading } = useProducts({
     search: search || undefined,
     productType: typeFilter.length ? typeFilter : undefined,
     categoryId: categoryFromUrl,
   });
-
-  // Wine product links removed - using generic product catalog
 
   const { data: categories = [] } = useSyrveCategories();
 
@@ -170,7 +149,6 @@ export default function ProductCatalog() {
     return opts;
   }, [products]);
 
-  // Client-side filtering for category, stock status, volume, has_price
   const filteredProducts = useMemo(() => {
     let result = products;
     if (categoryFilter.length > 0) {
@@ -190,20 +168,10 @@ export default function ProductCatalog() {
     if (hasPriceFilter) {
       result = result.filter(p => p.sale_price != null && p.sale_price > 0);
     }
-    if (markedFilter === 'marked') {
-      result = result.filter(p => p.is_marked);
-    } else if (markedFilter === 'not_marked') {
-      result = result.filter(p => !p.is_marked);
-    }
-    if (byGlassFilter === 'yes') {
-      result = result.filter(p => p.is_by_glass);
-    } else if (byGlassFilter === 'no') {
-      result = result.filter(p => !p.is_by_glass);
-    }
     return result;
-  }, [products, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter, markedFilter, byGlassFilter]);
+  }, [products, categoryFilter, stockStatusFilter, volumeFilter, hasPriceFilter]);
 
-  const activeFilterCount = [typeFilter, categoryFilter, stockStatusFilter, volumeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (markedFilter !== 'all' ? 1 : 0) + (byGlassFilter !== 'all' ? 1 : 0) + (hasPriceFilter ? 1 : 0);
+  const activeFilterCount = [typeFilter, categoryFilter, stockStatusFilter, volumeFilter].filter(f => f.length > 0).length + (categoryFromUrl ? 1 : 0) + (hasPriceFilter ? 1 : 0);
   const fv = (key: string) => productFilters.includes(key);
 
   const clearFilters = () => {
@@ -212,117 +180,10 @@ export default function ProductCatalog() {
     setStockStatusFilter([]);
     setVolumeFilter([]);
     setHasPriceFilter(false);
-    setMarkedFilter('all');
-    setByGlassFilter('all');
     if (categoryFromUrl) navigate('/products');
   };
 
-  const handleCheckboxClick = (e: React.MouseEvent, productId: string, field: 'is_marked' | 'is_by_glass', current: boolean) => {
-    e.stopPropagation();
-    toggleFlag.mutate({ id: productId, field, value: !current });
-  };
-
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }, []);
-
-  // IDs of filtered products for quick lookup
-  const filteredIds = useMemo(() => new Set(filteredProducts.map(p => p.id)), [filteredProducts]);
-
-  // Only count selected items that are currently visible
-  const visibleSelectedIds = useMemo(() => {
-    const vis = new Set<string>();
-    selectedIds.forEach(id => { if (filteredIds.has(id)) vis.add(id); });
-    return vis;
-  }, [selectedIds, filteredIds]);
-
-  const toggleSelectAll = useCallback(() => {
-    if (visibleSelectedIds.size === filteredProducts.length && filteredProducts.length > 0) {
-      // Deselect only visible ones, keep any hidden selections
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        filteredIds.forEach(id => next.delete(id));
-        return next;
-      });
-    } else {
-      // Select all visible ones, keep existing hidden selections
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        filteredIds.forEach(id => next.add(id));
-        return next;
-      });
-    }
-  }, [filteredProducts.length, visibleSelectedIds.size, filteredIds]);
-
-  const handleBulkAction = useCallback((field: 'is_marked' | 'is_by_glass', value: boolean) => {
-    const ids = Array.from(visibleSelectedIds);
-    if (ids.length === 0) return;
-    bulkToggle.mutate({ ids, field, value }, {
-      onSuccess: () => {
-        // Don't clear selection immediately — let user see the result
-      },
-    });
-  }, [visibleSelectedIds, bulkToggle]);
-
-  const allSelected = filteredProducts.length > 0 && visibleSelectedIds.size === filteredProducts.length;
-  const someSelected = visibleSelectedIds.size > 0 && visibleSelectedIds.size < filteredProducts.length;
-
   const tableColumns = useMemo((): DataTableColumn<Product>[] => [
-    {
-      key: 'select',
-      label: '',
-      align: 'center',
-      headerRender: () => (
-        <div onClick={e => e.stopPropagation()}>
-          <Checkbox
-            checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-            onCheckedChange={() => toggleSelectAll()}
-            className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-          />
-        </div>
-      ),
-      render: p => (
-        <div onClick={e => e.stopPropagation()}>
-          <Checkbox
-            checked={selectedIds.has(p.id)}
-            onCheckedChange={() => toggleSelect(p.id)}
-            className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-          />
-        </div>
-      ),
-    },
-    {
-      key: 'marked',
-      label: '★',
-      align: 'center',
-      render: p => (
-        <div onClick={e => e.stopPropagation()}>
-          <Checkbox
-            checked={p.is_marked}
-            onCheckedChange={() => toggleFlag.mutate({ id: p.id, field: 'is_marked', value: !p.is_marked })}
-            className="border-border data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
-          />
-        </div>
-      ),
-    },
-    {
-      key: 'by_glass',
-      label: 'By Glass',
-      align: 'center',
-      render: p => (
-        <div onClick={e => e.stopPropagation()}>
-          <Checkbox
-            checked={p.is_by_glass}
-            onCheckedChange={() => toggleFlag.mutate({ id: p.id, field: 'is_by_glass', value: !p.is_by_glass })}
-            className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-          />
-        </div>
-      ),
-    },
     { key: 'name', label: 'Name', minWidth: 180, render: p => (
       <span className="font-medium">{p.name}</span>
     ), sortFn: (a, b) => a.name.localeCompare(b.name) },
@@ -336,7 +197,7 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
-  ], [selectedIds, toggleSelect, allSelected, someSelected, toggleSelectAll, toggleFlag]);
+  ], []);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -346,35 +207,6 @@ export default function ProductCatalog() {
           <p className="text-muted-foreground mt-1">{filteredProducts.length} products from Syrve</p>
         </div>
       </div>
-
-      {/* Bulk action toolbar */}
-      {visibleSelectedIds.size > 0 && (
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-primary/10 border border-primary/20 animate-fade-in">
-          <div className="flex items-center gap-2">
-            <CheckSquare className="w-4 h-4 text-primary" />
-            <span className="text-sm font-medium">{visibleSelectedIds.size} selected</span>
-          </div>
-          <div className="h-4 w-px bg-border" />
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_marked', true)}>
-            <Star className="w-3.5 h-3.5" /> Mark
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_marked', false)}>
-            <Star className="w-3.5 h-3.5" /> Unmark
-          </Button>
-          <div className="h-4 w-px bg-border" />
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_by_glass', true)}>
-            <Wine className="w-3.5 h-3.5" /> Set By Glass
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={() => handleBulkAction('is_by_glass', false)}>
-            <Wine className="w-3.5 h-3.5" /> Unset By Glass
-          </Button>
-          <div className="ml-auto">
-            <Button size="sm" variant="ghost" className="h-7 text-xs text-muted-foreground" onClick={() => setSelectedIds(new Set())}>
-              <X className="w-3 h-3 mr-1" /> Clear
-            </Button>
-          </div>
-        </div>
-      )}
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-col sm:flex-row gap-3">
@@ -388,12 +220,7 @@ export default function ProductCatalog() {
             {activeFilterCount > 0 && <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">{activeFilterCount}</span>}
           </Button>
           {view === 'table' && (
-            <>
-              <Button variant="outline" size="icon" className="h-11 w-11 border-border" title={allSelected ? 'Deselect all' : 'Select all'} onClick={toggleSelectAll}>
-                <CheckSquare className={`w-4 h-4 ${allSelected || someSelected ? 'text-primary' : ''}`} />
-              </Button>
-              <ColumnManager columns={PRODUCT_COLUMN_DEFS} visibleColumns={productColumns} onChange={setProductColumns} />
-            </>
+            <ColumnManager columns={PRODUCT_COLUMN_DEFS} visibleColumns={productColumns} onChange={setProductColumns} />
           )}
           <div className="flex border border-border rounded-lg overflow-hidden">
             <button onClick={() => setView('cards')} className={`p-2.5 transition-colors ${view === 'cards' ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:text-foreground'}`}><LayoutGrid className="w-5 h-5" /></button>
@@ -402,7 +229,7 @@ export default function ProductCatalog() {
         </div>
 
         {showFilters && (
-          <div className="wine-glass-effect rounded-xl p-4 animate-fade-in">
+          <div className="rounded-xl border border-border bg-card p-4 animate-fade-in">
             <div className="flex items-center justify-between mb-3">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Filters</p>
               <div className="flex items-center gap-2">
@@ -425,30 +252,6 @@ export default function ProductCatalog() {
                   Has Price
                 </Button>
               )}
-              {fv('marked') && (
-                <MultiSelectFilter
-                  label="Marked"
-                  options={['Marked', 'Not Marked']}
-                  selected={markedFilter === 'all' ? [] : markedFilter === 'marked' ? ['Marked'] : ['Not Marked']}
-                  onChange={sel => {
-                    if (sel.length === 0 || sel.length === 2) setMarkedFilter('all');
-                    else if (sel.includes('Marked')) setMarkedFilter('marked');
-                    else setMarkedFilter('not_marked');
-                  }}
-                />
-              )}
-              {fv('by_glass') && (
-                <MultiSelectFilter
-                  label="By Glass"
-                  options={['Yes', 'No']}
-                  selected={byGlassFilter === 'all' ? [] : byGlassFilter === 'yes' ? ['Yes'] : ['No']}
-                  onChange={sel => {
-                    if (sel.length === 0 || sel.length === 2) setByGlassFilter('all');
-                    else if (sel.includes('Yes')) setByGlassFilter('yes');
-                    else setByGlassFilter('no');
-                  }}
-                />
-              )}
               {categoryFromUrl && (
                 <Badge variant="secondary" className="gap-1 cursor-pointer" onClick={() => navigate('/products')}>
                   Category: {categories.find(c => c.id === categoryFromUrl)?.name || categoryFromUrl}
@@ -470,14 +273,12 @@ export default function ProductCatalog() {
             <ProductCard
               key={p.id}
               product={p}
-              selected={selectedIds.has(p.id)}
-              onSelect={toggleSelect}
               onClick={() => navigate(`/products/${p.id}`)}
             />
           ))}
         </div>
       ) : (
-        <div className="wine-glass-effect rounded-xl overflow-hidden">
+        <div className="rounded-xl border border-border overflow-hidden">
           <DataTable
             data={filteredProducts}
             columns={tableColumns}
