@@ -1,229 +1,259 @@
 
 
-# Frontend Restructure -- Document-Driven Implementation
+# Frontend Enhancement -- Document-Driven UI Improvements
 
-This plan restructures the entire frontend to match the uploaded Frontend Structure Guide, adding new pages, reorganizing navigation, and populating everything with mock data for a complete working UI.
-
----
-
-## What Changes
-
-### Navigation Restructure
-
-**Current sidebar:**
-- Dashboard
-- Inventory > Inventarisation Check
-- Syrve Data > Products, Categories
-- History & Logs
-- Reports (coming soon)
-- Suppliers / Orders (coming soon)
-- Settings
-
-**New sidebar (per document):**
-- Dashboard
-- Inventory (section)
-  - Products
-  - Categories
-  - By Store
-  - Inventory Checks
-  - AI Scans
-- Reports (coming soon)
-- Orders (coming soon)
-- Settings
-
-**Top Bar** (new): Add a global top bar inside AppLayout with:
-- Tenant/location switcher placeholder (dropdown, future)
-- Date range selector placeholder
-- Global search (Cmd+K style trigger)
-
-**Mobile bottom nav** updated to match: Home, Products, Checks, Scans, More
+This plan implements the detailed functionality described in the Frontend Architecture Specification across all existing pages, focusing on interactive features, improved tables, filters, tabs, and settings -- without blindly following wireframe layouts where the current design is already better.
 
 ---
 
-### New Pages to Create
+## Overview of Changes
 
-| Page | Route | Description |
-|------|-------|-------------|
-| By Store | `/inventory/by-store` | Store-focused inventory view with store selector and product table filtered per store |
-| Inventory Checks | `/inventory/checks` | List of all inventory check sessions with status, filters, and "New check" button |
-| Inventory Check Detail | `/inventory/checks/:id` | Detailed check view with Counting tab, Review/Variances tab, and Activity Log tab |
-| AI Scans | `/inventory/ai-scans` | History table of AI recognition operations with confidence, product linking |
-| Orders | `/orders` | Coming soon placeholder with tabs structure |
-
-### Existing Pages to Modify
-
-| Page | Changes |
-|------|---------|
-| **Dashboard** | Add Inventory Health block (variance summary, top 5 shortages/surpluses), AI Activity Monitor (7/30 day counts, avg confidence), Integration Status tiles (Syrve + future placeholders), improve Quick Actions |
-| **Products** (`/products`) | Add grouping mode selector (Flat, By Category, Goods-to-Dishes, By Store, Hierarchy), row actions menu (view, edit, AI scan, exclude), bulk actions bar, saved views concept |
-| **Product Detail** | Restructure into tabs: Overview, Images & AI, Integrations, History. Add mock data for AI recognition results and stock history timeline |
-| **Categories** | Add right panel with category details: Products tab (table of products in category) and Mappings tab (future placeholder). Support drag-to-reorder (visual only) |
-| **CurrentStock** | Rename/repurpose -- this page's inventory tab content moves to the new Inventory Checks flow. The current "Inventarisation Check" becomes the Checks list page |
-| **Settings** | Add Billing & Usage card (subscription tier, AI usage). Add Telegram/AI Assistant card (future placeholder) |
-| **Reports** | Add Orders tab placeholder in addition to existing report cards |
+The document describes detailed functionality that goes beyond what's currently implemented. This plan adds missing interactive features, richer data displays, and improved UX flows while keeping the existing modern visual design.
 
 ---
 
-### Mock Data
+## 1. Dashboard Enhancements
 
-All new pages will use local mock data (no database changes):
+**Current state:** Welcome header, 4 stat cards, quick actions, inventory health, AI monitor, low stock alerts, integration status, stores, recent activity.
 
-```text
-mockStores.ts        -- 3 stores with IDs, names, addresses
-mockInventoryChecks.ts -- 8 checks with various statuses (draft, in_progress, pending_review, approved, synced)
-mockAiScans.ts       -- 15 AI scan records with timestamps, products, confidence levels
-mockCheckItems.ts    -- 30 items per check with expected/counted/variance
-mockStockByStore.ts  -- Products with per-store stock levels
-mockActivityLog.ts   -- 20 activity entries for check detail
-```
+**Additions from spec:**
+- **Active Sessions Table**: Add a dedicated card showing active inventory sessions with status badges, progress bars, and "Join Counting" / "Review" action buttons (per doc section 5.5)
+- **Role-based KPI cards**: Swap stat card content based on user role (Staff sees "Your Counts Today" and "AI Scans Used"; Manager sees "Pending Approvals" and "Variance This Week"; Owner sees "Inventory Turnover" and "Total Variance %")
+- **Variance Trend Chart**: Add a small line chart (recharts) showing weekly variance percentage trend in the Inventory Health card
+- **Quick Actions**: Add "Create New Session" (manager+) and "Search Products" cards alongside existing ones
 
----
-
-### Product Page Grouping Modes
-
-The Products page gets a view mode selector with 5 options:
-
-1. **Flat List** -- current table (default)
-2. **By Category** -- collapsible category headers with aggregate rows, products nested under each
-3. **Goods to Dishes** -- parent goods rows expand to show child dish/prepared items that consume them (mock parent-child relationships)
-4. **By Store** -- store header rows with per-store stock columns
-5. **Hierarchy Tree** -- nested tree combining category + subcategory (similar to current Categories page but inline)
-
-Each mode renders a different table layout component but shares the same filter/search bar.
+### Files modified
+- `src/pages/Dashboard.tsx`
 
 ---
 
-### Product Detail Tabs
+## 2. Inventory Module -- Sessions & Counting
 
-Restructured into 4 tabs:
+### 2.1 Inventory Checks Page (Sessions List)
 
-- **Overview**: Basic info, pricing, current stock per store (mini table with mock per-store data)
-- **Images & AI**: Image gallery placeholder, last AI recognition results (mock: product name, category, quantity, confidence), "Run AI Recognition" button
-- **Integrations**: Syrve mapping info (external ID, last sync, raw payload snippet -- already exists)
-- **History**: Stock level changes timeline (mock entries), inventory check participation list, AI operations log
+**Current state:** Table with status filter, store filter, and action dropdown.
 
----
+**Additions from spec (section 6.2):**
+- Add **date range filter** (date picker)
+- Add **search bar** for session titles
+- Add **progress bar** column showing percentage complete
+- Add **"Created by" avatar** with initials
+- Improve action buttons per status: Draft=[Start][Edit][Delete], In Progress=[Join Counting][View], Pending Review=[Review][View], Approved=[View][Export]
+- Add **"+ New Session"** button in header (links to create session flow, manager+ only)
+- Add empty state with illustration and "Create New Session" CTA
 
-### Inventory Checks List Page
+### Files modified
+- `src/pages/InventoryChecksPage.tsx`
+- `src/data/mockInventoryChecks.ts` (add progress percentage field)
 
-New page at `/inventory/checks`:
+### 2.2 Create Session Flow
 
-- Top bar: "New inventory check" button, filters (store, status, date range)
-- Table columns: Title, Store, Status, Created by, Started at, Completed at, Approved by
-- Row actions: Open details, Duplicate, Cancel, Send to Syrve
-- Status badges: draft, in_progress, pending_review, approved, synced (color-coded)
+**Current state:** Simple CountSetup with count type dropdown and notes field.
 
----
+**Improvements from spec (section 6.3):** The current "Start Count" page needs enhancement, but keeping our own cleaner design rather than following the wireframe exactly:
+- Add **Session Title** text input (auto-generated default like "Weekly Inventory - Feb 15")
+- Add **Store selector** dropdown (from mock stores)
+- Add **Baseline Configuration** section: radio group for "Use current Syrve stock" / "Use last session" / "Manual"
+- Add **Category filter**: Optional multi-select to limit which categories to count
+- Add **Counting Settings** checkboxes: Allow barcode, Allow AI, Show expected stock to counters, Require approval
+- Rename button from "Start New Session" to "Create Session" (creates as draft) with secondary "Create & Start" (creates and immediately starts)
+- Keep current "Join Active Session" card
 
-### Inventory Check Detail Page
+### Files modified
+- `src/components/count/CountSetup.tsx`
+- `src/pages/InventoryCount.tsx`
 
-New page at `/inventory/checks/:id`:
+### 2.3 Session Detail Page (Check Detail)
 
-Header section with title, store, status, dates, action buttons (Start/Resume, Complete, Approve, Reject, Send to Syrve -- visibility based on status and role).
+**Current state:** 3 tabs (Counting, Review & Variances, Activity Log) with basic tables.
 
-Three tabs:
-1. **Counting**: Search/scan mode + table mode toggle. Search box for product lookup, quick-add controls per row (unopened units, open quantity), counting method badge
-2. **Review & Variances**: Manager-only expected vs counted table with variance highlighting, filters for "only variances" and "only shortages"
-3. **Activity Log**: Chronological feed of count events, status changes, AI scans, manager adjustments
+**Additions from spec (section 6.4):**
+- **Overview Tab** (new, first tab): Summary cards (Total Products, Counted, Remaining, Variances Detected), progress chart, active counters list, action buttons based on status
+- **Counting Tab**: Add quick filter pills (All, Not Counted, Counted, by Category), add count method badges, improve product list with "Enter quantity" inline action
+- **Variances Tab**: Add variance summary cards (Surplus total, Shortage total, Net variance), add variance flag colors (High >10% red, Medium 5-10% orange, Low <5% green), add row actions (View Details, Add Note, Recount, Accept)
+- **History Tab**: Add visual timeline at top showing session lifecycle, improve event feed with event type icons and better formatting
 
----
-
-### AI Scans Page
-
-New page at `/inventory/ai-scans`:
-
-- Filters: date range, store, confidence threshold, operation type
-- Table: Timestamp, Product (linked), Detected name, Quantity, Confidence %, Status (confirmed/pending/rejected), User, Image thumbnail
-- Click to expand: shows full AI response details, image preview, product match suggestions
-
----
-
-### By Store Page
-
-New page at `/inventory/by-store`:
-
-- Top: store selector (cards or dropdown showing 3 mock stores)
-- When store selected: product table filtered to that store with store-specific stock column, last counted date
-- "All stores" toggle: shows all products grouped by store headers with per-store aggregates
+### Files modified
+- `src/pages/InventoryCheckDetail.tsx`
+- `src/data/mockCheckDetail.ts` (add variance value data, more activity entries)
 
 ---
 
-### Orders Page (Coming Soon)
+## 3. Products Module
 
-New page at `/orders`:
+### 3.1 Products Page
 
-- Disabled tabs: Live Orders, Historical Orders, Sales by Product
-- Placeholder explaining Syrve order sync is planned
-- Future filter hints: date, store, order type, channel
+**Current state:** Search, filters panel, column manager, card/table view toggle.
+
+**Additions from spec (section 7.2-7.5):**
+- **View Mode Selector**: Add tabs/pills for "All | By Category | By Store | By Type" (per doc section 7.2). Currently only flat + card views exist
+- **By Category view**: Collapsible tree table with category headers, product count per category, expand/collapse all buttons
+- **By Type view**: Group products by type (Goods/Dish/Modifier/Service) with expandable "Used in" / "Ingredients" relationships (mock data)
+- **By Store view**: Group by store with per-store stock columns
+- **Bulk Actions Bar**: When rows are selected via checkboxes, show floating action bar with "Export", "Change Category", "Activate/Deactivate" options
+- **Row Actions Menu**: Add context menu per row (Edit, Duplicate, View History, Delete)
+- **Active Filter Pills**: Show selected filters as dismissible pills below the search bar
+
+### Files modified
+- `src/pages/ProductCatalog.tsx`
+- New: `src/components/ProductGroupedView.tsx` (tree table for category/type/store views)
+- `src/data/mockStockByStore.ts` (extend with more product-store mappings)
+
+### 3.2 Product Detail
+
+**Current state:** 4 tabs (Overview, Images & AI, Integrations, History).
+
+**Additions from spec (section 7.6):**
+- **Overview Tab**: Add "Stock" sub-section with stock level chart over time (small area chart), add "Custom Fields" section placeholder
+- **Stock Tab** (rename from within Overview): Separate dedicated "Stock" tab showing current stock by location table, stock movement history, recent counts from sessions, stock level chart
+- **Relationships Tab** (new): If Goods -- show dishes using this ingredient. If Dish -- show ingredient list. Mock data for parent-child relationships
+- Keep existing History tab, add more detail to timeline entries
+
+### Files modified
+- `src/pages/ProductDetail.tsx`
+
+---
+
+## 4. Categories Module
+
+**Current state:** Tree view with search, expand/collapse, delete. Simple hierarchy.
+
+**Additions from spec (section 8):**
+- **Dual view toggle**: Tree view (current) + flat List view (table with parent column, sortable)
+- **Category Detail Modal**: Click category name opens edit dialog with name, parent, description, sort order, active toggle, product count, "View All Products" link
+- **Context Menu**: Per-category (...) menu with Edit, Add Subcategory, View Products, Move to, Duplicate, Delete
+- **Visual indicators**: Active/inactive status color, Syrve sync icon
+
+### Files modified
+- `src/pages/CategoriesPage.tsx`
+
+---
+
+## 5. Settings Module
+
+### 5.1 Settings Home
+
+**Current state:** Status indicators, alerts, navigation cards grid.
+
+**Additions from spec (section 11.2):**
+- Add **Billing & Subscription** card (links to placeholder billing page)
+- Add **Custom Fields** card (placeholder for future feature)
+- Add **Account / My Profile** card
+- Reorganize cards into grouped sections matching the doc's left sidebar menu: General, Users & Access, Integrations, Inventory, Customization, Billing, Account
+
+### Files modified
+- `src/pages/AppSettings.tsx`
+
+### 5.2 Business Settings
+
+**Current state:** Business profile, locale, operational defaults.
+
+**Additions from spec (section 11.3):**
+- Add **Contact** fields (email, phone)
+- Add **Logo Upload** placeholder area
+- Remove glass size from operational defaults (already cleaned up, verify)
+
+### Files modified
+- `src/pages/BusinessSettings.tsx`
+
+### 5.3 Inventory Settings
+
+**Current state:** Extensive toggle-based settings in collapsible sections.
+
+**Additions from spec (section 11.6):**
+- Add **Variance Thresholds** section with separate high/medium/low percentage and value inputs (currently only has single threshold)
+- Add **Collaborative Counting** toggle
+- Improve layout with clearer section grouping matching the doc structure: Counting Rules, Session Defaults, Variance Thresholds, Units & Measurements
+
+### Files modified
+- `src/pages/InventorySettings.tsx`
+
+### 5.4 New: Billing Page (Placeholder)
+
+**From spec (section 11.7):**
+- Current plan card showing tier, price, next billing date
+- AI usage progress bar (scans used / limit)
+- Payment method display
+- Invoice history table
+- All mock data, no real billing integration
+
+### Files created
+- `src/pages/BillingSettings.tsx`
+
+---
+
+## 6. Sidebar Navigation Update
+
+**Current state:** Dashboard, Inventory (Products, Categories, By Store, Checks, AI Scans), Analytics, Administration.
+
+**Changes from spec (section 4.2):**
+- Under **Inventory** section: rename "Inventory Checks" to "Sessions" to match the doc's terminology
+- Add **"Count Now"** quick action item under Inventory section (links to `/count`)
+- Move "AI Scans" position (keep under Inventory)
+- Ensure sidebar item for "Sessions" is labeled consistently
+
+### Files modified
+- `src/components/AppSidebar.tsx`
+
+---
+
+## 7. Reports & Orders Pages
+
+**Current state:** Both have "coming soon" placeholders.
+
+**Improvements from spec (sections 9, 10):**
+- **Reports**: Add categorized placeholder sections (Inventory Reports, Variance Reports, AI Usage Reports, Operational Reports) with specific planned report names listed
+- **Orders**: Add disabled tab structure (Live Orders, Historical Orders, Sales by Product) with description of planned features
+
+### Files modified
+- `src/pages/Reports.tsx`
+- `src/pages/OrdersPage.tsx`
 
 ---
 
 ## Technical Details
 
-### Files to Create
-
+### New Files
 | File | Purpose |
 |------|---------|
-| `src/data/mockStores.ts` | 3 store objects with name, address, product counts |
-| `src/data/mockInventoryChecks.ts` | 8 inventory check sessions |
-| `src/data/mockAiScans.ts` | 15 AI scan records |
-| `src/data/mockCheckDetail.ts` | Check items, activity log entries |
-| `src/data/mockStockByStore.ts` | Per-store stock data |
-| `src/pages/ByStorePage.tsx` | Store-focused inventory view |
-| `src/pages/InventoryChecksPage.tsx` | Checks list page |
-| `src/pages/InventoryCheckDetail.tsx` | Single check detail with 3 tabs |
-| `src/pages/AiScansPage.tsx` | AI scans history |
-| `src/pages/OrdersPage.tsx` | Coming soon placeholder |
-| `src/components/TopBar.tsx` | Global top bar with tenant switcher, search |
-| `src/components/ProductGroupedView.tsx` | Grouped table views (by category, goods-to-dishes, by store) |
+| `src/pages/BillingSettings.tsx` | Billing & subscription placeholder with mock data |
+| `src/components/ProductGroupedView.tsx` | Grouped product table views (by category, type, store) |
 
-### Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/App.tsx` | Add new routes: `/inventory/by-store`, `/inventory/checks`, `/inventory/checks/:id`, `/inventory/ai-scans`, `/orders` |
-| `src/components/AppLayout.tsx` | Add TopBar component above Outlet |
-| `src/components/AppSidebar.tsx` | Restructure nav groups to match document hierarchy |
-| `src/components/MobileBottomNav.tsx` | Update primary items to Home, Products, Checks, Scans |
-| `src/pages/Dashboard.tsx` | Add Inventory Health block, AI Activity Monitor, Integration Status tiles |
-| `src/pages/ProductCatalog.tsx` | Add grouping mode selector, row actions dropdown, bulk actions |
-| `src/pages/ProductDetail.tsx` | Restructure into 4 tabs with mock AI and history data |
-| `src/pages/CategoriesPage.tsx` | Add right panel with products tab and mappings tab |
-| `src/pages/AppSettings.tsx` | Add Billing & Usage and Telegram cards |
-| `src/pages/Reports.tsx` | Polish with coming soon structure |
-| `src/pages/CurrentStock.tsx` | Route redirect -- "Inventarisation Check" becomes `/inventory/checks` |
-
-### Routes Map
-
-| Route | Component |
-|-------|-----------|
-| `/dashboard` | Dashboard |
-| `/products` | ProductCatalog |
-| `/products/:id` | ProductDetail |
-| `/categories` | CategoriesPage |
-| `/inventory/by-store` | ByStorePage |
-| `/inventory/checks` | InventoryChecksPage |
-| `/inventory/checks/:id` | InventoryCheckDetail |
-| `/inventory/ai-scans` | AiScansPage |
-| `/count` | InventoryCount (scanning flow, launched from check detail) |
-| `/orders` | OrdersPage |
-| `/reports` | Reports |
-| `/settings` | AppSettings |
-| `/settings/*` | (unchanged) |
-| `/users` | UserManagement |
-| `/history` | InventoryHistory |
+### Modified Files
+| File | Key Changes |
+|------|-------------|
+| `src/pages/Dashboard.tsx` | Active sessions table, role-based KPIs, variance chart |
+| `src/pages/InventoryChecksPage.tsx` | Search, date filter, progress bars, improved actions |
+| `src/components/count/CountSetup.tsx` | Session title, store, baseline config, category filter, counting settings |
+| `src/pages/InventoryCount.tsx` | Pass new fields to session creation |
+| `src/pages/InventoryCheckDetail.tsx` | Overview tab, variance summary, timeline, filter pills |
+| `src/pages/ProductCatalog.tsx` | View mode selector, bulk actions, row context menu, filter pills |
+| `src/pages/ProductDetail.tsx` | Stock tab, Relationships tab |
+| `src/pages/CategoriesPage.tsx` | List view toggle, edit modal, context menu |
+| `src/pages/AppSettings.tsx` | Grouped sections, billing/custom fields cards |
+| `src/pages/BusinessSettings.tsx` | Contact fields, logo placeholder |
+| `src/pages/InventorySettings.tsx` | Variance threshold tiers, collaborative counting |
+| `src/pages/Reports.tsx` | Categorized planned reports |
+| `src/pages/OrdersPage.tsx` | Tab structure for future features |
+| `src/components/AppSidebar.tsx` | Rename "Inventory Checks" to "Sessions", add "Count Now" |
+| `src/data/mockCheckDetail.ts` | Add variance values, more activity entries |
+| `src/data/mockInventoryChecks.ts` | Add progress field |
+| `src/App.tsx` | Add billing settings route |
 
 ### Dependencies
-No new packages needed. Everything uses existing shadcn components, recharts, and lucide icons.
+No new packages. Uses existing recharts, shadcn components, and lucide icons.
 
 ### Implementation Order
-1. Mock data files (all 5)
-2. TopBar component
-3. Navigation restructure (sidebar + mobile nav + routes)
-4. New pages (ByStore, InventoryChecks, InventoryCheckDetail, AiScans, Orders)
-5. Dashboard enhancements
-6. ProductCatalog grouping modes
-7. ProductDetail tabs restructure
-8. CategoriesPage right panel
-9. Settings additions
+1. Mock data updates (checks, check detail)
+2. Sidebar navigation tweak
+3. Dashboard active sessions + role KPIs
+4. Inventory Checks page (search, filters, progress)
+5. Create Session flow (CountSetup enhancement)
+6. Session Detail (Overview tab, variance summary, timeline)
+7. Product Catalog (view modes, bulk actions, context menu)
+8. Product Detail (Stock tab, Relationships tab)
+9. Categories (list view, edit modal, context menu)
+10. Settings home reorganization + Billing page
+11. Business/Inventory settings additions
+12. Reports + Orders polish
 
