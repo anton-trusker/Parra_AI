@@ -119,21 +119,23 @@ export function useProducts(filters?: {
 
       const products = (data || []) as unknown as Product[];
 
-      // Fetch stock_levels with store names to map products → stores
+      // Fetch stock_levels with store names to map products → stores AND aggregate real stock
       const productIds = products.map(p => p.id);
       const storeMap = new Map<string, Set<string>>();
+      const stockTotals = new Map<string, number>();
       if (productIds.length > 0) {
         // Fetch in batches of 500 to avoid URL length limits
         for (let i = 0; i < productIds.length; i += 500) {
           const batch = productIds.slice(i, i + 500);
           const { data: stockData } = await supabase
             .from('stock_levels')
-            .select('product_id, stores(name)')
-            .in('product_id', batch)
-            .gt('quantity', 0);
+            .select('product_id, quantity, stores(name)')
+            .in('product_id', batch);
           for (const sl of stockData || []) {
+            // Aggregate total stock across all stores
+            stockTotals.set(sl.product_id, (stockTotals.get(sl.product_id) || 0) + (sl.quantity || 0));
             const storeName = (sl.stores as any)?.name;
-            if (storeName) {
+            if (storeName && sl.quantity > 0) {
               if (!storeMap.has(sl.product_id)) storeMap.set(sl.product_id, new Set());
               storeMap.get(sl.product_id)!.add(storeName);
             }
@@ -159,6 +161,10 @@ export function useProducts(filters?: {
         }
         // Attach store names
         p.store_names = storeMap.has(p.id) ? [...storeMap.get(p.id)!] : [];
+        // Override current_stock with real aggregated value from stock_levels
+        if (stockTotals.has(p.id)) {
+          p.current_stock = stockTotals.get(p.id)!;
+        }
         if (!p.categories) return true;
         const cat = p.categories as any;
         return cat.is_active !== false && cat.is_deleted !== true;
