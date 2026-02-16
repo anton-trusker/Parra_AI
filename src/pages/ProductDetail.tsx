@@ -104,7 +104,7 @@ export default function ProductDetail() {
               <CardContent className="p-5">
                 <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Ruler className="w-4 h-4 text-muted-foreground" />Unit & Volume</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <InfoRow label="Main Unit" value={syrveData.mainUnit || product.main_unit_id || null} />
+                  <InfoRow label="Main Unit" value={syrveData.mainUnit || (product.main_unit_id ? product.main_unit_id : null)} />
                   <InfoRow label="Unit Capacity" value={product.unit_capacity ? `${product.unit_capacity}` : null} />
                   {Array.isArray(containers) && containers.length > 0 && (
                     <div className="col-span-2">
@@ -343,8 +343,16 @@ export default function ProductDetail() {
           </Card>
           <Card className="rounded-xl border-border/60">
             <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Raw Metadata</h3>
-              <pre className="text-xs bg-muted/30 p-4 rounded-lg overflow-x-auto max-h-64 text-muted-foreground">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Raw Syrve Data</h3>
+              <pre className="text-xs bg-muted/30 p-4 rounded-lg overflow-x-auto max-h-96 text-muted-foreground whitespace-pre-wrap break-words">
+                {JSON.stringify(syrveData, null, 2)}
+              </pre>
+            </CardContent>
+          </Card>
+          <Card className="rounded-xl border-border/60">
+            <CardContent className="p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Product Metadata</h3>
+              <pre className="text-xs bg-muted/30 p-4 rounded-lg overflow-x-auto max-h-96 text-muted-foreground whitespace-pre-wrap break-words">
                 {JSON.stringify(metadata, null, 2)}
               </pre>
             </CardContent>

@@ -120,6 +120,7 @@ const GOODS_COL_DEFS: ColumnDef[] = [
   { key: 'sku', label: 'SKU' },
   { key: 'code', label: 'Code' },
   { key: 'category', label: 'Category' },
+  { key: 'store', label: 'Store' },
   { key: 'unit', label: 'Unit' },
   { key: 'unit_capacity', label: 'Volume/Weight' },
   { key: 'containers', label: 'Containers' },
@@ -133,6 +134,7 @@ const DISHES_COL_DEFS: ColumnDef[] = [
   { key: 'name', label: 'Name' },
   { key: 'code', label: 'Code' },
   { key: 'category', label: 'Category' },
+  { key: 'store', label: 'Store' },
   { key: 'parent', label: 'Linked Goods' },
   { key: 'sale_price', label: 'Sale Price' },
   { key: 'unit', label: 'Unit' },
@@ -275,6 +277,19 @@ export default function ProductCatalog() {
     { key: 'category', label: 'Category', render: p => (
       <Badge variant="secondary" className="text-[11px] font-normal">{p.categories?.name || 'Uncategorized'}</Badge>
     )},
+    { key: 'store', label: 'Store', render: p => {
+      const names = p.store_names || [];
+      if (names.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+      if (names.length === 1) return <Badge variant="outline" className="text-[10px] font-normal">{names[0]}</Badge>;
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-xs text-muted-foreground">{names.length} stores</span>
+          </TooltipTrigger>
+          <TooltipContent><div className="text-xs space-y-0.5">{names.map(n => <div key={n}>{n}</div>)}</div></TooltipContent>
+        </Tooltip>
+      );
+    }},
     { key: 'unit', label: 'Unit', render: p => <span className="text-muted-foreground text-xs">{p.syrve_data?.mainUnit || '—'}</span> },
     { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
@@ -302,6 +317,19 @@ export default function ProductCatalog() {
     { key: 'category', label: 'Category', render: p => (
       <Badge variant="secondary" className="text-[11px] font-normal">{p.categories?.name || 'Uncategorized'}</Badge>
     )},
+    { key: 'store', label: 'Store', render: p => {
+      const names = p.store_names || [];
+      if (names.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+      if (names.length === 1) return <Badge variant="outline" className="text-[10px] font-normal">{names[0]}</Badge>;
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="text-xs text-muted-foreground">{names.length} stores</span>
+          </TooltipTrigger>
+          <TooltipContent><div className="text-xs space-y-0.5">{names.map(n => <div key={n}>{n}</div>)}</div></TooltipContent>
+        </Tooltip>
+      );
+    }},
     { key: 'parent', label: 'Linked Goods', minWidth: 180, render: p => {
       const parent = Array.isArray(p.parent_product) ? p.parent_product[0] : p.parent_product;
       if (!parent) return <span className="text-destructive/60 text-xs flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Not linked</span>;
@@ -323,8 +351,8 @@ export default function ProductCatalog() {
     { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
   ], [selectedIds, navigate]);
 
-  const goodsVisibleCols = useMemo(() => ['select', 'name', 'sku', 'category', 'unit', 'unit_capacity', 'stock', 'dishes_count', 'actions'], []);
-  const dishesVisibleCols = useMemo(() => ['select', 'name', 'code', 'category', 'parent', 'sale_price', 'unit', 'actions'], []);
+  const goodsVisibleCols = useMemo(() => ['select', 'name', 'sku', 'category', 'store', 'unit', 'unit_capacity', 'stock', 'dishes_count', 'actions'], []);
+  const dishesVisibleCols = useMemo(() => ['select', 'name', 'code', 'category', 'store', 'parent', 'sale_price', 'unit', 'actions'], []);
 
   const hasFilters = categoryFilter.length > 0 || stockStatusFilter.length > 0 || !!quickFilter;
 
