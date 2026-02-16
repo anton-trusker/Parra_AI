@@ -50,10 +50,24 @@ Deno.serve(async (req) => {
 
     const results: Record<string, number> = {};
 
-    // Delete in dependency order (foreign keys)
+    // Delete in dependency order (foreign keys matter)
     const tables = [
+      // Wine-related dependents first
+      "ai_recognition_attempts",
+      "inventory_count_events",
+      "inventory_product_aggregates",
+      "inventory_baseline_items",
+      "inventory_items",
+      "inventory_movements",
+      "stock_snapshots",
+      "wine_barcodes",
+      "wine_images",
+      "wine_variants",
+      // Syrve product dependents
       "stock_levels",
       "product_barcodes",
+      // Main tables
+      "wines",
       "products",
       "categories",
       "stores",
@@ -67,7 +81,6 @@ Deno.serve(async (req) => {
       const { data, error } = await client.from(table).delete().gte("created_at", "1970-01-01");
       if (error) {
         console.error(`Error deleting from ${table}:`, error.message);
-        // For tables with FK constraints, try alternative approach
         const { error: retryError } = await client.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
         if (retryError) {
           console.error(`Retry failed for ${table}:`, retryError.message);
