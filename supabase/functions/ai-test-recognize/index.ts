@@ -13,7 +13,7 @@ Analyze this photo of a wine bottle label and extract the following information 
 {
   "product_name": "Full wine name as written on the label",
   "producer": "Producer/winery name",
-  "vintage": null or 4-digit year (e.g. 2021),
+  "year": null or 4-digit year (e.g. 2021),
   "region": "Wine region if visible",
   "country": "Country of origin if identifiable",
   "grape_variety": "Grape variety if visible",
@@ -27,7 +27,7 @@ Analyze this photo of a wine bottle label and extract the following information 
 Rules:
 - Extract ONLY what you can actually read on the label. Do not guess.
 - If a field is not visible, set it to null.
-- For vintage, only extract a clear 4-digit year (1900-2100).
+- For year, only extract a clear 4-digit year (1900-2100).
 - confidence should reflect how clearly you can read the label.
 - Return ONLY valid JSON, no markdown, no explanation.`;
 
@@ -159,7 +159,7 @@ serve(async (req) => {
     try {
       const cleaned = rawText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
       extracted = JSON.parse(cleaned);
-      logStep("Parse AI Response", "success", `Extracted: ${extracted?.product_name || 'unknown'}, Producer: ${extracted?.producer || 'unknown'}, Vintage: ${extracted?.vintage || 'N/A'}`, parseExtStart);
+      logStep("Parse AI Response", "success", `Extracted: ${extracted?.product_name || 'unknown'}, Producer: ${extracted?.producer || 'unknown'}, Year: ${extracted?.year || 'N/A'}, Volume: ${extracted?.bottle_size_ml || 'N/A'}ml`, parseExtStart);
     } catch {
       logStep("Parse AI Response", "failed", `Could not parse JSON from: ${rawText.substring(0, 100)}...`, parseExtStart);
       return new Response(
@@ -255,6 +255,18 @@ serve(async (req) => {
       const metaProducer = ((syrveData as any).producer || "").toLowerCase();
       if (extractedProducer && metaProducer && (metaProducer.includes(extractedProducer) || extractedProducer.includes(metaProducer))) {
         score += 15;
+      }
+
+      // Year in product name check
+      const extractedYear = extracted!.year ? String(extracted!.year) : null;
+      if (extractedYear && pName.includes(extractedYear)) score += 15;
+
+      // Volume/bottle size in product name check
+      const extractedVolume = extracted!.bottle_size_ml ? Number(extracted!.bottle_size_ml) : null;
+      if (extractedVolume) {
+        const volStr = String(extractedVolume);
+        const volLiters = (extractedVolume / 1000).toFixed(1).replace(/\.0$/, "");
+        if (pName.includes(volStr) || pName.includes(volLiters + "l") || pName.includes(volLiters + " l")) score += 10;
       }
 
       // SKU/code partial match
