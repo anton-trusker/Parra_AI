@@ -177,54 +177,56 @@ serve(async (req) => {
 
     // Step 6: Search products via v_stock_summary (only GOODS with available stock)
     const searchStart = Date.now();
-    const searchTerms: string[] = [];
-    if (extracted.product_name) searchTerms.push(String(extracted.product_name));
-    if (extracted.producer) searchTerms.push(String(extracted.producer));
+    const selectCols = "product_id, name, code, sku, total_stock, purchase_price, sale_price, unit_capacity, category_name, syrve_data";
 
-    const orConditions: string[] = [];
-    if (extracted.product_name) {
-      const name = String(extracted.product_name).replace(/'/g, "''");
-      orConditions.push(`name.ilike.%${name}%`);
-    }
-    if (extracted.producer) {
-      const producer = String(extracted.producer).replace(/'/g, "''");
-      orConditions.push(`name.ilike.%${producer}%`);
-    }
+    const productName = extracted.product_name ? String(extracted.product_name) : "";
+    const producer = extracted.producer ? String(extracted.producer) : "";
+    const year = extracted.year ? String(extracted.year) : "";
+
+    // Build diverse search phrases: name, producer, combinations with year
+    const searchPhrases: string[] = [];
+    if (productName) searchPhrases.push(productName);
+    if (producer) searchPhrases.push(producer);
+    if (producer && productName) searchPhrases.push(`${producer} ${productName}`);
+    if (productName && year) searchPhrases.push(`${productName} ${year}`);
+    if (producer && year) searchPhrases.push(`${producer} ${year}`);
 
     let allCandidates: any[] = [];
+    const seenIds = new Set<string>();
 
-    // Search by name/producer ILIKE against v_stock_summary
+    const addCandidates = (hits: any[], method: string) => {
+      for (const hit of hits) {
+        if (!seenIds.has(hit.product_id)) {
+          seenIds.add(hit.product_id);
+          allCandidates.push({ ...hit, id: hit.product_id, retrieval_method: method });
+        }
+      }
+    };
+
+    // Phase 1: ILIKE search with full phrases
+    const orConditions = searchPhrases.map(p => `name.ilike.%${p.replace(/'/g, "''")}%`);
     if (orConditions.length > 0) {
       const { data: ilikeCandidates, error: iErr } = await supabaseAdmin
         .from("v_stock_summary")
-        .select("product_id, name, code, sku, total_stock, purchase_price, sale_price, unit_capacity, category_name, syrve_data")
+        .select(selectCols)
         .or(orConditions.join(","))
         .limit(50);
 
-      if (ilikeCandidates) {
-        allCandidates.push(...ilikeCandidates.map(c => ({ ...c, id: c.product_id, retrieval_method: "ilike" })));
-      }
-      if (iErr) {
-        console.error("ILIKE search error:", iErr);
-      }
+      if (ilikeCandidates) addCandidates(ilikeCandidates, "phrase_ilike");
+      if (iErr) console.error("ILIKE search error:", iErr);
     }
 
-    // Also try broader word-level search
-    const words = searchTerms.join(" ").split(/\s+/).filter(w => w.length > 2);
-    for (const word of words.slice(0, 5)) {
+    // Phase 2: Word-level search for broader recall
+    const allWords = [productName, producer, year].join(" ").split(/\s+/).filter(w => w.length > 2);
+    const uniqueWords = [...new Set(allWords)];
+    for (const word of uniqueWords.slice(0, 6)) {
       const { data: wordHits } = await supabaseAdmin
         .from("v_stock_summary")
-        .select("product_id, name, code, sku, total_stock, purchase_price, sale_price, unit_capacity, category_name, syrve_data")
+        .select(selectCols)
         .ilike("name", `%${word}%`)
         .limit(20);
-      
-      if (wordHits) {
-        for (const hit of wordHits) {
-          if (!allCandidates.find(c => c.product_id === hit.product_id)) {
-            allCandidates.push({ ...hit, id: hit.product_id, retrieval_method: "word_match" });
-          }
-        }
-      }
+
+      if (wordHits) addCandidates(wordHits, "word_match");
     }
 
     logStep("Product Search (Stock)", "success", `Found ${allCandidates.length} candidates with available stock`, searchStart);
