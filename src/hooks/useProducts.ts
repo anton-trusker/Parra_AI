@@ -32,6 +32,37 @@ export interface Product {
   categories?: { name: string } | null;
   parent_product?: { id: string; name: string; product_type: string | null }[] | { id: string; name: string; product_type: string | null } | null;
   store_names?: string[];
+  main_unit_name?: string | null;
+}
+
+/** Fetches all measurement units and returns lookup maps by both DB id and syrve_unit_id */
+export function useMeasurementUnitsMap() {
+  return useQuery({
+    queryKey: ['measurement_units_map'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('measurement_units')
+        .select('id, name, short_name, syrve_unit_id');
+      if (error) throw error;
+      const byId = new Map<string, string>();
+      const bySyrveId = new Map<string, string>();
+      for (const u of data || []) {
+        const label = u.short_name || u.name;
+        byId.set(u.id, label);
+        bySyrveId.set(u.syrve_unit_id, label);
+      }
+      return { byId, bySyrveId };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function resolveUnitName(
+  unitId: string | null,
+  unitsMap: { byId: Map<string, string>; bySyrveId: Map<string, string> } | undefined
+): string | null {
+  if (!unitId || !unitsMap) return null;
+  return unitsMap.byId.get(unitId) || unitsMap.bySyrveId.get(unitId) || null;
 }
 
 export interface ProductBarcode {
