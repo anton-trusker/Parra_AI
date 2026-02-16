@@ -853,6 +853,62 @@ export type Database = {
         }
         Relationships: []
       }
+      measurement_units: {
+        Row: {
+          code: string | null
+          created_at: string | null
+          factor: number | null
+          id: string
+          is_main: boolean
+          main_unit_id: string | null
+          main_unit_syrve_id: string | null
+          name: string
+          short_name: string | null
+          synced_at: string | null
+          syrve_data: Json | null
+          syrve_unit_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string | null
+          factor?: number | null
+          id?: string
+          is_main?: boolean
+          main_unit_id?: string | null
+          main_unit_syrve_id?: string | null
+          name: string
+          short_name?: string | null
+          synced_at?: string | null
+          syrve_data?: Json | null
+          syrve_unit_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          code?: string | null
+          created_at?: string | null
+          factor?: number | null
+          id?: string
+          is_main?: boolean
+          main_unit_id?: string | null
+          main_unit_syrve_id?: string | null
+          name?: string
+          short_name?: string | null
+          synced_at?: string | null
+          syrve_data?: Json | null
+          syrve_unit_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_units_main_unit_id_fkey"
+            columns: ["main_unit_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_barcodes: {
         Row: {
           barcode: string

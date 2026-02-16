@@ -138,8 +138,9 @@ export default function SyrveSettings() {
           setActiveSyncRunId(null);
           setSyncFinished(true);
           if (data.status === 'success') {
+            const unitsInfo = s?.measurement_units ? `, ${s.measurement_units} units` : '';
             const aiInfo = s?.ai_enriched ? `, ${s.ai_enriched} AI-enriched (~$${s.ai_estimated_cost_usd || 0})` : '';
-            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories, ${s?.prices_updated || 0} prices, ${s?.stock_updated || 0} stock levels${s?.wines_created ? `, ${s.wines_created} wines created` : ''}${aiInfo}.`);
+            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories${unitsInfo}, ${s?.prices_updated || 0} prices, ${s?.stock_updated || 0} stock levels${s?.wines_created ? `, ${s.wines_created} wines created` : ''}${aiInfo}.`);
           } else {
             toast.error(`Sync failed: ${data.error || 'Unknown error'}`);
           }
@@ -200,7 +201,7 @@ export default function SyrveSettings() {
       setServerVersion(result.server_version || '');
       setBusinessInfo(result.business_info || null);
       setTested(true);
-      toast.success(`Connection successful! Found ${result.stores?.length || 0} stores.`);
+      toast.success(`Connection successful! Found ${result.stores?.length || 0} stores, ${result.measurement_units || 0} measurement units.`);
       setOpenSections(prev => ({ ...prev, store: true }));
     } catch (err: any) {
       toast.error(err.message || 'Connection failed');
@@ -249,6 +250,17 @@ export default function SyrveSettings() {
         selected_category_ids: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
       });
       toast.success('Connection configuration saved');
+      // Auto-refresh categories after saving store selection
+      qc.invalidateQueries({ queryKey: ['syrve_categories'] });
+      // Trigger a categories-only sync if connected
+      if (isConfigured || tested) {
+        try {
+          const result = await syncMutation.mutateAsync('categories');
+          toast.success('Categories refreshed based on current configuration');
+        } catch {
+          // Silent fail - categories will be refreshed on next full sync
+        }
+      }
     } catch (err: any) {
       toast.error(err.message || 'Failed to save');
     }
@@ -296,6 +308,7 @@ export default function SyrveSettings() {
   const SYNC_STAGES = [
     { key: 'authenticating', label: 'Authenticating' },
     { key: 'syncing_stores', label: 'Syncing Stores' },
+    { key: 'syncing_units', label: 'Syncing Units' },
     { key: 'syncing_categories', label: 'Syncing Categories' },
     { key: 'deleting_products', label: 'Deleting Products' },
     { key: 'deleted_products', label: 'Products Deleted' },

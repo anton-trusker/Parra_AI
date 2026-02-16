@@ -168,6 +168,7 @@ export function useSyrveSync() {
       qc.invalidateQueries({ queryKey: ['syrve_stores'] });
       qc.invalidateQueries({ queryKey: ['syrve_products'] });
       qc.invalidateQueries({ queryKey: ['syrve_categories'] });
+      qc.invalidateQueries({ queryKey: ['measurement_units'] });
     },
   });
 }
@@ -219,6 +220,20 @@ export function useSyrveCategories() {
         .from('categories')
         .select('*')
         .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+}
+
+export function useMeasurementUnits() {
+  return useQuery({
+    queryKey: ['measurement_units'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('measurement_units')
+        .select('*')
         .order('name');
       if (error) throw error;
       return data || [];
