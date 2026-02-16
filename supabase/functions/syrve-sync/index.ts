@@ -141,10 +141,13 @@ serve(async (req) => {
           await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
         }
 
-        // Fetch stock if enabled and store configured
-        if (fieldMapping.sync_stock !== false && config.default_store_id) {
+        // Fetch stock for ALL selected stores
+        if (fieldMapping.sync_stock !== false) {
           await updateProgress('fetching_stock', 85);
-          await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, config.default_store_id);
+          const storeIds = config.selected_store_ids || (config.default_store_id ? [config.default_store_id] : []);
+          for (const sid of storeIds) {
+            await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, sid);
+          }
         }
 
         await updateProgress('applying_reimport_mode', 90);
@@ -159,9 +162,12 @@ serve(async (req) => {
         await updateProgress('fetching_prices', 30);
         await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
 
-        if (config.default_store_id) {
+        const storeIds = config.selected_store_ids || (config.default_store_id ? [config.default_store_id] : []);
+        if (storeIds.length > 0) {
           await updateProgress('fetching_stock', 60);
-          await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, config.default_store_id);
+          for (const sid of storeIds) {
+            await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, sid);
+          }
         }
       }
 
@@ -534,6 +540,9 @@ async function syncProducts(
     const syrveData = { ...product };
     if (Array.isArray(productContainers) && productContainers.length > 0) syrveData.containers = productContainers;
 
+    // Resolve main_unit_id: look up the Syrve mainUnit GUID in measurement_units
+    const syrveMainUnit = product.mainUnit || null;
+
     productBatch.push({
       syrve_product_id: syrveId,
       category_id: categoryId || null,
@@ -542,7 +551,7 @@ async function syncProducts(
       sku: product.num || null,
       code: product.code || null,
       product_type: product.type || product.productType || null,
-      main_unit_id: product.mainUnit || null,
+      main_unit_id: syrveMainUnit,
       unit_capacity: unitCapacity,
       default_sale_price: product.defaultSalePrice || null,
       not_in_store_movement: product.notInStoreMovement || false,
@@ -599,6 +608,35 @@ async function syncProducts(
 
     for (let i = 0; i < barcodeBatch.length; i += BATCH_SIZE) {
       await client.from("product_barcodes").upsert(barcodeBatch.slice(i, i + BATCH_SIZE), { onConflict: "barcode" }).catch(() => {});
+    }
+  }
+
+  // After products are upserted, resolve main_unit_id to measurement_units.id
+  const { data: allUnits } = await client.from("measurement_units").select("id, syrve_unit_id");
+  if (allUnits && allUnits.length > 0) {
+    const unitLookup = new Map(allUnits.map((u: any) => [u.syrve_unit_id, u.id]));
+    // Fetch all products that have a main_unit_id that looks like a syrve GUID
+    const { data: prodsWithUnit } = await client.from("products")
+      .select("id, main_unit_id")
+      .not("main_unit_id", "is", null);
+
+    if (prodsWithUnit) {
+      const updateBatch: any[] = [];
+      for (const p of prodsWithUnit) {
+        const resolvedId = unitLookup.get(p.main_unit_id);
+        // Only update if the current main_unit_id is a syrve GUID (not already resolved to our UUID)
+        if (resolvedId && p.main_unit_id !== resolvedId) {
+          updateBatch.push({ id: p.id, main_unit_id: resolvedId });
+        }
+      }
+      // Batch update in groups of 50
+      for (let i = 0; i < updateBatch.length; i += 50) {
+        const chunk = updateBatch.slice(i, i + 50);
+        for (const item of chunk) {
+          await client.from("products").update({ main_unit_id: item.main_unit_id }).eq("id", item.id);
+        }
+      }
+      console.log(`Linked ${updateBatch.length} products to measurement units`);
     }
   }
 
@@ -724,15 +762,40 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
       }
     }
 
-    // Match by SKU and update products
+    // Look up internal store ID for stock_levels
+    const { data: storeRow } = await client.from("stores").select("id").eq("syrve_store_id", storeId).maybeSingle();
+    const internalStoreId = storeRow?.id;
+
+    // Match by SKU and update products + stock_levels
     for (const item of stockItems) {
-      const { error } = await client.from("products")
-        .update({
-          current_stock: item.balance,
-          stock_updated_at: new Date().toISOString(),
-        })
-        .eq("sku", item.sku);
-      if (!error) stats.stock_updated++;
+      const { data: matchedProduct } = await client.from("products")
+        .select("id, main_unit_id")
+        .eq("sku", item.sku)
+        .maybeSingle();
+
+      if (matchedProduct) {
+        await client.from("products")
+          .update({
+            current_stock: item.balance,
+            stock_updated_at: new Date().toISOString(),
+          })
+          .eq("id", matchedProduct.id);
+
+        // Upsert stock_levels per store
+        if (internalStoreId) {
+          await client.from("stock_levels").upsert({
+            product_id: matchedProduct.id,
+            store_id: internalStoreId,
+            quantity: item.balance,
+            unit_id: matchedProduct.main_unit_id || null,
+            source: 'syrve',
+            sync_run_id: syncRunId,
+            last_synced_at: new Date().toISOString(),
+          }, { onConflict: "product_id,store_id" });
+        }
+
+        stats.stock_updated++;
+      }
     }
 
     console.log(`Stock OLAP: parsed ${stockItems.length} items, updated ${stats.stock_updated}`);

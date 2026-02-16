@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import EmptyState from '@/components/EmptyState';
 import { useStores } from '@/hooks/useStores';
 import { useProducts } from '@/hooks/useProducts';
+import { useStockLevelsByStore, useStockSummaryByStore } from '@/hooks/useStockLevels';
 
 export default function ByStorePage() {
   const navigate = useNavigate();
@@ -17,20 +18,37 @@ export default function ByStorePage() {
   const [productSearch, setProductSearch] = useState('');
   const { data: stores = [], isLoading: storesLoading } = useStores();
   const { data: products = [], isLoading: productsLoading } = useProducts();
+  const { data: stockLevels = [], isLoading: stockLoading } = useStockLevelsByStore(selectedStoreId);
+  const { data: stockSummary = {} } = useStockSummaryByStore();
 
   const selectedStore = stores.find((s) => s.id === selectedStoreId);
 
-  const filteredProducts = useMemo(() => {
-    let result = products.filter(p => p.is_active);
+  // Build a map of product_id -> stock level for selected store
+  const stockByProductId = useMemo(() => {
+    const map = new Map<string, { quantity: number; unitName: string | null }>();
+    for (const sl of stockLevels) {
+      map.set(sl.product_id, {
+        quantity: Number(sl.quantity) || 0,
+        unitName: (sl.measurement_units as any)?.short_name || (sl.measurement_units as any)?.name || null,
+      });
+    }
+    return map;
+  }, [stockLevels]);
+
+  // Products for the selected store: only those that have stock_levels entries
+  const storeProducts = useMemo(() => {
+    if (!selectedStoreId) return [];
+    const productIds = new Set(stockLevels.map(sl => sl.product_id));
+    let result = products.filter(p => p.is_active && productIds.has(p.id));
     if (productSearch) {
       const q = productSearch.toLowerCase();
       result = result.filter(p => p.name.toLowerCase().includes(q) || (p.sku && p.sku.toLowerCase().includes(q)));
     }
     return result;
-  }, [products, productSearch]);
+  }, [products, stockLevels, selectedStoreId, productSearch]);
 
   const totalActiveProducts = products.filter(p => p.is_active).length;
-  const totalStock = products.reduce((s, p) => s + (Number(p.current_stock) || 0), 0);
+  const totalStock = Object.values(stockSummary).reduce((s, v) => s + v.totalQuantity, 0);
 
   const columns = [
     { key: 'name', label: 'Product', sortable: true, render: (item: any) => (
@@ -42,10 +60,12 @@ export default function ByStorePage() {
     { key: 'sku', label: 'SKU', sortable: true, render: (item: any) => (
       <span className="text-xs text-muted-foreground font-mono">{item.sku || '—'}</span>
     )},
-    { key: 'current_stock', label: 'Stock', sortable: true, render: (item: any) => {
-      const stock = item.current_stock ?? 0;
+    { key: 'stock', label: 'Stock', sortable: true, render: (item: any) => {
+      const sl = stockByProductId.get(item.id);
+      const stock = sl?.quantity ?? 0;
+      const unit = sl?.unitName;
       const color = stock <= 0 ? 'text-destructive' : stock < 5 ? 'text-amber-500' : 'text-emerald-500';
-      return <span className={`tabular-nums font-medium ${color}`}>{stock}</span>;
+      return <span className={`tabular-nums font-medium ${color}`}>{stock}{unit ? ` ${unit}` : ''}</span>;
     }},
     { key: 'sale_price', label: 'Price', sortable: true, render: (item: any) => (
       <span className="tabular-nums text-muted-foreground">{item.sale_price?.toFixed(2) ?? '—'}</span>
@@ -106,42 +126,51 @@ export default function ByStorePage() {
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {stores.map((store) => (
-            <Card
-              key={store.id}
-              className={`cursor-pointer transition-all duration-200 rounded-xl hover:shadow-md ${
-                selectedStoreId === store.id
-                  ? 'ring-2 ring-primary border-primary bg-primary/5'
-                  : 'border-border/60 hover:border-primary/30'
-              }`}
-              onClick={() => setSelectedStoreId(store.id === selectedStoreId ? null : store.id)}
-            >
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1.5">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-foreground">{store.name}</h3>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {store.store_type && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">{store.store_type}</Badge>
+          {stores.map((store) => {
+            const summary = stockSummary[store.id];
+            return (
+              <Card
+                key={store.id}
+                className={`cursor-pointer transition-all duration-200 rounded-xl hover:shadow-md ${
+                  selectedStoreId === store.id
+                    ? 'ring-2 ring-primary border-primary bg-primary/5'
+                    : 'border-border/60 hover:border-primary/30'
+                }`}
+                onClick={() => setSelectedStoreId(store.id === selectedStoreId ? null : store.id)}
+              >
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-foreground">{store.name}</h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {store.store_type && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{store.store_type}</Badge>
+                        )}
+                        {store.code && (
+                          <span className="text-[10px] text-muted-foreground font-mono">#{store.code}</span>
+                        )}
+                      </div>
+                      {summary && (
+                        <div className="flex items-center gap-3 mt-1">
+                          <span className="text-xs text-muted-foreground">{summary.productCount} products</span>
+                          <span className="text-xs font-medium text-foreground">{summary.totalQuantity.toLocaleString()} units</span>
+                        </div>
                       )}
-                      {store.code && (
-                        <span className="text-[10px] text-muted-foreground font-mono">#{store.code}</span>
-                      )}
                     </div>
+                    <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${selectedStoreId === store.id ? 'rotate-90 text-primary' : 'text-muted-foreground'}`} />
                   </div>
-                  <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${selectedStoreId === store.id ? 'rotate-90 text-primary' : 'text-muted-foreground'}`} />
-                </div>
-                {store.synced_at && (
-                  <div className="flex items-center gap-1.5 mt-3 text-[10px] text-muted-foreground">
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Synced {new Date(store.synced_at).toLocaleDateString()}</span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                  {store.synced_at && (
+                    <div className="flex items-center gap-1.5 mt-3 text-[10px] text-muted-foreground">
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Synced {new Date(store.synced_at).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -149,7 +178,7 @@ export default function ByStorePage() {
       {selectedStore && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-heading font-semibold text-foreground">{selectedStore.name} — Products</h2>
+            <h2 className="text-lg font-heading font-semibold text-foreground">{selectedStore.name} — Products ({storeProducts.length})</h2>
           </div>
           <div className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -160,10 +189,10 @@ export default function ByStorePage() {
               className="pl-10 h-10 bg-card border-border"
             />
           </div>
-          {productsLoading ? (
+          {productsLoading || stockLoading ? (
             <Skeleton className="h-40 rounded-xl" />
           ) : (
-            <SimpleDataTable data={filteredProducts} columns={columns} keyField="id" emptyMessage={`No products found`} />
+            <SimpleDataTable data={storeProducts} columns={columns} keyField="id" emptyMessage="No products with stock in this store" />
           )}
         </div>
       )}
