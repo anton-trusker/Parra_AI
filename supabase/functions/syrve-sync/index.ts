@@ -343,11 +343,9 @@ async function syncMeasurementUnits(client: any, baseUrl: string, token: string,
         syrve_unit_id: syrveId,
         name: unit.name || "Unknown",
         short_name: unit.shortName || unit.short_name || null,
-        code: unit.code || null,
         main_unit_syrve_id: unit.mainUnitId || unit.main_unit_id || null,
         is_main: unit.isMain || unit.is_main || false,
         factor: unit.factor || unit.ratio || 1,
-        syrve_data: unit,
         synced_at: new Date().toISOString(),
       }, { onConflict: "syrve_unit_id" });
 
@@ -687,6 +685,37 @@ async function syncProducts(
       }
       console.log(`Linked ${updateBatch.length} products to measurement units${unresolved > 0 ? `, ${unresolved} unresolved` : ''}`);
     }
+  }
+
+  // Resolve parent_product_id: link DISH products to their parent GOODS products
+  // In Syrve, raw product data stores the goods-to-dish link
+  try {
+    const { data: allProducts } = await client.from("products")
+      .select("id, syrve_product_id, syrve_data, product_type")
+      .eq("is_active", true);
+
+    if (allProducts && allProducts.length > 0) {
+      const syrveIdToId = new Map(allProducts.map((p: any) => [p.syrve_product_id, p.id]));
+      let linked = 0;
+
+      for (const product of allProducts) {
+        const syrveData = product.syrve_data as any;
+        if (!syrveData) continue;
+
+        // Check for parent product reference in syrve_data
+        const parentSyrveId = syrveData.parentProduct || syrveData.parentProductId || syrveData.goodsId || null;
+        if (parentSyrveId && syrveIdToId.has(parentSyrveId)) {
+          const parentId = syrveIdToId.get(parentSyrveId);
+          if (parentId !== product.id) {
+            await client.from("products").update({ parent_product_id: parentId }).eq("id", product.id);
+            linked++;
+          }
+        }
+      }
+      if (linked > 0) console.log(`Linked ${linked} products to parent products (goods→dish)`);
+    }
+  } catch (e) {
+    console.error("Parent product linking error:", e);
   }
 
   return productSyrveIdOrder;

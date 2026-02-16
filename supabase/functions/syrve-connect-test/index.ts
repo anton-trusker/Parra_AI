@@ -145,11 +145,9 @@ serve(async (req) => {
           syrve_unit_id: syrveId,
           name: unit.name || "Unknown",
           short_name: unit.shortName || unit.short_name || null,
-          code: unit.code || null,
           main_unit_syrve_id: unit.mainUnitId || unit.main_unit_id || null,
           is_main: unit.isMain || unit.is_main || false,
           factor: unit.factor || unit.ratio || 1,
-          syrve_data: unit,
           synced_at: new Date().toISOString(),
         }, { onConflict: "syrve_unit_id" });
       }
