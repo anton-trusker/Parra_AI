@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, Loader2,
-  Store, Building2, Beaker, Eye, EyeOff, Package, Clock, Zap, ChevronDown,
+  Store, Building2, Beaker, Eye, EyeOff, Package, Clock, Zap, ChevronDown, Warehouse,
   ChevronRight, FileText, ArrowRightLeft, Filter,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -201,7 +201,7 @@ export default function SyrveSettings() {
       setServerVersion(result.server_version || '');
       setBusinessInfo(result.business_info || null);
       setTested(true);
-      toast.success(`Connection successful! Found ${result.stores?.length || 0} stores, ${result.measurement_units || 0} measurement units.`);
+      toast.success(`Connection successful! Found ${result.stores?.length || 0} warehouses, ${result.measurement_units || 0} measurement units.`);
       setOpenSections(prev => ({ ...prev, store: true }));
     } catch (err: any) {
       toast.error(err.message || 'Connection failed');
@@ -307,7 +307,7 @@ export default function SyrveSettings() {
 
   const SYNC_STAGES = [
     { key: 'authenticating', label: 'Authenticating' },
-    { key: 'syncing_stores', label: 'Syncing Stores' },
+    { key: 'syncing_stores', label: 'Syncing Warehouses' },
     { key: 'syncing_units', label: 'Syncing Units' },
     { key: 'syncing_categories', label: 'Syncing Categories' },
     { key: 'deleting_products', label: 'Deleting Products' },
@@ -403,7 +403,7 @@ export default function SyrveSettings() {
           <SectionHeader
             icon={isConfigured ? Wifi : WifiOff}
             title="Connection"
-            subtitle={isConfigured ? `${config?.server_url} • Store: ${config?.default_store_name || 'Not selected'}` : 'Enter your Syrve Server API credentials'}
+            subtitle={isConfigured ? `${config?.server_url} • Warehouse: ${config?.default_store_name || 'Not selected'}` : 'Enter your Syrve Server API credentials'}
             sectionKey="connection"
             badge={isConfigured ? <Badge variant="outline" className="text-[10px]">Configured</Badge> : undefined}
           />
@@ -506,20 +506,20 @@ export default function SyrveSettings() {
       <Collapsible open={openSections.store} onOpenChange={() => toggleSection('store')}>
         <Card>
           <SectionHeader
-            icon={Store}
-            title="Store Locations"
-            subtitle={selectedStoreIds.length > 0 ? `${selectedStoreIds.length} store${selectedStoreIds.length > 1 ? 's' : ''} selected` : 'Select stores for inventory operations'}
+            icon={Warehouse}
+            title="Warehouses / Storages"
+            subtitle={selectedStoreIds.length > 0 ? `${selectedStoreIds.length} warehouse${selectedStoreIds.length > 1 ? 's' : ''} selected` : 'Select warehouses for inventory operations'}
             sectionKey="store"
             badge={stores && stores.length > 0 ? <Badge variant="outline" className="text-[10px]">{stores.length} available</Badge> : undefined}
           />
           <CollapsibleContent>
             <CardContent className="space-y-4 pt-0">
               {availableStores.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No stores available. Test connection or run a sync first.</p>
+                <p className="text-sm text-muted-foreground">No warehouses available. Test connection or run a sync first.</p>
               ) : (
                 <>
                   <p className="text-xs text-muted-foreground">
-                    Select one or more stores. The default store is used for stock queries and inventory submissions.
+                    Select one or more warehouses. The default warehouse is used for stock queries and inventory submissions.
                   </p>
                   <div className="space-y-2">
                     {availableStores.map((store) => {
@@ -571,7 +571,7 @@ export default function SyrveSettings() {
                   </div>
                   {selectedStoreIds.length > 0 && (
                     <p className="text-xs text-muted-foreground">
-                      Default store: <span className="font-medium text-foreground">{availableStores.find(s => s.id === selectedStoreId)?.name || '—'}</span>
+                      Default warehouse: <span className="font-medium text-foreground">{availableStores.find(s => s.id === selectedStoreId)?.name || '—'}</span>
                     </p>
                   )}
                 </>

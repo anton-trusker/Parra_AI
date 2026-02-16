@@ -696,68 +696,41 @@ async function syncPrices(client: any, _baseUrl: string, _token: string, syncRun
 }
 
 async function syncStock(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any, storeId: string) {
-  // Use OLAP STOCK report which is reliable across Syrve Server versions
+  // Use /reports/balance/stores endpoint which reliably returns per-product stock
   const start = Date.now();
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  const dateStr = `${dd}.${mm}.${yyyy}`;
-
-  const url = `${baseUrl}/reports/olap?key=${token}&report=STOCK&groupRow=Product.Num&groupRow=Product.Name&agr=FinalBalance.Amount&from=${dateStr}&to=${dateStr}&store=${storeId}`;
+  const today = new Date().toISOString().split("T")[0];
+  const url = `${baseUrl}/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${today}`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) {
       await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `HTTP ${resp.status}`, Date.now() - start);
-      console.error(`Stock OLAP fetch failed: ${resp.status}`);
+      console.error(`Stock balance fetch failed: ${resp.status}`);
       return;
     }
 
     const xml = await resp.text();
     await logApi(client, syncRunId, "FETCH_STOCK", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
 
-    // Parse OLAP report rows. Format varies but typically:
-    // <r><c>ProductNum</c><c>ProductName</c><c>Amount</c></r>
-    // or <row><cell>...</cell></row> etc.
-    const stockItems: { sku: string; balance: number }[] = [];
+    // Parse stock items from XML - same format as syrve-stock-snapshot
+    const stockItems = parseStockBalanceXml(xml);
 
-    // Try <r><c>...</c></r> format first
-    const rowRegex = /<r>([\s\S]*?)<\/r>/g;
-    let match;
-    while ((match = rowRegex.exec(xml)) !== null) {
-      const cells: string[] = [];
-      const cellRegex = /<c>([^<]*)<\/c>/g;
-      let cellMatch;
-      while ((cellMatch = cellRegex.exec(match[1])) !== null) {
-        cells.push(cellMatch[1].trim());
-      }
-      // cells[0] = Product.Num, cells[1] = Product.Name, cells[2] = FinalBalance.Amount
-      if (cells.length >= 3) {
-        const sku = cells[0];
-        const balance = parseFloat(cells[2]) || 0;
-        if (sku) stockItems.push({ sku, balance });
-      } else if (cells.length === 2) {
-        // Maybe only Product.Num + Amount
-        const sku = cells[0];
-        const balance = parseFloat(cells[1]) || 0;
-        if (sku) stockItems.push({ sku, balance });
-      }
+    // Map syrve product IDs to our product IDs
+    const syrveProductIds = stockItems.map((s: any) => s.product_id).filter(Boolean);
+    if (syrveProductIds.length === 0) {
+      console.log(`Stock: no items returned for store ${storeId}`);
+      return;
     }
 
-    // Fallback: try <row> format
-    if (stockItems.length === 0) {
-      const altRowRegex = /<row>([\s\S]*?)<\/row>/g;
-      while ((match = altRowRegex.exec(xml)) !== null) {
-        const cells: string[] = [];
-        const cellRegex = /<cell>([^<]*)<\/cell>/g;
-        let cellMatch;
-        while ((cellMatch = cellRegex.exec(match[1])) !== null) {
-          cells.push(cellMatch[1].trim());
-        }
-        if (cells.length >= 2) {
-          const sku = cells[0];
-          const balance = parseFloat(cells[cells.length - 1]) || 0;
-          if (sku) stockItems.push({ sku, balance });
+    // Batch lookup products by syrve_product_id
+    const productLookup = new Map<string, { id: string; main_unit_id: string | null }>();
+    for (let i = 0; i < syrveProductIds.length; i += 200) {
+      const batch = syrveProductIds.slice(i, i + 200);
+      const { data: products } = await client.from("products")
+        .select("id, syrve_product_id, main_unit_id")
+        .in("syrve_product_id", batch);
+      if (products) {
+        for (const p of products) {
+          productLookup.set(p.syrve_product_id, { id: p.id, main_unit_id: p.main_unit_id });
         }
       }
     }
@@ -766,43 +739,67 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
     const { data: storeRow } = await client.from("stores").select("id").eq("syrve_store_id", storeId).maybeSingle();
     const internalStoreId = storeRow?.id;
 
-    // Match by SKU and update products + stock_levels
+    // Update stock for each item
+    const BATCH_SIZE = 50;
+    const stockBatch: any[] = [];
     for (const item of stockItems) {
-      const { data: matchedProduct } = await client.from("products")
-        .select("id, main_unit_id")
-        .eq("sku", item.sku)
-        .maybeSingle();
+      const prod = productLookup.get(item.product_id);
+      if (!prod) continue;
 
-      if (matchedProduct) {
-        await client.from("products")
-          .update({
-            current_stock: item.balance,
-            stock_updated_at: new Date().toISOString(),
-          })
-          .eq("id", matchedProduct.id);
+      // Update products.current_stock
+      await client.from("products").update({
+        current_stock: item.amount,
+        stock_updated_at: new Date().toISOString(),
+      }).eq("id", prod.id);
 
-        // Upsert stock_levels per store
-        if (internalStoreId) {
-          await client.from("stock_levels").upsert({
-            product_id: matchedProduct.id,
-            store_id: internalStoreId,
-            quantity: item.balance,
-            unit_id: matchedProduct.main_unit_id || null,
-            source: 'syrve',
-            sync_run_id: syncRunId,
-            last_synced_at: new Date().toISOString(),
-          }, { onConflict: "product_id,store_id" });
-        }
-
-        stats.stock_updated++;
+      // Prepare stock_levels upsert
+      if (internalStoreId) {
+        stockBatch.push({
+          product_id: prod.id,
+          store_id: internalStoreId,
+          quantity: item.amount,
+          unit_id: prod.main_unit_id || null,
+          source: 'syrve',
+          sync_run_id: syncRunId,
+          last_synced_at: new Date().toISOString(),
+        });
       }
+
+      stats.stock_updated++;
     }
 
-    console.log(`Stock OLAP: parsed ${stockItems.length} items, updated ${stats.stock_updated}`);
+    // Batch upsert stock_levels
+    for (let i = 0; i < stockBatch.length; i += BATCH_SIZE) {
+      await client.from("stock_levels").upsert(
+        stockBatch.slice(i, i + BATCH_SIZE),
+        { onConflict: "product_id,store_id" }
+      );
+    }
+
+    console.log(`Stock: parsed ${stockItems.length} items, matched ${stats.stock_updated} for store ${storeId}`);
   } catch (e) {
     console.error("syncStock error:", e);
     await logApi(client, syncRunId, "FETCH_STOCK", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
   }
+}
+
+function parseStockBalanceXml(xml: string): { product_id: string; amount: number }[] {
+  const items: { product_id: string; amount: number }[] = [];
+  const itemRegex = /<(?:item|remainItem|record)>([\s\S]*?)<\/(?:item|remainItem|record)>/g;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const content = match[1];
+    const getField = (tag: string): string | null => {
+      const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+      return m ? m[1].trim() : null;
+    };
+    const productId = getField("product") || getField("productId") || getField("id");
+    const amount = parseFloat(getField("amount") || getField("endStore") || getField("balance") || "0");
+    if (productId) {
+      items.push({ product_id: productId, amount });
+    }
+  }
+  return items;
 }
 
 async function applyReimportMode(client: any, importedSyrveIds: string[], mode: string, stats: any) {
