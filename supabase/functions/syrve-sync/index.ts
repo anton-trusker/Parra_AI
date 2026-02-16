@@ -134,20 +134,13 @@ serve(async (req) => {
         await updateProgress('importing_products', 45);
         const importedSyrveIds = await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds, productTypeFilters, importInactive, fieldMapping);
 
-        // Fetch prices if enabled
-        if (fieldMapping.sync_prices !== false) {
-          await updateProgress('fetching_prices', 80);
-          await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
-        }
-
-        // Fetch stock for ALL selected stores (or all stores if none selected)
+        // Fetch stock FIRST (higher priority than prices)
         if (fieldMapping.sync_stock !== false) {
-          await updateProgress('fetching_stock', 85);
+          await updateProgress('fetching_stock', 75);
           let storeIds = config.selected_store_ids || [];
           if (storeIds.length === 0 && config.default_store_id) {
             storeIds = [config.default_store_id];
           }
-          // If still no specific stores, fetch all from DB
           if (storeIds.length === 0) {
             const { data: allStores } = await adminClient.from("stores").select("syrve_store_id").eq("is_active", true);
             storeIds = (allStores || []).map((s: any) => s.syrve_store_id);
@@ -155,6 +148,12 @@ serve(async (req) => {
           for (const sid of storeIds) {
             await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, sid);
           }
+        }
+
+        // Fetch prices from already-stored raw data (no API call needed)
+        if (fieldMapping.sync_prices !== false) {
+          await updateProgress('fetching_prices', 85);
+          await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
         }
 
         await updateProgress('applying_reimport_mode', 90);
@@ -166,9 +165,6 @@ serve(async (req) => {
 
       // Prices & stock only mode (no product re-import)
       if (runType === "prices_stock") {
-        await updateProgress('fetching_prices', 30);
-        await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
-
         let psStoreIds = config.selected_store_ids || [];
         if (psStoreIds.length === 0 && config.default_store_id) psStoreIds = [config.default_store_id];
         if (psStoreIds.length === 0) {
@@ -176,11 +172,14 @@ serve(async (req) => {
           psStoreIds = (allStores || []).map((s: any) => s.syrve_store_id);
         }
         if (psStoreIds.length > 0) {
-          await updateProgress('fetching_stock', 60);
+          await updateProgress('fetching_stock', 30);
           for (const sid of psStoreIds) {
             await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, sid);
           }
         }
+
+        await updateProgress('fetching_prices', 60);
+        await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
       }
 
       // Wine enrichment stage: auto-create wines from wine-category products
@@ -725,68 +724,100 @@ async function syncProducts(
 async function syncPrices(client: any, _baseUrl: string, _token: string, syncRunId: string | null, stats: any) {
   const start = Date.now();
   try {
+    // Read prices from product syrve_data (already stored, no API call needed)
     let offset = 0;
-    const BATCH = 200;
+    const BATCH = 500;
     let totalUpdated = 0;
+    const updateBatch: { id: string; sale_price?: number; default_sale_price?: number; purchase_price?: number }[] = [];
 
     while (true) {
-      const { data: rawProducts, error } = await client.from("syrve_raw_objects")
-        .select("syrve_id, payload")
-        .eq("entity_type", "product")
-        .eq("is_deleted", false)
+      const { data: products, error } = await client.from("products")
+        .select("id, syrve_data")
+        .eq("is_active", true)
+        .not("syrve_data", "is", null)
         .range(offset, offset + BATCH - 1);
 
-      if (error || !rawProducts || rawProducts.length === 0) break;
+      if (error || !products || products.length === 0) break;
 
-      for (const raw of rawProducts) {
-        const payload = raw.payload as any;
-        const defaultSalePrice = parseFloat(payload?.defaultSalePrice || "0");
-        const purchasePrice = parseFloat(payload?.purchasePrice || payload?.costPrice || "0");
+      for (const p of products) {
+        const sd = p.syrve_data as any;
+        if (!sd) continue;
+        const defaultSalePrice = parseFloat(sd.defaultSalePrice || "0");
+        const purchasePrice = parseFloat(sd.purchasePrice || sd.costPrice || sd.estimatedPurchasePrice || "0");
 
         if (defaultSalePrice > 0 || purchasePrice > 0) {
-          const updateData: any = { price_updated_at: new Date().toISOString() };
+          const upd: any = { id: p.id };
           if (defaultSalePrice > 0) {
-            updateData.sale_price = defaultSalePrice;
-            updateData.default_sale_price = defaultSalePrice;
+            upd.sale_price = defaultSalePrice;
+            upd.default_sale_price = defaultSalePrice;
           }
-          if (purchasePrice > 0) {
-            updateData.purchase_price = purchasePrice;
-          }
-          const { error: upErr } = await client.from("products")
-            .update(updateData)
-            .eq("syrve_product_id", raw.syrve_id);
-          if (!upErr) totalUpdated++;
+          if (purchasePrice > 0) upd.purchase_price = purchasePrice;
+          updateBatch.push(upd);
         }
       }
 
       offset += BATCH;
-      if (rawProducts.length < BATCH) break;
+      if (products.length < BATCH) break;
+    }
+
+    // Apply updates in batches
+    for (let i = 0; i < updateBatch.length; i += 50) {
+      const chunk = updateBatch.slice(i, i + 50);
+      for (const item of chunk) {
+        const { id, ...updateData } = item;
+        await client.from("products").update({ ...updateData, price_updated_at: new Date().toISOString() }).eq("id", id);
+        totalUpdated++;
+      }
     }
 
     stats.prices_updated = totalUpdated;
-    await logApi(client, syncRunId, "SYNC_PRICES", "success", "syrve_raw_objects", undefined, Date.now() - start, `Updated ${totalUpdated} prices from stored data`);
-    console.log(`Prices: updated ${totalUpdated} from raw objects`);
+    await logApi(client, syncRunId, "SYNC_PRICES", "success", "products.syrve_data", undefined, Date.now() - start, `Updated ${totalUpdated} prices`);
+    console.log(`Prices: updated ${totalUpdated}`);
   } catch (e) {
     console.error("syncPrices error:", e);
-    await logApi(client, syncRunId, "SYNC_PRICES", "error", "syrve_raw_objects", e instanceof Error ? e.message : "Unknown", Date.now() - start);
+    await logApi(client, syncRunId, "SYNC_PRICES", "error", "products.syrve_data", e instanceof Error ? e.message : "Unknown", Date.now() - start);
   }
 }
 
 async function syncStock(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any, storeId: string) {
   const start = Date.now();
   const today = new Date().toISOString().split("T")[0];
-  const url = `${baseUrl}/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${today}`;
+  // Use v2/reports/balance POST endpoint (the correct Syrve Server API)
+  const url = `${baseUrl}/v2/reports/balance?key=${token}`;
+  const requestBody = `<balanceRequest><storeId>${storeId}</storeId><dateFrom>${today}</dateFrom><dateTo>${today}</dateTo></balanceRequest>`;
   try {
-    const resp = await fetch(url);
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/xml" },
+      body: requestBody,
+    });
     if (!resp.ok) {
-      await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `HTTP ${resp.status}`, Date.now() - start);
-      console.error(`Stock balance fetch failed: ${resp.status}`);
+      // Fallback: try legacy GET endpoint
+      const legacyUrl = `${baseUrl}/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${today}`;
+      const legacyResp = await fetch(legacyUrl);
+      if (!legacyResp.ok) {
+        await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `POST ${resp.status}, GET ${legacyResp.status}`, Date.now() - start);
+        console.error(`Stock balance fetch failed: POST ${resp.status}, GET ${legacyResp.status}`);
+        const _body = await legacyResp.text();
+        return;
+      }
+      const xml = await legacyResp.text();
+      await logApi(client, syncRunId, "FETCH_STOCK", "success", legacyUrl, undefined, Date.now() - start, xml.substring(0, 500));
+      await processStockXml(client, xml, storeId, syncRunId, stats);
       return;
     }
 
     const xml = await resp.text();
     await logApi(client, syncRunId, "FETCH_STOCK", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
+    await processStockXml(client, xml, storeId, syncRunId, stats);
 
+  } catch (e) {
+    console.error("syncStock error:", e);
+    await logApi(client, syncRunId, "FETCH_STOCK", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
+  }
+}
+
+async function processStockXml(client: any, xml: string, storeId: string, syncRunId: string | null, stats: any) {
     const stockItems = parseStockBalanceXml(xml);
 
     const syrveProductIds = stockItems.map((s: any) => s.product_id).filter(Boolean);
@@ -821,11 +852,6 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
         continue;
       }
 
-      await client.from("products").update({
-        current_stock: item.amount,
-        stock_updated_at: new Date().toISOString(),
-      }).eq("id", prod.id);
-
       if (internalStoreId) {
         stockBatch.push({
           product_id: prod.id,
@@ -841,6 +867,7 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
       stats.stock_updated++;
     }
 
+    // Batch upsert stock_levels
     for (let i = 0; i < stockBatch.length; i += BATCH_SIZE) {
       await client.from("stock_levels").upsert(
         stockBatch.slice(i, i + BATCH_SIZE),
@@ -849,10 +876,6 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
     }
 
     console.log(`Stock: parsed ${stockItems.length} items, matched ${stats.stock_updated} for store ${storeId}${unmatchedProducts > 0 ? `, ${unmatchedProducts} unmatched` : ''}`);
-  } catch (e) {
-    console.error("syncStock error:", e);
-    await logApi(client, syncRunId, "FETCH_STOCK", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
-  }
 }
 
 function parseStockBalanceXml(xml: string): { product_id: string; amount: number }[] {
