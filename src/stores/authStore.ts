@@ -54,13 +54,17 @@ export async function fetchAppUser(userId: string, email: string): Promise<AppUs
     .eq('id', userId)
     .single();
 
-  const { data: roleRow } = await supabase
+  const { data: roleRows } = await supabase
     .from('user_roles')
     .select('role')
-    .eq('user_id', userId)
-    .single();
+    .eq('user_id', userId);
 
-  const role = (roleRow?.role as 'super_admin' | 'admin' | 'staff') || 'staff';
+  const roles = (roleRows ?? []).map((r: any) => r.role as 'super_admin' | 'admin' | 'staff');
+  const role = roles.includes('super_admin')
+    ? 'super_admin'
+    : roles.includes('admin')
+    ? 'admin'
+    : 'staff';
 
   return {
     id: userId,

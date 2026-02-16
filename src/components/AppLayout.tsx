@@ -1,8 +1,9 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import AppSidebar from './AppSidebar';
+import { Sidebar } from '@/components/ui/enhanced-sidebar';
 import MobileBottomNav from './MobileBottomNav';
 import TopBar from './TopBar';
+import { CompactThemeProvider } from '@/components/ui/compact-theme';
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -18,15 +19,29 @@ export default function AppLayout() {
   if (!isAuthenticated) return <Navigate to="/login" replace />;
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppSidebar />
-      <main className="lg:ml-64 min-h-screen flex flex-col">
-        <TopBar />
-        <div className="flex-1 p-4 lg:p-8 pt-16 lg:pt-6 pb-24 lg:pb-8">
-          <Outlet />
+    <CompactThemeProvider defaultCompact={false} persistKey="parra-compact-theme">
+      <div className="flex h-screen bg-background overflow-hidden">
+        {/* Desktop Sidebar - hidden on mobile */}
+        <div className="hidden lg:block h-full shrink-0 z-30">
+          <Sidebar className="h-full border-r" />
         </div>
-      </main>
-      <MobileBottomNav />
-    </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-muted/5">
+          <TopBar />
+          
+          <main className="flex-1 overflow-auto p-4 lg:p-6 pb-24 lg:pb-8 scroll-smooth">
+            <div className="max-w-[1600px] mx-auto w-full animate-fade-in">
+              <Outlet />
+            </div>
+          </main>
+        </div>
+        
+        {/* Mobile Navigation */}
+        <div className="lg:hidden">
+          <MobileBottomNav />
+        </div>
+      </div>
+    </CompactThemeProvider>
   );
 }

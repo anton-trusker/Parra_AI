@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
-import { useColumnStore } from '@/stores/columnStore';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { useInventorySessions, useApproveSession, useFlagSession } from '@/hooks/useInventorySessions';
 import { useBaselineItems, useProductAggregates, useCountEvents } from '@/hooks/useInventoryEvents';
@@ -9,12 +8,11 @@ import { useCreateSession, useCompleteSession, useSessionItems } from '@/hooks/u
 import { useAppSetting } from '@/hooks/useAppSettings';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useStores } from '@/hooks/useStores';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import {
-  Search, Download, SlidersHorizontal, X, ClipboardCheck, Plus, Package,
-  Clock, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp,
-  ThumbsUp, Flag, Users, Filter, Send, Loader2, Warehouse, Ban, Play
+  Search, Clock, CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronUp,
+  ThumbsUp, Flag, Users, Play, Package, ClipboardCheck, Ban, X
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -24,29 +22,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
-import FilterManager, { FilterDef } from '@/components/FilterManager';
-import MultiSelectFilter from '@/components/MultiSelectFilter';
-import DataTable, { DataTableColumn } from '@/components/DataTable';
 import CountSetup from '@/components/count/CountSetup';
 import CameraScanner from '@/components/count/CameraScanner';
 import SessionSummary from '@/components/count/SessionSummary';
-import type { InventorySession } from '@/hooks/useInventorySessions';
+import { EnhancedTableWithPreferences } from '@/components/ui/enhanced-table';
+import { TableColumn } from '@/components/ui/enhanced-table/types';
 import type { Database } from '@/integrations/supabase/types';
 
 type SessionStatus = Database['public']['Enums']['session_status_enum'];
-
-const STOCK_COLUMN_DEFS: ColumnDef[] = [
-  { key: 'name', label: 'Product' },
-  { key: 'sku', label: 'SKU' },
-  { key: 'code', label: 'Code' },
-  { key: 'category', label: 'Category' },
-  { key: 'type', label: 'Type' },
-  { key: 'stock', label: 'Stock' },
-  { key: 'sale_price', label: 'Sale Price' },
-  { key: 'purchase_price', label: 'Purchase Price' },
-  { key: 'synced', label: 'Last Synced' },
-];
 
 function StockStatusBadge({ stock }: { stock: number | null }) {
   const s = stock ?? 0;
@@ -60,66 +43,96 @@ function TypeBadge({ type }: { type: string | null }) {
   return <Badge variant="outline" className="text-[10px] font-semibold">{type}</Badge>;
 }
 
-function buildStockColumns(isManager: boolean): DataTableColumn<Product>[] {
-  return [
-    { key: 'name', label: 'Product', minWidth: 180, render: p => <span className="font-medium">{p.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
-    { key: 'sku', label: 'SKU', render: p => <span className="text-xs text-muted-foreground font-mono">{p.sku || '—'}</span> },
-    { key: 'code', label: 'Code', render: p => <span className="text-xs text-muted-foreground">{p.code || '—'}</span> },
-    { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{(p as any).categories?.name || '—'}</span> },
-    { key: 'type', label: 'Type', render: p => <TypeBadge type={p.product_type} /> },
-    ...(isManager ? [
-      { key: 'stock', label: 'Stock', align: 'right' as const, render: (p: Product) => <span className="font-semibold tabular-nums">{p.current_stock ?? 0}</span>, sortFn: (a: Product, b: Product) => (a.current_stock || 0) - (b.current_stock || 0) },
-      { key: 'sale_price', label: 'Sale Price', align: 'right' as const, render: (p: Product) => <span className="text-accent font-medium">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a: Product, b: Product) => (a.sale_price || 0) - (b.sale_price || 0) },
-      { key: 'purchase_price', label: 'Purchase Price', align: 'right' as const, render: (p: Product) => <span className="text-muted-foreground">{p.purchase_price?.toFixed(2) ?? '—'}</span> },
-    ] : [
-      { key: 'stock', label: 'Stock', align: 'right' as const, render: (p: Product) => <StockStatusBadge stock={p.current_stock} /> },
-    ]),
-    { key: 'synced', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
-  ];
-}
-
 function InventoryTab({ isManager }: { isManager: boolean }) {
   const navigate = useNavigate();
-  const { stockColumns, setStockColumns, stockFilters, setStockFilters, columnWidths, setColumnWidth } = useColumnStore();
-  const [search, setSearch] = useState('');
-  const [filterValues, setFilterValues] = useState<Record<string, string[]>>({});
   const { data: stores = [] } = useStores();
+  const [search, setSearch] = useState('');
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string | null>(null);
 
   const { data: products = [], isLoading } = useProducts({
     search: search || undefined,
-    productType: filterValues.type?.length ? filterValues.type : undefined,
   });
 
-  const totalStock = useMemo(() => products.reduce((s, p) => s + (Number(p.current_stock) || 0), 0), [products]);
-
-  const optionsMap = useMemo(() => {
-    const extract = (fn: (p: Product) => string | null | undefined) =>
-      [...new Set(products.map(fn).filter(Boolean) as string[])].sort();
-    return {
-      type: extract(p => p.product_type),
-      category: extract(p => (p as any).categories?.name),
-    };
-  }, [products]);
+  const totalStock = useMemo(() => products.reduce((s, p) => s + (Number(p.total_stock ?? p.current_stock) || 0), 0), [products]);
 
   // Quick filter
   const [quickFilter, setQuickFilter] = useState<string | null>(null);
   const quickCounts = useMemo(() => ({
-    outOfStock: products.filter(p => (p.current_stock ?? 0) <= 0).length,
-    lowStock: products.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5).length,
-    inStock: products.filter(p => (p.current_stock ?? 0) >= 5).length,
+    outOfStock: products.filter(p => (p.total_stock ?? p.current_stock ?? 0) <= 0).length,
+    lowStock: products.filter(p => (p.total_stock ?? p.current_stock ?? 0) > 0 && (p.total_stock ?? p.current_stock ?? 0) < 5).length,
+    inStock: products.filter(p => (p.total_stock ?? p.current_stock ?? 0) >= 5).length,
   }), [products]);
 
   const filteredProducts = useMemo(() => {
     let result = products;
-    if (filterValues.category?.length) result = result.filter(p => filterValues.category.includes((p as any).categories?.name || ''));
-    if (quickFilter === 'outOfStock') result = result.filter(p => (p.current_stock ?? 0) <= 0);
-    if (quickFilter === 'lowStock') result = result.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5);
-    if (quickFilter === 'inStock') result = result.filter(p => (p.current_stock ?? 0) >= 5);
+    if (quickFilter === 'outOfStock') result = result.filter(p => (p.total_stock ?? p.current_stock ?? 0) <= 0);
+    if (quickFilter === 'lowStock') result = result.filter(p => (p.total_stock ?? p.current_stock ?? 0) > 0 && (p.total_stock ?? p.current_stock ?? 0) < 5);
+    if (quickFilter === 'inStock') result = result.filter(p => (p.total_stock ?? p.current_stock ?? 0) >= 5);
+    
+    // Filter by warehouse if selected
+    if (selectedWarehouse && selectedWarehouse !== 'all') {
+      result = result.filter(p => {
+        const hasStockInWarehouse = p.store_names?.includes(stores.find(s => s.id === selectedWarehouse)?.name || '');
+        return hasStockInWarehouse;
+      });
+    }
+    
     return result;
-  }, [products, filterValues, quickFilter]);
+  }, [products, quickFilter, selectedWarehouse, stores]);
 
-  const setFilter = (key: string, values: string[]) => setFilterValues(prev => ({ ...prev, [key]: values }));
-  const tableColumns = useMemo(() => buildStockColumns(isManager), [isManager]);
+  const tableColumns: TableColumn<Product>[] = useMemo(() => [
+    { 
+      id: 'name', title: 'Product', dataIndex: 'name', 
+      width: 250, visible: true, sortable: true, filterable: true,
+      render: (val, p) => <span className="font-medium">{p.name}</span>
+    },
+    { 
+      id: 'sku', title: 'SKU', dataIndex: 'sku', 
+      width: 120, visible: true, sortable: true, filterable: true,
+      render: (val) => <span className="text-xs text-muted-foreground font-mono">{val || '—'}</span>
+    },
+    { 
+      id: 'code', title: 'Code', dataIndex: 'code', 
+      width: 100, visible: false, sortable: true, filterable: true,
+      render: (val) => <span className="text-xs text-muted-foreground">{val || '—'}</span>
+    },
+    { 
+      id: 'category', title: 'Category', dataIndex: 'categories', 
+      width: 150, visible: true, sortable: true, filterable: true,
+      render: (val, p) => <span className="text-muted-foreground">{(p as any).categories?.name || '—'}</span>
+    },
+    { 
+      id: 'type', title: 'Type', dataIndex: 'product_type', 
+      width: 100, visible: true, sortable: true, filterable: true,
+      render: (val) => <TypeBadge type={val} />
+    },
+    { 
+      id: 'stock', title: 'Stock', dataIndex: 'current_stock', 
+      width: 100, visible: true, sortable: true, filterable: false, align: 'right',
+      render: (val, p) => isManager ? (
+        <span className="font-semibold tabular-nums">{p.total_stock ?? p.current_stock ?? 0}</span>
+      ) : (
+        <StockStatusBadge stock={p.total_stock ?? p.current_stock} />
+      )
+    },
+    ...(isManager ? [
+      { 
+        id: 'sale_price', title: 'Sale Price', dataIndex: 'sale_price', 
+        width: 100, visible: true, sortable: true, filterable: false, align: 'right' as const,
+        render: (val: number | null) => <span className="text-accent font-medium">{val?.toFixed(2) ?? '—'}</span>
+      },
+      { 
+        id: 'purchase_price', title: 'Purchase Price', dataIndex: 'purchase_price', 
+        width: 120, visible: false, sortable: true, filterable: false, align: 'right' as const,
+        render: (val: number | null) => <span className="text-muted-foreground">{val?.toFixed(2) ?? '—'}</span>
+      }
+    ] : []),
+    { 
+      id: 'synced', title: 'Last Synced', dataIndex: 'synced_at', 
+      width: 120, visible: false, sortable: true, filterable: false,
+      render: (val: string | null) => <span className="text-xs text-muted-foreground">{val ? new Date(val).toLocaleDateString() : '—'}</span>
+    }
+  ], [isManager]);
 
   return (
     <div className="space-y-4">
@@ -157,33 +170,34 @@ function InventoryTab({ isManager }: { isManager: boolean }) {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search product..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 bg-card border-border" />
         </div>
-        <MultiSelectFilter label="Type" options={optionsMap.type} selected={filterValues.type || []} onChange={v => setFilter('type', v)} />
-        <MultiSelectFilter label="Category" options={optionsMap.category} selected={filterValues.category || []} onChange={v => setFilter('category', v)} />
         {stores.length > 0 && (
-          <MultiSelectFilter label="Store" options={stores.map(s => s.name)} selected={[]} onChange={() => {}} />
+          <Select value={selectedWarehouse || 'all'} onValueChange={setSelectedWarehouse}>
+            <SelectTrigger className="w-[180px] h-10 bg-card border-border">
+              <SelectValue placeholder="All Warehouses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Warehouses</SelectItem>
+              {stores.map(store => (
+                <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
-        <ColumnManager columns={STOCK_COLUMN_DEFS} visibleColumns={stockColumns} onChange={setStockColumns} />
       </div>
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-border overflow-hidden bg-card">
-          <DataTable
-            data={filteredProducts}
-            columns={tableColumns}
-            visibleColumns={stockColumns}
-            columnWidths={columnWidths}
-            onColumnResize={setColumnWidth}
-            keyExtractor={p => p.id}
-            onRowClick={p => navigate(`/products/${p.id}`)}
-            emptyMessage="No products match your filters"
-            compact
-          />
-        </div>
-      )}
+      <div className="rounded-xl border border-border overflow-hidden bg-card">
+        <EnhancedTableWithPreferences
+          tableName="current_stock"
+          data={filteredProducts}
+          columns={tableColumns}
+          loading={isLoading}
+          rowKey="id"
+          onRowClick={(p) => navigate(`/products/${p.id}`)}
+          virtualized={true}
+          height={600}
+          className="border-none"
+        />
+      </div>
     </div>
   );
 }

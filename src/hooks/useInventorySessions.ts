@@ -1,236 +1,208 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import type { Tables, TablesInsert, TablesUpdate } from '@/integrations/supabase/types';
 
-export type InventorySession = Tables<'inventory_sessions'>;
-export type InventoryItem = Tables<'inventory_items'>;
-type SessionInsert = TablesInsert<'inventory_sessions'>;
-type SessionUpdate = TablesUpdate<'inventory_sessions'>;
-type ItemInsert = TablesInsert<'inventory_items'>;
+export interface InventorySession {
+  id: string;
+  name: string;
+  store_id: string;
+  store_name?: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  created_by_name?: string;
+  total_items?: number;
+  total_variance?: number;
+  completed_items?: number;
+  business_id?: string;
+}
 
-// ─── Queries ───
+export interface InventoryItem {
+  id: string;
+  session_id: string;
+  product_id: string;
+  product_name?: string;
+  product_sku?: string;
+  category_name?: string;
+  baseline_quantity: number;
+  counted_quantity: number;
+  variance: number;
+  variance_percentage?: number;
+  status: string;
+  last_counted_by?: string;
+  last_counted_at?: string;
+  store_name?: string;
+  notes?: string;
+}
 
-export function useInventorySessions(statusFilter?: string) {
+export interface SessionFilters {
+  businessId?: string;
+  storeIds?: string[];
+  status?: string[];
+  startDate?: string;
+  endDate?: string;
+}
+
+export function useInventorySessions(filters?: SessionFilters) {
   return useQuery({
-    queryKey: ['inventory_sessions', statusFilter],
+    queryKey: ['inventory_sessions', filters],
     queryFn: async () => {
-      let q = supabase
-        .from('inventory_sessions')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (statusFilter && statusFilter !== 'all') {
-        q = q.eq('status', statusFilter as any);
-      }
-      const { data, error } = await q;
+      const { data, error } = await supabase
+        .rpc('get_inventory_sessions', {
+          p_business_id: filters?.businessId,
+          p_store_ids: filters?.storeIds,
+          p_status: filters?.status,
+          p_start_date: filters?.startDate,
+          p_end_date: filters?.endDate
+        });
+      
       if (error) throw error;
       return data as InventorySession[];
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!filters?.businessId, // Only fetch when business ID is provided
   });
 }
 
-export function useInventorySession(id: string | undefined) {
+export function useSessionItems(sessionId: string) {
   return useQuery({
-    queryKey: ['inventory_session', id],
+    queryKey: ['inventory_session_items', sessionId],
     queryFn: async () => {
-      if (!id) return null;
       const { data, error } = await supabase
-        .from('inventory_sessions')
-        .select('*')
-        .eq('id', id)
-        .single();
-      if (error) throw error;
-      return data as InventorySession;
-    },
-    enabled: !!id,
-  });
-}
-
-export function useSessionItems(sessionId: string | undefined) {
-  return useQuery({
-    queryKey: ['inventory_items', sessionId],
-    queryFn: async () => {
-      if (!sessionId) return [];
-      const { data, error } = await supabase
-        .from('inventory_items')
-        .select('*')
-        .eq('session_id', sessionId)
-        .order('counted_at', { ascending: false });
+        .rpc('get_inventory_session_items', {
+          p_session_id: sessionId
+        });
+      
       if (error) throw error;
       return data as InventoryItem[];
     },
-    enabled: !!sessionId,
-  });
-}
-
-// ─── Mutations ───
-
-export function useCreateSession() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (input: SessionInsert) => {
-      const { data, error } = await supabase
-        .from('inventory_sessions')
-        .insert(input)
-        .select()
-        .single();
-      if (error) throw error;
-      return data as InventorySession;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory_sessions'] }),
-  });
-}
-
-export function useUpdateSession() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, ...updates }: SessionUpdate & { id: string }) => {
-      const { data, error } = await supabase
-        .from('inventory_sessions')
-        .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data as InventorySession;
-    },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['inventory_sessions'] });
-      qc.invalidateQueries({ queryKey: ['inventory_session', data.id] });
-    },
-  });
-}
-
-export function useAddInventoryItem() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (item: ItemInsert) => {
-      const { data, error } = await supabase
-        .from('inventory_items')
-        .insert(item)
-        .select()
-        .single();
-      if (error) throw error;
-      // Increment total_wines_counted on session
-      await supabase.rpc('has_role', { _user_id: '', _role: 'admin' }).then(() => {}); // no-op
-      return data as InventoryItem;
-    },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['inventory_items', data.session_id] });
-      qc.invalidateQueries({ queryKey: ['inventory_sessions'] });
-    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: !!sessionId, // Only fetch when session ID is provided
   });
 }
 
 export function useUpsertInventoryItem() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
+  
   return useMutation({
-    mutationFn: async (item: ItemInsert) => {
-      // Check if item already exists for this session+wine
-      const { data: existing } = await supabase
-        .from('inventory_items')
-        .select('id')
-        .eq('session_id', item.session_id)
-        .eq('wine_id', item.wine_id)
-        .maybeSingle();
-
-      if (existing) {
-        const { data, error } = await supabase
-          .from('inventory_items')
-          .update({
-            counted_quantity_unopened: item.counted_quantity_unopened,
-            counted_quantity_opened: item.counted_quantity_opened,
-            counted_at: item.counted_at,
-            counted_by: item.counted_by,
-            counting_method: item.counting_method,
-            location: item.location,
-            notes: item.notes,
-            confidence: item.confidence,
-            count_status: 'counted',
-          })
-          .eq('id', existing.id)
-          .select()
-          .single();
-        if (error) throw error;
-        return data as InventoryItem;
-      } else {
-        const { data, error } = await supabase
-          .from('inventory_items')
-          .insert({ ...item, count_status: 'counted' })
-          .select()
-          .single();
-        if (error) throw error;
-        return data as InventoryItem;
+    mutationFn: async (params: {
+      sessionId: string;
+      productId: string;
+      countedQuantity: number;
+      userId: string;
+      notes?: string;
+    }) => {
+      const response = await supabase.functions.invoke('inventory-upsert-item', {
+        body: params
+      });
+      
+      if (response.error) {
+        throw new Error(response.error.message);
       }
+      
+      return response.data;
     },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['inventory_items', data.session_id] });
-      qc.invalidateQueries({ queryKey: ['inventory_sessions'] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory_session_items'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory_sessions'] });
     },
   });
 }
 
-// Approve / Flag / Complete session
-export function useApproveSession() {
-  const qc = useQueryClient();
+export function useCreateSession() {
+  const queryClient = useQueryClient();
+  
   return useMutation({
-    mutationFn: async ({ id, approvedBy, notes }: { id: string; approvedBy: string; notes?: string }) => {
+    mutationFn: async (params: {
+      name: string;
+      storeId: string;
+      businessId: string;
+      createdBy: string;
+    }) => {
+      const response = await supabase.functions.invoke('inventory-create-session', {
+        body: params
+      });
+      
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+      
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory_sessions'] });
+    },
+  });
+}
+
+export function useApproveSession() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ sessionId, approvedBy }: { sessionId: string; approvedBy: string }) => {
       const { data, error } = await supabase
         .from('inventory_sessions')
-        .update({
+        .update({ 
           status: 'approved',
           approved_by: approvedBy,
-          approved_at: new Date().toISOString(),
-          approval_notes: notes || null,
+          approved_at: new Date().toISOString()
         })
-        .eq('id', id)
+        .eq('id', sessionId)
         .select()
         .single();
+      
       if (error) throw error;
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory_sessions'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory_sessions'] });
+    },
   });
 }
 
 export function useFlagSession() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
+  
   return useMutation({
-    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+    mutationFn: async ({ sessionId, flaggedBy, reason }: { sessionId: string; flaggedBy: string; reason: string }) => {
       const { data, error } = await supabase
         .from('inventory_sessions')
-        .update({
+        .update({ 
           status: 'flagged',
-          flagged_reason: reason,
+          flagged_by: flaggedBy,
+          flagged_at: new Date().toISOString(),
+          flagged_reason: reason
         })
-        .eq('id', id)
+        .eq('id', sessionId)
         .select()
         .single();
+      
       if (error) throw error;
       return data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory_sessions'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory_sessions'] });
+    },
   });
 }
 
 export function useCompleteSession() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
+  
   return useMutation({
-    mutationFn: async ({ id, completedBy, duration, totalCounted }: { id: string; completedBy: string; duration: number; totalCounted: number }) => {
-      const { data, error } = await supabase
-        .from('inventory_sessions')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          completed_by: completedBy,
-          duration_seconds: duration,
-          total_wines_counted: totalCounted,
-        })
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
+    mutationFn: async (sessionId: string) => {
+      const response = await supabase.functions.invoke('inventory-submit-to-syrve', {
+        body: { sessionId }
+      });
+      
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+      
+      return response.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['inventory_sessions'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory_sessions'] });
+    },
   });
 }

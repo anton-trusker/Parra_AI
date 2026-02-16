@@ -58,6 +58,26 @@ export default function ProductDetail() {
   const totalStoreStock = stockByStore.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0);
   const totalAmount = containerVolume ? totalStoreStock / containerVolume : null;
 
+  function WarehouseStockBreakdown({ product }: { product: Product }) {
+    if (!product.stock_levels?.length) return null;
+    
+    return (
+      <div className="space-y-2">
+        <h4 className="text-sm font-medium">Stock by Warehouse</h4>
+        {product.stock_levels.map(level => (
+          <div key={level.store_id} className="flex justify-between items-center py-1">
+            <span className="text-sm text-muted-foreground">
+              {level.store_name || level.store_id}
+            </span>
+            <span className="text-sm font-medium">
+              {level.quantity} {level.measurement_units?.short_name}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -207,7 +227,7 @@ export default function ProductDetail() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
-                  <InfoRow label="Current Stock" value={product.current_stock?.toString()} highlight />
+                  <InfoRow label="Total Stock" value={product.total_stock?.toString() ?? product.current_stock?.toString()} highlight />
                   <InfoRow label="Updated" value={product.stock_updated_at ? new Date(product.stock_updated_at).toLocaleDateString() : null} />
                 </div>
               )}
@@ -219,13 +239,25 @@ export default function ProductDetail() {
             <CardContent className="p-5">
               <h3 className="text-sm font-semibold text-foreground mb-3">Summary</h3>
               <div className="grid grid-cols-3 gap-4">
-                <InfoRow label="Total Stock" value={`${totalStoreStock || product.current_stock || 0}${mainUnitLabel ? ` ${mainUnitLabel}` : ''}`} highlight />
-                <InfoRow label="Total Qty" value={totalAmount != null ? totalAmount.toFixed(2) : (product.unit_capacity && product.current_stock ? (product.current_stock / product.unit_capacity).toFixed(2) : null)} />
+                <InfoRow label="Total Stock" value={`${totalStoreStock || product.total_stock || product.current_stock || 0}${mainUnitLabel ? ` ${mainUnitLabel}` : ''}`} highlight />
+                <InfoRow label="Total Qty" value={totalAmount != null ? totalAmount.toFixed(2) : (product.unit_capacity && (product.total_stock ?? product.current_stock) ? ((product.total_stock ?? product.current_stock ?? 0) / product.unit_capacity).toFixed(2) : null)} />
                 <InfoRow label="Not in Store Movement" value={product.not_in_store_movement ? 'Yes' : 'No'} />
                 <InfoRow label="Last Stock Update" value={product.stock_updated_at ? new Date(product.stock_updated_at).toLocaleDateString() : null} />
               </div>
             </CardContent>
           </Card>
+          
+          {/* Warehouse Stock Breakdown */}
+          {product.stock_levels && product.stock_levels.length > 0 && (
+            <Card className="rounded-xl border-border/60">
+              <CardContent className="p-5">
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                  <Warehouse className="w-4 h-4 text-muted-foreground" />Warehouse Breakdown
+                </h3>
+                <WarehouseStockBreakdown product={product} />
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Relationships Tab */}

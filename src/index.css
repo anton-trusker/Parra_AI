@@ -1,8 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
+@import './styles/compact-theme.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @layer base {
   :root {
@@ -18,98 +19,53 @@
     --primary: 348 60% 42%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 14% 94%;
-    --secondary-foreground: 224 16% 28%;
+    --secondary: 220 14% 90%;
+    --secondary-foreground: 220 15% 26%;
 
-    --muted: 220 12% 93%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 220 14% 90%;
+    --muted-foreground: 220 8% 46%;
 
-    --accent: 32 70% 50%;
+    --accent: 348 60% 42%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 14% 90%;
-    --input: 220 14% 90%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
     --ring: 348 60% 42%;
 
-    --radius: 0.75rem;
-
-    --wine-red: 348 60% 42%;
-    --wine-red-light: 348 55% 55%;
-    --wine-red-dark: 348 65% 32%;
-    --wine-gold: 32 70% 50%;
-    --wine-gold-light: 32 65% 62%;
-    --wine-cream: 30 30% 97%;
-    --wine-burgundy: 340 60% 34%;
-    --wine-success: 152 55% 42%;
-    --wine-warning: 38 92% 50%;
-    --wine-surface: 0 0% 100%;
-    --wine-surface-hover: 220 14% 96%;
-
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 12% 40%;
-    --sidebar-primary: 348 60% 42%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 95%;
-    --sidebar-accent-foreground: 224 20% 14%;
-    --sidebar-border: 220 14% 92%;
-    --sidebar-ring: 348 60% 42%;
-
-    --font-heading: 'Playfair Display', serif;
-    --font-body: 'Inter', sans-serif;
+    --radius: 0.5rem;
   }
 
   .dark {
-    --background: 220 15% 8%;
-    --foreground: 30 20% 90%;
+    --background: 224 20% 8%;
+    --foreground: 224 20% 95%;
 
-    --card: 220 14% 11%;
-    --card-foreground: 30 20% 90%;
+    --card: 224 20% 10%;
+    --card-foreground: 224 20% 95%;
 
-    --popover: 220 14% 13%;
-    --popover-foreground: 30 20% 90%;
+    --popover: 224 20% 10%;
+    --popover-foreground: 224 20% 95%;
 
-    --primary: 350 55% 38%;
-    --primary-foreground: 30 25% 95%;
+    --primary: 348 60% 52%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 12% 16%;
-    --secondary-foreground: 30 15% 80%;
+    --secondary: 224 15% 18%;
+    --secondary-foreground: 224 20% 95%;
 
-    --muted: 220 10% 15%;
-    --muted-foreground: 220 10% 55%;
+    --muted: 224 15% 18%;
+    --muted-foreground: 224 10% 65%;
 
-    --accent: 38 45% 60%;
-    --accent-foreground: 220 15% 8%;
+    --accent: 348 60% 52%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 12% 18%;
-    --input: 220 12% 18%;
-    --ring: 350 55% 38%;
-
-    --wine-red: 350 55% 38%;
-    --wine-red-light: 350 50% 48%;
-    --wine-red-dark: 350 60% 25%;
-    --wine-gold: 38 45% 60%;
-    --wine-gold-light: 38 50% 72%;
-    --wine-cream: 30 25% 95%;
-    --wine-burgundy: 340 65% 28%;
-    --wine-success: 145 60% 42%;
-    --wine-warning: 38 90% 55%;
-    --wine-surface: 220 14% 11%;
-    --wine-surface-hover: 220 14% 14%;
-
-    --sidebar-background: 220 16% 6%;
-    --sidebar-foreground: 30 15% 75%;
-    --sidebar-primary: 350 55% 38%;
-    --sidebar-primary-foreground: 30 25% 95%;
-    --sidebar-accent: 220 12% 12%;
-    --sidebar-accent-foreground: 30 20% 90%;
-    --sidebar-border: 220 12% 14%;
-    --sidebar-ring: 350 55% 38%;
+    --border: 224 15% 18%;
+    --input: 224 15% 18%;
+    --ring: 348 60% 52%;
   }
 }
 
@@ -117,207 +73,7 @@
   * {
     @apply border-border;
   }
-
   body {
     @apply bg-background text-foreground;
-    font-family: var(--font-body);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
   }
-
-  h1, h2, h3, h4 {
-    font-family: var(--font-heading);
-  }
-
-  /* Focus rings */
-  *:focus-visible {
-    outline: 2px solid hsl(var(--ring));
-    outline-offset: 2px;
-    border-radius: 4px;
-  }
-}
-
-@layer components {
-  .app-gradient {
-    background: linear-gradient(135deg, hsl(var(--wine-red-dark)), hsl(var(--wine-burgundy)));
-  }
-
-  .wine-gradient { background: linear-gradient(135deg, hsl(var(--wine-red-dark)), hsl(var(--wine-burgundy))); }
-
-  .glass-card {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: var(--radius);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .glass-card:hover {
-    border-color: hsl(var(--border));
-    box-shadow: 0 2px 12px hsl(var(--foreground) / 0.04);
-  }
-
-  .wine-glass-effect {
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-    border-radius: var(--radius);
-  }
-
-  .gold-shimmer {
-    background: linear-gradient(90deg, hsl(var(--wine-gold)) 0%, hsl(var(--wine-gold-light)) 50%, hsl(var(--wine-gold)) 100%);
-    background-size: 200% auto;
-    animation: shimmer 3s ease-in-out infinite;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-
-  .stat-card {
-    @apply glass-card p-5;
-    border-radius: var(--radius);
-    transition: all 0.2s ease;
-  }
-
-  .stat-card:hover {
-    border-color: hsl(var(--primary) / 0.25);
-    box-shadow: 0 4px 20px hsl(var(--primary) / 0.08);
-    transform: translateY(-1px);
-  }
-
-  .mode-card {
-    @apply glass-card p-6 cursor-pointer;
-    border-radius: 1rem;
-    transition: all 0.2s ease;
-  }
-
-  .mode-card:hover {
-    border-color: hsl(var(--primary) / 0.3);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 30px hsl(var(--primary) / 0.12);
-  }
-
-  .nav-item {
-    @apply flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm;
-    color: hsl(var(--sidebar-foreground));
-    transition: all 0.2s ease;
-  }
-
-  .nav-item:hover {
-    background: hsl(var(--sidebar-accent));
-    color: hsl(var(--sidebar-accent-foreground));
-  }
-
-  .nav-item.active {
-    background: hsl(var(--primary) / 0.12);
-    color: hsl(var(--primary));
-    font-weight: 600;
-  }
-
-  .stock-healthy {
-    color: hsl(var(--wine-success));
-    background: hsl(var(--wine-success) / 0.1);
-  }
-
-  .stock-low {
-    color: hsl(var(--wine-warning));
-    background: hsl(var(--wine-warning) / 0.1);
-  }
-
-  .stock-out {
-    color: hsl(var(--destructive));
-    background: hsl(var(--destructive) / 0.1);
-  }
-
-  .status-badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
-
-  .wine-badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
-
-  /* Quick filter pills - always visible bar */
-  .quick-filter-bar {
-    @apply flex items-center gap-2 flex-wrap;
-  }
-
-  .quick-filter-pill {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer select-none transition-all duration-200;
-    border: 1px solid hsl(var(--border));
-    background: hsl(var(--card));
-    color: hsl(var(--muted-foreground));
-  }
-
-  .quick-filter-pill:hover {
-    border-color: hsl(var(--primary) / 0.4);
-    color: hsl(var(--foreground));
-    background: hsl(var(--primary) / 0.05);
-  }
-
-  .quick-filter-pill.active {
-    border-color: hsl(var(--primary) / 0.5);
-    background: hsl(var(--primary) / 0.1);
-    color: hsl(var(--primary));
-    font-weight: 600;
-  }
-
-  /* Modern tabs override */
-  .modern-tabs [role="tablist"] {
-    background: hsl(var(--muted) / 0.5);
-    border: 1px solid hsl(var(--border));
-    border-radius: 10px;
-    padding: 3px;
-    gap: 2px;
-  }
-
-  .modern-tabs [role="tab"] {
-    border-radius: 8px;
-    font-weight: 500;
-    font-size: 13px;
-    padding: 6px 14px;
-    transition: all 0.2s ease;
-    color: hsl(var(--muted-foreground));
-  }
-
-  .modern-tabs [role="tab"][data-state="active"] {
-    background: hsl(var(--card));
-    color: hsl(var(--foreground));
-    box-shadow: 0 1px 3px hsl(var(--foreground) / 0.08);
-    font-weight: 600;
-  }
-
-  .modern-tabs [role="tab"]:hover:not([data-state="active"]) {
-    color: hsl(var(--foreground));
-    background: hsl(var(--muted) / 0.5);
-  }
-
-  /* Enhanced card with left accent */
-  .accent-card {
-    @apply glass-card;
-    border-left: 3px solid hsl(var(--primary) / 0.3);
-  }
-
-  .accent-card:hover {
-    border-left-color: hsl(var(--primary));
-  }
-
-  /* Filter section container */
-  .filter-section {
-    @apply rounded-xl p-4;
-    background: hsl(var(--card));
-    border: 1px solid hsl(var(--border));
-  }
-}
-
-@keyframes shimmer {
-  0%, 100% { background-position: 0% center; }
-  50% { background-position: 200% center; }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out forwards;
 }

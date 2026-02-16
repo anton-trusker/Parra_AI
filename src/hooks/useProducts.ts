@@ -16,6 +16,8 @@ export interface Product {
   purchase_price: number | null;
   default_sale_price: number | null;
   current_stock: number | null;
+  total_stock?: number | null; // From v_stock_summary view
+  total_value?: number | null;   // From v_stock_summary view
   unit_capacity: number | null;
   main_unit_id: string | null;
   parent_product_id: string | null;
@@ -33,6 +35,18 @@ export interface Product {
   parent_product?: { id: string; name: string; product_type: string | null }[] | { id: string; name: string; product_type: string | null } | null;
   store_names?: string[];
   main_unit_name?: string | null;
+  stock_levels?: StockLevel[]; // Detailed warehouse stock
+}
+
+export interface StockLevel {
+  id: string;
+  product_id: string;
+  store_id: string;
+  store_name?: string;
+  quantity: number;
+  unit_cost: number | null;
+  measurement_units?: { name: string; short_name: string } | null;
+  last_synced_at: string | null;
 }
 
 /** Fetches all measurement units and returns lookup maps by both DB id and syrve_unit_id */
@@ -98,7 +112,11 @@ export function useProducts(filters?: {
         .from('products')
         .select(`
           *,
-          categories!products_category_id_fkey(name, is_active, is_deleted)
+          categories!products_category_id_fkey(name, is_active, is_deleted),
+          v_stock_summary!inner(
+            total_stock,
+            total_value
+          )
         `)
         .eq('is_deleted', false)
         .order('name');
@@ -164,6 +182,11 @@ export function useProducts(filters?: {
         // Override current_stock with real aggregated value from stock_levels
         if (stockTotals.has(p.id)) {
           p.current_stock = stockTotals.get(p.id)!;
+        }
+        // Use total_stock from v_stock_summary if available, otherwise fall back to current_stock
+        if (p.v_stock_summary && (p.v_stock_summary as any).total_stock !== null) {
+          p.total_stock = (p.v_stock_summary as any).total_stock;
+          p.total_value = (p.v_stock_summary as any).total_value;
         }
         if (!p.categories) return true;
         const cat = p.categories as any;
@@ -237,6 +260,24 @@ export function useProductStockByStore(productId: string | undefined) {
       return (data || []) as ProductStockByStore[];
     },
     enabled: !!productId,
+  });
+}
+
+export function useStockSummary(productIds?: string[]) {
+  return useQuery({
+    queryKey: ['stock_summary', productIds],
+    queryFn: async () => {
+      let query = supabase.from('v_stock_summary').select('*');
+      
+      if (productIds?.length) {
+        query = query.in('product_id', productIds);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!productIds?.length,
   });
 }
 
