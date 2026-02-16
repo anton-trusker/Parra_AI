@@ -1,116 +1,117 @@
 
 
-# Store Documents and Create New Supabase Project Implementation Plan
+# Syrve Integration Flow Redesign
 
-## Overview
+## Summary
 
-This plan covers two main tasks:
-1. Store the three uploaded specification documents in the `new/syrve_integration` folder
-2. Create a new organized documentation folder with implementation guides for building the full Syrve integration on a **new Supabase project** (`aysdomtvoxizusmmxfug`)
-
-The uploaded documents define a significantly expanded architecture compared to the current project -- moving from a single-tenant wine inventory system to a **multi-tenant restaurant operations SaaS platform** with measurement units, warehouses, storage areas, multi-integration support, billing, and more.
+Redesign the Syrve Settings page to support two distinct user journeys: **Initial Setup** (new connection) and **Ongoing Management** (existing connection). The initial setup auto-imports all reference data on successful connection test, then guides the user through configuration before the first product import. The ongoing management view shows current sync status and provides quick actions.
 
 ---
 
-## Part 1: Store Uploaded Documents
+## Flow 1: New Connection (First-Time Setup)
 
-Copy the three uploaded specification documents into `new/syrve_integration/`:
+### Step-by-step user experience:
 
-| Source File | Destination |
-|---|---|
-| `Complete-Platform-Database-Specification.md` | `new/syrve_integration/complete_platform_db_spec.md` |
-| `Phase_1_Extended_Integration.md` | `new/syrve_integration/phase_1_extended_integration.md` |
-| `Phase_1A_Syrve_Integration_Data_Import_-_Complete_Technical_Specification.md` | `new/syrve_integration/phase_1a_data_import_spec.md` |
+1. **Credentials** -- User enters Server URL, Login, Password and clicks "Test Connection"
+2. **Auto-import on success** -- On successful test, automatically fetch and store ALL reference data:
+   - Departments (business locations) via `/corporation/departments`
+   - Warehouses/Stores via `/corporation/stores`
+   - Product Groups (categories hierarchy) via `/v2/entities/products/group/list`
+   - Measurement Units via `/v2/entities/list?rootType=MeasureUnit`
+   - Business info extraction (already exists)
+3. **Configure Warehouses** -- User selects which warehouses to integrate (multi-select with "Select All")
+4. **Configure Categories** -- Show full category tree (auto-refreshed based on warehouse selection). User picks which to import. Hierarchical picker with select/deselect branches.
+5. **Import Rules** -- Product types to import, reimport mode. Sync Schedule section is hidden for new setup.
+6. **"Save & Import"** button -- Saves config AND triggers a bootstrap sync. Shows real-time progress.
+7. **Import behavior** -- Only imports products matching: selected warehouses + selected product types + selected categories. Products without a category ARE still imported.
 
----
+### What changes on the backend (`syrve-connect-test`):
 
-## Part 2: Create Implementation Documentation
+- After successful auth, also fetch categories via `/v2/entities/products/group/list` and save to DB (currently only done during sync)
+- Return categories count in the response so the UI can immediately show the category picker
 
-Create a new folder `new/implementation/` with structured, actionable documents that break down the full integration into implementable phases for the new Supabase project.
+### What changes on the UI (`SyrveSettings.tsx`):
 
-### Document Structure
-
-```
-new/implementation/
-  00-overview.md              -- Master index, architecture summary, new project details
-  01-database-schema.md       -- Complete SQL migrations for the new Supabase project
-  02-enums-and-types.md       -- All custom PostgreSQL enums and types
-  03-tenant-security-layer.md -- Tenants, profiles, user_roles, RLS policies, helper functions
-  04-syrve-integration-tables.md  -- syrve_config, raw_objects, sync_runs, api_logs, outbox
-  05-organization-warehouses.md   -- org_nodes, stores, warehouses, storage_areas
-  06-measurement-units.md     -- measurement_units table, conversion functions, import logic
-  07-catalog-products.md      -- categories, products, barcodes, containers, modifiers, mappings
-  08-stock-levels.md          -- stock_levels (warehouse-aware), stock history
-  09-inventory-operations.md  -- sessions, baseline, count_events, aggregates, review_notes, adjustments, variances
-  10-rls-policies.md          -- Complete RLS policy set for all tables
-  11-triggers-functions.md    -- Aggregate triggers, audit triggers, search vectors, helper functions
-  12-edge-functions.md        -- All edge function specifications (connect-test, sync-bootstrap, stock-snapshot, submit-inventory, AI recognition, outbox processor)
-  13-api-endpoints.md         -- Complete API surface with request/response contracts
-  14-react-hooks.md           -- Frontend hooks (useProducts, useInventory, useStores, useAI, useSyrveSync)
-  15-migration-from-current.md -- Delta analysis: what exists vs what's needed, migration path
-```
-
-### Key Content Per Document
-
-**00-overview.md**: New Supabase project URL, three-layer architecture diagram, technology stack, implementation phases (Phase 1A: Data Import, Phase 1B: Inventory Counting, Phase 1C: Syrve Document Submission), excluded features list.
-
-**01-database-schema.md**: Ordered SQL migration files ready to run on the new project. Migration order:
-1. Extensions (pgcrypto, uuid-ossp, pg_trgm, btree_gin)
-2. Enums and types
-3. Layer 1: Tenants, profiles, user_roles, app_settings, tenant_modules
-4. Layer 2: Integration providers, tenant_integrations, categories, products, product_barcodes, product_containers, product_modifiers, product_integration_mappings, stock_levels
-5. Syrve-specific: syrve_config, syrve_raw_objects, syrve_sync_runs, syrve_api_logs, syrve_outbox_jobs
-6. Organization: org_nodes, stores, warehouses, storage_areas
-7. Measurement: measurement_units
-8. Layer 3: inventory_sessions, inventory_baseline_items, inventory_count_events, inventory_product_aggregates, inventory_review_notes, inventory_product_adjustments, inventory_variances
-9. AI: ai_operations, custom_field_definitions
-10. Indexes and performance optimizations
-
-**03-tenant-security-layer.md**: Multi-tenant isolation using `tenant_id` on all tables, `auth.get_user_tenant_id()` helper function, `auth.is_admin()` and `auth.has_role()` functions, RLS policy patterns.
-
-**05-organization-warehouses.md**: Syrve store = warehouse mapping, warehouse types (MAIN, STORE, PRODUCTION, EXTERNAL, VIRTUAL), storage areas (BAR, CELLAR, KITCHEN, etc.), hierarchy relationships.
-
-**06-measurement-units.md**: Import ALL units from Syrve `/units/list`, conversion factor system with base units, `convert_quantity()` function, `convert_count_to_syrve_unit()` function for inventory submission.
-
-**09-inventory-operations.md**: Complete lifecycle -- draft -> in_progress -> counting_complete -> under_review -> pending_approval -> approved -> sending -> synced. Event-sourced counting model, manager review notes and adjustments, variance computation.
-
-**12-edge-functions.md**: Specifications for:
-- `syrve-connect-test`: Test credentials, fetch stores/departments
-- `syrve-sync-bootstrap`: Full data import (org -> units -> categories -> products -> stock)
-- `syrve-sync-products`: Incremental product sync
-- `syrve-stock-snapshot`: Fetch current stock per warehouse
-- `syrve-submit-inventory`: Build XML, submit via outbox pattern
-- `process-outbox-jobs`: Background worker for reliable Syrve document delivery
-- `ai-recognize-product`: Multi-model AI image recognition
-
-**15-migration-from-current.md**: Maps current project tables to new schema, identifies gaps (no tenants, no measurement_units, no warehouses, no stock_levels, simplified inventory model), recommends migration strategy.
+- Restructure into a wizard-like flow for new connections:
+  - After test succeeds: auto-expand Warehouses section, show category picker populated from freshly imported data
+  - Hide "Sync Schedule" section during initial setup
+  - Replace "Save All Settings" + "Sync Now" with a single "Save & Import" button
+  - Show import progress inline
 
 ---
 
-## Technical Details
+## Flow 2: Existing Connection (Ongoing Management)
 
-### New Supabase Project
-- URL: `https://aysdomtvoxizusmmxfug.supabase.co`
-- This is a separate project from the current one (`uzymtgcklmunettdiucs`)
-- The documentation will contain ready-to-run SQL for the new project
+### User experience:
 
-### Key Architectural Differences from Current Project
+1. **Dashboard view** -- Shows current connection status, last sync time, and summary cards:
+   - Warehouses: X selected out of Y
+   - Categories: X selected
+   - Products: X imported
+   - Stock: last updated at...
+2. **Quick Actions**:
+   - "Re-sync Products, Prices & Stock" -- Runs a sync that imports/updates all changes from Syrve for current selection. New products in selected stores are auto-imported.
+   - "Refresh Prices & Stock Only" -- Quick update without re-importing product catalog
+3. **Edit Configuration** -- Expandable sections to modify warehouses, categories, import rules
+4. **Behavior on config change + sync** -- If user changes categories/warehouses and clicks sync, perform full replacement: delete products not matching new selection, import all matching products fresh
 
-| Aspect | Current Project | New Architecture |
-|---|---|---|
-| Multi-tenancy | None (single tenant) | Full tenant isolation via `tenant_id` |
-| Stores/Warehouses | Simple `stores` table | `org_nodes` + `stores` + `warehouses` + `storage_areas` |
-| Measurement Units | None (hardcoded) | Full `measurement_units` table with conversions |
-| Stock Tracking | `current_stock` field on products | Separate `stock_levels` table (per warehouse, per unit) |
-| Product Model | Wine-focused with `wines` table | Universal product model with `product_type` enum |
-| Inventory | Basic event logging | Full lifecycle with review notes, adjustments, variances |
-| Integration | Syrve-only, tightly coupled | Multi-provider adapter pattern |
-| RLS | Role-based (admin/super_admin) | Tenant-scoped + role-based |
+---
 
-### Files Created (Total: 18)
-- 3 copied specification documents
-- 15 new implementation guide documents
+## Technical Changes
 
-### No Code Changes
-This plan only creates documentation files. No application code, database migrations, or edge functions are modified.
+### 1. Edge Function: `syrve-connect-test`
+
+- Add category fetching (same logic as `syncCategories` in `syrve-sync`) during connection test
+- Save categories to DB immediately so the picker works before first sync
+- Return `categories_count` in response
+
+### 2. Edge Function: `syrve-sync`
+
+- Add "Select All" warehouse support: if no specific stores selected, sync all stores
+- Ensure products without a category (`parentGroupId` is null/empty) are still imported when category filtering is active
+- When reimport mode triggers after config changes, properly handle the full replacement flow
+
+### 3. Frontend: `SyrveSettings.tsx` -- Major Restructure
+
+**New connection flow:**
+- After successful test: show a "Setting up..." state while reference data loads
+- Auto-open warehouse selection populated from test results
+- Category picker populated from freshly-imported categories
+- Single "Save & Import" call-to-action at the bottom
+- Inline progress display
+
+**Existing connection flow:**
+- Compact summary dashboard at the top showing key metrics
+- "Re-sync" and "Refresh Prices & Stock" buttons prominently placed
+- Collapsible sections for editing configuration
+- When config is changed, the sync button changes to "Save & Re-import" to signal full replacement
+
+**Select All for warehouses:**
+- Add a "Select All / Deselect All" toggle above the warehouse list
+
+### 4. Category Picker Enhancement
+
+- Ensure categories refresh when warehouse selection changes (already partially implemented)
+- Show both standard groups and custom categories in the tree
+- Products without category note: add info text "Products without a category will also be imported"
+
+### 5. Product Import Logic Fix
+
+In `syncProducts` within `syrve-sync`:
+- Currently skips products where `parentGroupId` is not in `selectedSyrveIds`
+- Change: if `selectedSyrveIds` is set but product has NO `parentGroupId` (null/empty), still import it
+- This ensures uncategorized products are always included
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `supabase/functions/syrve-connect-test/index.ts` | Add category import on connection test |
+| `supabase/functions/syrve-sync/index.ts` | Fix uncategorized product import, improve reimport logic |
+| `src/pages/SyrveSettings.tsx` | Major UI restructure: wizard for new, dashboard for existing |
+| `src/hooks/useSyrve.ts` | Minor: add query for last sync run stats |
+
+No database schema changes needed -- all required tables already exist.
 
