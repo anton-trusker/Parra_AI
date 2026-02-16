@@ -31,6 +31,7 @@ export interface Product {
   not_in_store_movement: boolean | null;
   categories?: { name: string } | null;
   parent_product?: { id: string; name: string; product_type: string | null }[] | { id: string; name: string; product_type: string | null } | null;
+  store_names?: string[];
 }
 
 export interface ProductBarcode {
@@ -87,6 +88,28 @@ export function useProducts(filters?: {
 
       const products = (data || []) as unknown as Product[];
 
+      // Fetch stock_levels with store names to map products → stores
+      const productIds = products.map(p => p.id);
+      const storeMap = new Map<string, Set<string>>();
+      if (productIds.length > 0) {
+        // Fetch in batches of 500 to avoid URL length limits
+        for (let i = 0; i < productIds.length; i += 500) {
+          const batch = productIds.slice(i, i + 500);
+          const { data: stockData } = await supabase
+            .from('stock_levels')
+            .select('product_id, stores(name)')
+            .in('product_id', batch)
+            .gt('quantity', 0);
+          for (const sl of stockData || []) {
+            const storeName = (sl.stores as any)?.name;
+            if (storeName) {
+              if (!storeMap.has(sl.product_id)) storeMap.set(sl.product_id, new Set());
+              storeMap.get(sl.product_id)!.add(storeName);
+            }
+          }
+        }
+      }
+
       // Build parent lookup from the same dataset
       const parentIds = new Set(products.map(p => p.parent_product_id).filter(Boolean) as string[]);
       const parentLookup = new Map<string, { id: string; name: string; product_type: string | null }>();
@@ -103,6 +126,8 @@ export function useProducts(filters?: {
         } else {
           p.parent_product = null;
         }
+        // Attach store names
+        p.store_names = storeMap.has(p.id) ? [...storeMap.get(p.id)!] : [];
         if (!p.categories) return true;
         const cat = p.categories as any;
         return cat.is_active !== false && cat.is_deleted !== true;
