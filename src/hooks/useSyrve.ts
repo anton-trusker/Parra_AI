@@ -308,28 +308,16 @@ export function useCleanAllSyrveData() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      // Delete in dependency order
-      await supabase.from('stock_levels').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('product_barcodes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('stores').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('measurement_units').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('syrve_raw_objects').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('syrve_sync_runs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      await supabase.from('syrve_api_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      
-      // Reset syrve_config status
-      const { data: config } = await supabase.from('syrve_config').select('id').limit(1).maybeSingle();
-      if (config) {
-        await supabase.from('syrve_config').update({
-          connection_status: 'not_configured',
-          selected_category_ids: null,
-          selected_store_ids: null,
-          default_store_id: null,
-          default_store_name: null,
-        } as any).eq('id', config.id);
-      }
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await supabase.functions.invoke('syrve-clean-all', {
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : undefined,
+      });
+      if (resp.error) throw new Error(resp.error.message || 'Clean all failed');
+      const body = resp.data;
+      if (body?.error) throw new Error(body.error);
+      return body;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['syrve_config'] });
