@@ -44,26 +44,23 @@ function getContainerVolume(syrveData: any): number | null {
   return primary?.count != null ? Number(primary.count) : null;
 }
 
-/** Format stock with volume: "3 btl · 2.25L" */
-function formatStockWithVolume(stock: number | null, syrveData: any): { label: string; volume: string | null } {
-  if (stock === null || stock === undefined) return { label: '—', volume: null };
+/** Format stock with amount: "3 kg · 2.25L" */
+function formatStockWithAmount(stock: number | null, syrveData: any, mainUnitName?: string | null): { label: string; amount: string | null } {
+  if (stock === null || stock === undefined) return { label: '—', amount: null };
   const containerVol = getContainerVolume(syrveData);
-  const containers = syrveData?.containers;
-  const unitName = Array.isArray(containers) && containers.length > 0
-    ? (containers.find((c: any) => !c.deleted) || containers[0])?.name || ''
-    : '';
-  const volumeStr = containerVol ? `${(stock * containerVol).toFixed(2)}L` : null;
-  return { label: `${stock}${unitName ? ` ${unitName}` : ''}`, volume: volumeStr };
+  const unit = mainUnitName || syrveData?.mainUnit || '';
+  const amountStr = containerVol ? `${(stock * containerVol).toFixed(2)}L` : null;
+  return { label: `${stock}${unit ? ` ${unit}` : ''}`, amount: amountStr };
 }
 
-function StockIndicator({ stock, syrveData }: { stock: number | null; syrveData?: any }) {
+function StockIndicator({ stock, syrveData, mainUnitName }: { stock: number | null; syrveData?: any; mainUnitName?: string | null }) {
   if (stock === null || stock === undefined) return <span className="text-muted-foreground">—</span>;
-  const { label, volume } = formatStockWithVolume(stock, syrveData);
+  const { label, amount } = formatStockWithAmount(stock, syrveData, mainUnitName);
   const indicator = (colorVar: string, pulse = false) => (
     <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: `hsl(var(${colorVar}))` }}>
       <span className={`w-2 h-2 rounded-full ${pulse ? 'animate-pulse' : ''}`} style={{ background: `hsl(var(${colorVar}))` }} />
       <span className="tabular-nums">{label}</span>
-      {volume && <span className="text-[10px] font-normal text-muted-foreground ml-0.5">{volume}</span>}
+      {amount && <span className="text-[10px] font-normal text-muted-foreground ml-0.5">{amount}</span>}
     </span>
   );
   if (stock <= 0) return indicator('--destructive', true);
@@ -311,7 +308,7 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'purchase_price', label: 'Cost', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
-    { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} syrveData={p.syrve_data} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
+    { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} syrveData={p.syrve_data} mainUnitName={resolveUnitName(p.main_unit_id, unitsMap)} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
     { key: 'dishes_count', label: 'Dishes', align: 'center', render: p => {
       const count = goodsToDishesMap.get(p.id)?.length || 0;
       return count > 0 ? <span className="font-medium tabular-nums" style={{ color: 'hsl(38 45% 60%)' }}>{count}</span> : <span className="text-muted-foreground/40">—</span>;
