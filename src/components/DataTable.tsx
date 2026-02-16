@@ -29,9 +29,11 @@ interface DataTableProps<T> {
   defaultPageSize?: number;
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+
 function DataTableInner<T>({
   data, columns, visibleColumns, columnWidths, onColumnResize, onRowClick, rowClassName,
-  keyExtractor, emptyMessage = 'No data', compact = false, paginated = true, defaultPageSize = 25,
+  keyExtractor, emptyMessage = 'No data', compact = false, paginated = true, defaultPageSize = DEFAULT_PAGE_SIZE,
 }: DataTableProps<T>) {
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');

@@ -25,10 +25,12 @@ interface SimpleDataTableProps<T> {
   defaultPageSize?: number;
 }
 
+const DEFAULT_PAGE_SIZE = 50;
+
 type SortDir = 'asc' | 'desc' | null;
 
 export default function SimpleDataTable<T extends Record<string, any>>({
-  data, columns, keyField, emptyMessage = 'No data', onRowClick, paginated = true, defaultPageSize = 25,
+  data, columns, keyField, emptyMessage = 'No data', onRowClick, paginated = true, defaultPageSize = DEFAULT_PAGE_SIZE,
 }: SimpleDataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
