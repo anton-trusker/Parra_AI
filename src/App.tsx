@@ -34,6 +34,7 @@ import InventoryChecksPage from "./pages/InventoryChecksPage";
 import InventoryCheckDetail from "./pages/InventoryCheckDetail";
 import AiScansPage from "./pages/AiScansPage";
 import OrdersPage from "./pages/OrdersPage";
+import StockPage from "./pages/StockPage";
 import NotFound from "./pages/NotFound";
 import { useThemeStore } from "./stores/themeStore";
 
@@ -70,7 +71,7 @@ const App = () => (
                 <Route path="/inventory/checks/:id" element={<InventoryCheckDetail />} />
                 <Route path="/inventory/ai-scans" element={<AiScansPage />} />
                 <Route path="/count" element={<InventoryCount />} />
-                <Route path="/stock" element={<Navigate to="/inventory/checks" replace />} />
+                <Route path="/stock" element={<StockPage />} />
                 <Route path="/history" element={<InventoryHistory />} />
                 <Route path="/sessions" element={<Navigate to="/inventory/checks" replace />} />
                 <Route path="/orders" element={<OrdersPage />} />
