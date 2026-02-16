@@ -67,8 +67,13 @@ serve(async (req) => {
     const lockUntil = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     await adminClient.from("syrve_config").update({ sync_lock_until: lockUntil }).eq("id", config.id);
 
+    // Handle clean_import: wipe all Syrve data first
+    if (sync_type === "clean_import") {
+      await cleanAllSyrveData(adminClient);
+    }
+
     // Create sync run
-    const runType = sync_type || "bootstrap";
+    const runType = sync_type === "clean_import" ? "bootstrap" : (sync_type || "bootstrap");
     const { data: syncRun } = await adminClient
       .from("syrve_sync_runs")
       .insert({ run_type: runType, status: "running", triggered_by: user.id })
@@ -77,7 +82,7 @@ serve(async (req) => {
 
     let syrveToken: string | null = null;
     let serverUrl = '';
-    const stats: any = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0, prices_updated: 0, stock_updated: 0, stage: 'authenticating', progress: 0 };
+    const stats: any = { stores: 0, measurement_units: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0, prices_updated: 0, stock_updated: 0, stage: 'authenticating', progress: 0 };
     const selectedCategoryIds: string[] = config.selected_category_ids || [];
     const productTypeFilters: string[] = config.product_type_filters || ['GOODS', 'DISH'];
     const importInactive: boolean = config.import_inactive_products || false;
@@ -109,8 +114,14 @@ serve(async (req) => {
 
       // 2. Sync based on type
       if (runType === "bootstrap" || runType === "stores") {
-        await updateProgress('syncing_stores', 15);
+        await updateProgress('syncing_stores', 10);
         await syncStores(adminClient, serverUrl, syrveToken, syncRun?.id, stats);
+      }
+
+      // 2b. Sync measurement units
+      if (runType === "bootstrap" || runType === "stores") {
+        await updateProgress('syncing_units', 20);
+        await syncMeasurementUnits(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
       }
 
       if (runType === "bootstrap" || runType === "categories") {
@@ -119,14 +130,7 @@ serve(async (req) => {
       }
 
       if (runType === "bootstrap" || runType === "products") {
-        // Fresh mode: delete everything before importing
-        if (reimportMode === 'fresh') {
-          await updateProgress('deleting_products', 40);
-          await deleteAllProducts(adminClient, stats);
-          await updateProgress('deleted_products', 50);
-        }
-
-        await updateProgress('importing_products', reimportMode === 'fresh' ? 55 : 45);
+        await updateProgress('importing_products', 45);
         const importedSyrveIds = await syncProducts(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedCategoryIds, productTypeFilters, importInactive, fieldMapping);
 
         // Fetch prices if enabled
@@ -135,15 +139,26 @@ serve(async (req) => {
           await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
         }
 
-        // Fetch stock if enabled and store configured
-        if (fieldMapping.sync_stock !== false && config.default_store_id) {
+        // Fetch stock for ALL selected stores (or all stores if none selected)
+        if (fieldMapping.sync_stock !== false) {
           await updateProgress('fetching_stock', 85);
-          await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, config.default_store_id);
+          let storeIds = config.selected_store_ids || [];
+          if (storeIds.length === 0 && config.default_store_id) {
+            storeIds = [config.default_store_id];
+          }
+          // If still no specific stores, fetch all from DB
+          if (storeIds.length === 0) {
+            const { data: allStores } = await adminClient.from("stores").select("syrve_store_id").eq("is_active", true);
+            storeIds = (allStores || []).map((s: any) => s.syrve_store_id);
+          }
+          for (const sid of storeIds) {
+            await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, sid);
+          }
         }
 
         await updateProgress('applying_reimport_mode', 90);
-        // Apply reimport mode for non-imported products (hide/replace)
-        if ((reimportMode === 'hide' || reimportMode === 'replace') && importedSyrveIds && importedSyrveIds.length > 0) {
+        // Default behavior: soft-deactivate non-matching products (preserve data)
+        if (importedSyrveIds && importedSyrveIds.length > 0) {
           await applyReimportMode(adminClient, importedSyrveIds, reimportMode, stats);
         }
       }
@@ -153,9 +168,17 @@ serve(async (req) => {
         await updateProgress('fetching_prices', 30);
         await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
 
-        if (config.default_store_id) {
+        let psStoreIds = config.selected_store_ids || [];
+        if (psStoreIds.length === 0 && config.default_store_id) psStoreIds = [config.default_store_id];
+        if (psStoreIds.length === 0) {
+          const { data: allStores } = await adminClient.from("stores").select("syrve_store_id").eq("is_active", true);
+          psStoreIds = (allStores || []).map((s: any) => s.syrve_store_id);
+        }
+        if (psStoreIds.length > 0) {
           await updateProgress('fetching_stock', 60);
-          await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, config.default_store_id);
+          for (const sid of psStoreIds) {
+            await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, sid);
+          }
         }
       }
 
@@ -210,6 +233,18 @@ serve(async (req) => {
     });
   }
 });
+
+// ─── Clean All Syrve Data ───
+
+async function cleanAllSyrveData(client: any) {
+  console.log("Clean import: wiping all Syrve data...");
+  // Order matters: delete dependent tables first
+  await client.from("stock_levels").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await client.from("product_barcodes").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await client.from("products").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  await client.from("syrve_raw_objects").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  console.log("Clean import: data wiped successfully");
+}
 
 async function logApi(
   client: any, syncRunId: string | null, action: string, status: string, 
@@ -278,9 +313,67 @@ async function syncStores(client: any, baseUrl: string, token: string, syncRunId
   }
 }
 
+async function syncMeasurementUnits(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  const start = Date.now();
+  const url = `${baseUrl}/v2/entities/list?key=${token}&rootType=MeasureUnit`;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      await logApi(client, syncRunId, "FETCH_UNITS", "error", url, `HTTP ${resp.status}`, Date.now() - start);
+      console.error(`Failed to fetch measurement units: ${resp.status}`);
+      return;
+    }
+
+    const text = await resp.text();
+    await logApi(client, syncRunId, "FETCH_UNITS", "success", url, undefined, Date.now() - start, text.substring(0, 500));
+
+    let units: any[];
+    try {
+      units = JSON.parse(text);
+      if (!Array.isArray(units)) units = [units];
+    } catch {
+      units = parseXmlItems(text, "unitDto");
+    }
+
+    for (const unit of units) {
+      const syrveId = unit.id;
+      if (!syrveId) continue;
+
+      await client.from("measurement_units").upsert({
+        syrve_unit_id: syrveId,
+        name: unit.name || "Unknown",
+        short_name: unit.shortName || unit.short_name || null,
+        main_unit_syrve_id: unit.mainUnitId || unit.main_unit_id || null,
+        is_main: unit.isMain || unit.is_main || false,
+        factor: unit.factor || unit.ratio || 1,
+        synced_at: new Date().toISOString(),
+      }, { onConflict: "syrve_unit_id" });
+
+      stats.measurement_units = (stats.measurement_units || 0) + 1;
+    }
+
+    // Resolve main_unit_id references
+    const { data: allUnits } = await client.from("measurement_units").select("id, syrve_unit_id, main_unit_syrve_id");
+    if (allUnits) {
+      const lookup = new Map(allUnits.map((u: any) => [u.syrve_unit_id, u.id]));
+      for (const u of allUnits) {
+        if (u.main_unit_syrve_id && lookup.has(u.main_unit_syrve_id)) {
+          await client.from("measurement_units").update({ main_unit_id: lookup.get(u.main_unit_syrve_id) }).eq("id", u.id);
+        }
+      }
+    }
+
+    console.log(`Measurement units: imported ${stats.measurement_units}`);
+  } catch (e) {
+    console.error("syncMeasurementUnits error:", e);
+    await logApi(client, syncRunId, "FETCH_UNITS", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
+  }
+}
+
 async function syncCategories(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
   const start = Date.now();
-  const url = `${baseUrl}/v2/entities/products/group/list?includeDeleted=false&key=${token}`;
+  // Use includeDeleted=true to get ALL groups, then mark deleted ones as inactive
+  const url = `${baseUrl}/v2/entities/products/group/list?includeDeleted=true&key=${token}`;
   const resp = await fetch(url);
   if (!resp.ok) {
     await logApi(client, syncRunId, "FETCH_CATEGORIES", "error", url, `HTTP ${resp.status}`, Date.now() - start);
@@ -297,6 +390,9 @@ async function syncCategories(client: any, baseUrl: string, token: string, syncR
   } catch {
     groups = parseXmlItems(text, "groupDto");
   }
+
+  let rootCount = 0;
+  let childCount = 0;
 
   for (const group of groups) {
     const syrveId = group.id || group.groupId;
@@ -323,28 +419,45 @@ async function syncCategories(client: any, baseUrl: string, token: string, syncR
       synced_at: new Date().toISOString(),
     }, { onConflict: "entity_type,syrve_id" });
 
+    const parentSyrveId = group.parentId || group.parent || null;
+    const isDeleted = group.deleted === true || group.isDeleted === true;
+
     await client.from("categories").upsert({
       syrve_group_id: syrveId,
       name: group.name || "Unknown",
-      parent_syrve_id: group.parentId || group.parent || null,
-      is_deleted: group.deleted || false,
-      is_active: !(group.deleted || false),
+      parent_syrve_id: parentSyrveId,
+      is_deleted: isDeleted,
+      is_active: !isDeleted,
       syrve_data: group,
       synced_at: new Date().toISOString(),
     }, { onConflict: "syrve_group_id" });
 
     stats.categories++;
+    if (parentSyrveId) childCount++;
+    else rootCount++;
   }
 
-  // Resolve parent_id references
+  // Resolve ALL parent_id references (re-resolve everything to catch orphans)
   const { data: allCats } = await client.from("categories").select("id, syrve_group_id, parent_syrve_id");
   if (allCats) {
     const lookup = new Map(allCats.map((c: any) => [c.syrve_group_id, c.id]));
+    let resolved = 0;
+    let orphans = 0;
     for (const cat of allCats) {
-      if (cat.parent_syrve_id && lookup.has(cat.parent_syrve_id)) {
-        await client.from("categories").update({ parent_id: lookup.get(cat.parent_syrve_id) }).eq("id", cat.id);
+      if (cat.parent_syrve_id) {
+        const parentId = lookup.get(cat.parent_syrve_id);
+        if (parentId) {
+          await client.from("categories").update({ parent_id: parentId }).eq("id", cat.id);
+          resolved++;
+        } else {
+          await client.from("categories").update({ parent_id: null }).eq("id", cat.id);
+          orphans++;
+        }
+      } else {
+        await client.from("categories").update({ parent_id: null }).eq("id", cat.id);
       }
     }
+    console.log(`Categories: ${stats.categories} new/updated (${rootCount} root, ${childCount} child), resolved ${resolved} parents, ${orphans} orphans`);
   }
 }
 
@@ -409,6 +522,8 @@ async function syncProducts(
 
     const parentGroupId = product.parent || product.parentId;
 
+    // Category filter: skip if product HAS a category but it's not in the selected set
+    // Products WITHOUT a category (null/empty parentGroupId) are always imported
     if (selectedSyrveIds && parentGroupId && !selectedSyrveIds.has(parentGroupId)) {
       stats.skipped = (stats.skipped || 0) + 1;
       continue;
@@ -430,6 +545,8 @@ async function syncProducts(
     const payloadHash = await sha1(JSON.stringify(product));
 
     if (existingHashMap.get(syrveId) === payloadHash) {
+      // Even if hash matches, track the ID as "imported" for reimport mode
+      productSyrveIdOrder.push(syrveId);
       stats.skipped = (stats.skipped || 0) + 1;
       continue;
     }
@@ -469,6 +586,9 @@ async function syncProducts(
     const syrveData = { ...product };
     if (Array.isArray(productContainers) && productContainers.length > 0) syrveData.containers = productContainers;
 
+    // Resolve main_unit_id: look up the Syrve mainUnit GUID in measurement_units
+    const syrveMainUnit = product.mainUnit || null;
+
     productBatch.push({
       syrve_product_id: syrveId,
       category_id: categoryId || null,
@@ -477,7 +597,7 @@ async function syncProducts(
       sku: product.num || null,
       code: product.code || null,
       product_type: product.type || product.productType || null,
-      main_unit_id: product.mainUnit || null,
+      main_unit_id: syrveMainUnit,
       unit_capacity: unitCapacity,
       default_sale_price: product.defaultSalePrice || null,
       not_in_store_movement: product.notInStoreMovement || false,
@@ -537,14 +657,73 @@ async function syncProducts(
     }
   }
 
+  // After products are upserted, resolve main_unit_id to measurement_units.id
+  const { data: allUnits } = await client.from("measurement_units").select("id, syrve_unit_id");
+  if (allUnits && allUnits.length > 0) {
+    const unitLookup = new Map(allUnits.map((u: any) => [u.syrve_unit_id, u.id]));
+    const { data: prodsWithUnit } = await client.from("products")
+      .select("id, main_unit_id")
+      .not("main_unit_id", "is", null);
+
+    if (prodsWithUnit) {
+      const updateBatch: any[] = [];
+      let unresolved = 0;
+      for (const p of prodsWithUnit) {
+        const resolvedId = unitLookup.get(p.main_unit_id);
+        if (resolvedId && p.main_unit_id !== resolvedId) {
+          updateBatch.push({ id: p.id, main_unit_id: resolvedId });
+        } else if (!resolvedId && p.main_unit_id && p.main_unit_id.length > 30) {
+          // Looks like a Syrve GUID that couldn't be resolved
+          unresolved++;
+        }
+      }
+      for (let i = 0; i < updateBatch.length; i += 50) {
+        const chunk = updateBatch.slice(i, i + 50);
+        for (const item of chunk) {
+          await client.from("products").update({ main_unit_id: item.main_unit_id }).eq("id", item.id);
+        }
+      }
+      console.log(`Linked ${updateBatch.length} products to measurement units${unresolved > 0 ? `, ${unresolved} unresolved` : ''}`);
+    }
+  }
+
+  // Resolve parent_product_id: link DISH products to their parent GOODS products
+  // In Syrve, raw product data stores the goods-to-dish link
+  try {
+    const { data: allProducts } = await client.from("products")
+      .select("id, syrve_product_id, syrve_data, product_type")
+      .eq("is_active", true);
+
+    if (allProducts && allProducts.length > 0) {
+      const syrveIdToId = new Map(allProducts.map((p: any) => [p.syrve_product_id, p.id]));
+      let linked = 0;
+
+      for (const product of allProducts) {
+        const syrveData = product.syrve_data as any;
+        if (!syrveData) continue;
+
+        // Check for parent product reference in syrve_data
+        const parentSyrveId = syrveData.parentProduct || syrveData.parentProductId || syrveData.goodsId || null;
+        if (parentSyrveId && syrveIdToId.has(parentSyrveId)) {
+          const parentId = syrveIdToId.get(parentSyrveId);
+          if (parentId !== product.id) {
+            await client.from("products").update({ parent_product_id: parentId }).eq("id", product.id);
+            linked++;
+          }
+        }
+      }
+      if (linked > 0) console.log(`Linked ${linked} products to parent products (goods→dish)`);
+    }
+  } catch (e) {
+    console.error("Parent product linking error:", e);
+  }
+
   return productSyrveIdOrder;
 }
 
 async function syncPrices(client: any, _baseUrl: string, _token: string, syncRunId: string | null, stats: any) {
-  // Extract defaultSalePrice from already-stored raw product objects instead of a separate API call
   const start = Date.now();
   try {
-    // Fetch all raw product objects that have defaultSalePrice > 0
     let offset = 0;
     const BATCH = 200;
     let totalUpdated = 0;
@@ -593,91 +772,115 @@ async function syncPrices(client: any, _baseUrl: string, _token: string, syncRun
 }
 
 async function syncStock(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any, storeId: string) {
-  // Use OLAP STOCK report which is reliable across Syrve Server versions
   const start = Date.now();
-  const now = new Date();
-  const dd = String(now.getDate()).padStart(2, "0");
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const yyyy = now.getFullYear();
-  const dateStr = `${dd}.${mm}.${yyyy}`;
-
-  const url = `${baseUrl}/reports/olap?key=${token}&report=STOCK&groupRow=Product.Num&groupRow=Product.Name&agr=FinalBalance.Amount&from=${dateStr}&to=${dateStr}&store=${storeId}`;
+  const today = new Date().toISOString().split("T")[0];
+  const url = `${baseUrl}/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${today}`;
   try {
     const resp = await fetch(url);
     if (!resp.ok) {
       await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `HTTP ${resp.status}`, Date.now() - start);
-      console.error(`Stock OLAP fetch failed: ${resp.status}`);
+      console.error(`Stock balance fetch failed: ${resp.status}`);
       return;
     }
 
     const xml = await resp.text();
     await logApi(client, syncRunId, "FETCH_STOCK", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
 
-    // Parse OLAP report rows. Format varies but typically:
-    // <r><c>ProductNum</c><c>ProductName</c><c>Amount</c></r>
-    // or <row><cell>...</cell></row> etc.
-    const stockItems: { sku: string; balance: number }[] = [];
+    const stockItems = parseStockBalanceXml(xml);
 
-    // Try <r><c>...</c></r> format first
-    const rowRegex = /<r>([\s\S]*?)<\/r>/g;
-    let match;
-    while ((match = rowRegex.exec(xml)) !== null) {
-      const cells: string[] = [];
-      const cellRegex = /<c>([^<]*)<\/c>/g;
-      let cellMatch;
-      while ((cellMatch = cellRegex.exec(match[1])) !== null) {
-        cells.push(cellMatch[1].trim());
-      }
-      // cells[0] = Product.Num, cells[1] = Product.Name, cells[2] = FinalBalance.Amount
-      if (cells.length >= 3) {
-        const sku = cells[0];
-        const balance = parseFloat(cells[2]) || 0;
-        if (sku) stockItems.push({ sku, balance });
-      } else if (cells.length === 2) {
-        // Maybe only Product.Num + Amount
-        const sku = cells[0];
-        const balance = parseFloat(cells[1]) || 0;
-        if (sku) stockItems.push({ sku, balance });
-      }
+    const syrveProductIds = stockItems.map((s: any) => s.product_id).filter(Boolean);
+    if (syrveProductIds.length === 0) {
+      console.log(`Stock: no items returned for store ${storeId}`);
+      return;
     }
 
-    // Fallback: try <row> format
-    if (stockItems.length === 0) {
-      const altRowRegex = /<row>([\s\S]*?)<\/row>/g;
-      while ((match = altRowRegex.exec(xml)) !== null) {
-        const cells: string[] = [];
-        const cellRegex = /<cell>([^<]*)<\/cell>/g;
-        let cellMatch;
-        while ((cellMatch = cellRegex.exec(match[1])) !== null) {
-          cells.push(cellMatch[1].trim());
-        }
-        if (cells.length >= 2) {
-          const sku = cells[0];
-          const balance = parseFloat(cells[cells.length - 1]) || 0;
-          if (sku) stockItems.push({ sku, balance });
+    const productLookup = new Map<string, { id: string; main_unit_id: string | null }>();
+    for (let i = 0; i < syrveProductIds.length; i += 200) {
+      const batch = syrveProductIds.slice(i, i + 200);
+      const { data: products } = await client.from("products")
+        .select("id, syrve_product_id, main_unit_id")
+        .in("syrve_product_id", batch);
+      if (products) {
+        for (const p of products) {
+          productLookup.set(p.syrve_product_id, { id: p.id, main_unit_id: p.main_unit_id });
         }
       }
     }
 
-    // Match by SKU and update products
+    const { data: storeRow } = await client.from("stores").select("id").eq("syrve_store_id", storeId).maybeSingle();
+    const internalStoreId = storeRow?.id;
+    let unmatchedProducts = 0;
+
+    const BATCH_SIZE = 50;
+    const stockBatch: any[] = [];
     for (const item of stockItems) {
-      const { error } = await client.from("products")
-        .update({
-          current_stock: item.balance,
-          stock_updated_at: new Date().toISOString(),
-        })
-        .eq("sku", item.sku);
-      if (!error) stats.stock_updated++;
+      const prod = productLookup.get(item.product_id);
+      if (!prod) {
+        unmatchedProducts++;
+        continue;
+      }
+
+      await client.from("products").update({
+        current_stock: item.amount,
+        stock_updated_at: new Date().toISOString(),
+      }).eq("id", prod.id);
+
+      if (internalStoreId) {
+        stockBatch.push({
+          product_id: prod.id,
+          store_id: internalStoreId,
+          quantity: item.amount,
+          unit_id: prod.main_unit_id || null,
+          source: 'syrve',
+          sync_run_id: syncRunId,
+          last_synced_at: new Date().toISOString(),
+        });
+      }
+
+      stats.stock_updated++;
     }
 
-    console.log(`Stock OLAP: parsed ${stockItems.length} items, updated ${stats.stock_updated}`);
+    for (let i = 0; i < stockBatch.length; i += BATCH_SIZE) {
+      await client.from("stock_levels").upsert(
+        stockBatch.slice(i, i + BATCH_SIZE),
+        { onConflict: "product_id,store_id" }
+      );
+    }
+
+    console.log(`Stock: parsed ${stockItems.length} items, matched ${stats.stock_updated} for store ${storeId}${unmatchedProducts > 0 ? `, ${unmatchedProducts} unmatched` : ''}`);
   } catch (e) {
     console.error("syncStock error:", e);
     await logApi(client, syncRunId, "FETCH_STOCK", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
   }
 }
 
+function parseStockBalanceXml(xml: string): { product_id: string; amount: number }[] {
+  const items: { product_id: string; amount: number }[] = [];
+  const itemRegex = /<(?:item|remainItem|record)>([\s\S]*?)<\/(?:item|remainItem|record)>/g;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const content = match[1];
+    const getField = (tag: string): string | null => {
+      const m = content.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
+      return m ? m[1].trim() : null;
+    };
+    const productId = getField("product") || getField("productId") || getField("id");
+    const amount = parseFloat(getField("amount") || getField("endStore") || getField("balance") || "0");
+    if (productId) {
+      items.push({ product_id: productId, amount });
+    }
+  }
+  return items;
+}
+
 async function applyReimportMode(client: any, importedSyrveIds: string[], mode: string, stats: any) {
+  // Default behavior: soft-deactivate (same as 'hide' or 'merge' with deactivation)
+  // 'merge' mode: keep everything, just add new - but still deactivate non-matching
+  // 'replace' mode: delete non-matching products
+  const effectiveMode = mode === 'merge' ? 'hide' : mode;
+  
+  if (effectiveMode === 'fresh') return; // fresh mode already handled before import
+
   const BATCH = 100;
   let offset = 0;
   const idsToProcess: string[] = [];
@@ -685,35 +888,44 @@ async function applyReimportMode(client: any, importedSyrveIds: string[], mode: 
   while (true) {
     const { data: batch } = await client.from("products")
       .select("id, syrve_product_id")
-      .not("syrve_product_id", "in", `(${importedSyrveIds.join(",")})`)
+      .not("syrve_product_id", "is", null)
+      .eq("is_active", true)
       .range(offset, offset + BATCH - 1);
     
     if (!batch || batch.length === 0) break;
-    idsToProcess.push(...batch.map((p: any) => p.id));
+    
+    for (const p of batch) {
+      if (!importedSyrveIds.includes(p.syrve_product_id)) {
+        idsToProcess.push(p.id);
+      }
+    }
+    
     offset += BATCH;
     if (batch.length < BATCH) break;
   }
 
   if (idsToProcess.length === 0) return;
 
-  if (mode === 'hide') {
+  if (effectiveMode === 'hide') {
+    // Soft deactivate - set is_active = false, preserve data
     for (let i = 0; i < idsToProcess.length; i += BATCH) {
       const chunk = idsToProcess.slice(i, i + BATCH);
       await client.from("products").update({ is_active: false }).in("id", chunk);
       stats.deactivated += chunk.length;
     }
-  } else if (mode === 'replace') {
+    console.log(`Reimport mode (hide/merge): deactivated ${stats.deactivated} non-matching products`);
+  } else if (effectiveMode === 'replace') {
     for (let i = 0; i < idsToProcess.length; i += BATCH) {
       const chunk = idsToProcess.slice(i, i + BATCH);
       await client.from("product_barcodes").delete().in("product_id", chunk);
       await client.from("products").delete().in("id", chunk);
       stats.deleted += chunk.length;
     }
+    console.log(`Reimport mode (replace): deleted ${stats.deleted} non-matching products`);
   }
 }
 
 async function deleteAllProducts(client: any, stats: any) {
-  // Delete all barcodes first, then all products
   await client.from("product_barcodes").delete().neq("id", "00000000-0000-0000-0000-000000000000");
   const { count } = await client.from("products").select("*", { count: "exact", head: true });
   await client.from("products").delete().neq("id", "00000000-0000-0000-0000-000000000000");
@@ -733,13 +945,11 @@ function parseWineName(rawName: string, syrveData: any): {
 
   let text = rawName;
 
-  // Extract "by glass" indicators (EN + RU)
   if (/by\s*glass|бокал|по\s*бокал/i.test(text)) {
     result.available_by_glass = true;
     text = text.replace(/\s*(by\s*glass|бокал\w*|по\s*бокал\w*)\s*/gi, ' ');
   }
 
-  // Extract volume patterns: "0.75", "0,75", "750ml", "1.5L"
   const volMatch = text.match(/\b(\d{1,2})[.,](\d{1,3})\s*(l|lt|ltr|л)?\b/i);
   if (volMatch) {
     const litres = parseFloat(`${volMatch[1]}.${volMatch[2]}`);
@@ -753,7 +963,6 @@ function parseWineName(rawName: string, syrveData: any): {
     }
   }
 
-  // Extract volume from syrve_data containers if not found in name
   if (!result.volume_ml && syrveData?.containers) {
     const containers = Array.isArray(syrveData.containers) ? syrveData.containers : [];
     for (const c of containers) {
@@ -763,13 +972,11 @@ function parseWineName(rawName: string, syrveData: any): {
         break;
       }
     }
-    // Fallback: unitCapacity if not 1.0
     if (!result.volume_ml && syrveData.unitCapacity && parseFloat(syrveData.unitCapacity) !== 1.0) {
       result.volume_ml = Math.round(parseFloat(syrveData.unitCapacity) * 1000);
     }
   }
 
-  // Extract vintage (4-digit year 1900-2099 or 'YY shorthand)
   const vintageMatch = text.match(/\b(19|20)\d{2}\b/);
   if (vintageMatch) {
     const yr = parseInt(vintageMatch[0]);
@@ -778,7 +985,6 @@ function parseWineName(rawName: string, syrveData: any): {
       text = text.replace(vintageMatch[0], ' ');
     }
   } else {
-    // Short year: '17, '20, etc.
     const shortMatch = text.match(/[''](\d{2})\b/);
     if (shortMatch) {
       const yy = parseInt(shortMatch[1]);
@@ -787,7 +993,6 @@ function parseWineName(rawName: string, syrveData: any): {
     }
   }
 
-  // Clean name: trim, collapse spaces, Title Case
   text = text.replace(/\s+/g, ' ').trim();
   result.name = text.split(' ').map(w => {
     if (w.length <= 2) return w.toLowerCase();
@@ -804,14 +1009,12 @@ async function enrichWinesFromProducts(client: any, config: any, stats: any) {
     return;
   }
 
-  // Get syrve_group_ids for wine categories
   const { data: wineCats } = await client.from("categories")
     .select("syrve_group_id")
     .in("id", wineCategoryIds);
   if (!wineCats || wineCats.length === 0) return;
   const wineSyrveGroupIds = new Set(wineCats.map((c: any) => c.syrve_group_id));
 
-  // Get products in wine categories
   const { data: wineProducts } = await client.from("products")
     .select("id, syrve_product_id, name, sku, code, sale_price, purchase_price, default_sale_price, unit_capacity, syrve_data, current_stock, category_id, is_by_glass, primary_barcode:product_barcodes(barcode)")
     .eq("is_active", true)
@@ -819,18 +1022,15 @@ async function enrichWinesFromProducts(client: any, config: any, stats: any) {
 
   if (!wineProducts || wineProducts.length === 0) return;
 
-  // Get categories to check which products are in wine categories
   const { data: allCats } = await client.from("categories").select("id, syrve_group_id");
   const catToSyrve = new Map((allCats || []).map((c: any) => [c.id, c.syrve_group_id]));
 
-  // Filter to products in wine categories
   const eligibleProducts = wineProducts.filter((p: any) =>
     p.category_id && wineSyrveGroupIds.has(catToSyrve.get(p.category_id))
   );
 
   if (eligibleProducts.length === 0) return;
 
-  // Get already-linked wines
   const productIds = eligibleProducts.map((p: any) => p.id);
   const { data: existingWines } = await client.from("wines")
     .select("id, product_id")
@@ -841,7 +1041,6 @@ async function enrichWinesFromProducts(client: any, config: any, stats: any) {
   let updated = 0;
   const BATCH = 50;
 
-  // Create new wines for unlinked products
   const newWines: any[] = [];
   for (const product of eligibleProducts) {
     if (linkedProductIds.has(product.id)) continue;
@@ -876,7 +1075,6 @@ async function enrichWinesFromProducts(client: any, config: any, stats: any) {
     const { error } = await client.from("wines").insert(newWines.slice(i, i + BATCH));
     if (error) {
       console.error('Wine enrichment insert error:', error.message);
-      // Try one-by-one for the batch that failed
       for (const wine of newWines.slice(i, i + BATCH)) {
         const { error: singleErr } = await client.from("wines").insert(wine);
         if (!singleErr) created++;
@@ -887,7 +1085,6 @@ async function enrichWinesFromProducts(client: any, config: any, stats: any) {
     }
   }
 
-  // Update stock & prices for already-linked wines (don't touch name/metadata)
   for (const product of eligibleProducts) {
     if (!linkedProductIds.has(product.id)) continue;
     const { error } = await client.from("wines").update({
@@ -906,13 +1103,12 @@ async function enrichWinesFromProducts(client: any, config: any, stats: any) {
 // ─── AI Enrichment Engine ───
 
 async function aiEnrichNewWines(client: any, stats: any) {
-  // Find wines that were auto-created but lack country/region/grape data
   const { data: unenriched } = await client.from("wines")
     .select("id, name, raw_source_name, producer, vintage, volume_ml")
     .eq("enrichment_source", "syrve_auto")
     .is("country", null)
     .eq("is_active", true)
-    .limit(50); // process up to 50 per sync run
+    .limit(50);
 
   if (!unenriched || unenriched.length === 0) {
     console.log("AI enrichment: no unenriched wines found");
@@ -927,7 +1123,6 @@ async function aiEnrichNewWines(client: any, stats: any) {
 
   console.log(`AI enrichment: processing ${unenriched.length} wines`);
 
-  // Batch wines into groups of 10 for efficient API usage
   const BATCH = 10;
   let totalTokens = 0;
   let enriched = 0;
@@ -975,7 +1170,7 @@ Respond ONLY with the JSON array, no markdown.`
       if (!response.ok) {
         const errText = await response.text();
         console.error(`AI enrichment API error ${response.status}: ${errText}`);
-        if (response.status === 429 || response.status === 402) break; // stop on rate limit / payment issues
+        if (response.status === 429 || response.status === 402) break;
         continue;
       }
 
@@ -984,10 +1179,8 @@ Respond ONLY with the JSON array, no markdown.`
       const usage = result.usage || {};
       totalTokens += (usage.total_tokens || usage.prompt_tokens || 0) + (usage.completion_tokens || 0);
 
-      // Parse the JSON array from AI response
       let parsed: any[];
       try {
-        // Strip markdown code fences if present
         const cleaned = content.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
         parsed = JSON.parse(cleaned);
         if (!Array.isArray(parsed)) parsed = [parsed];
@@ -996,7 +1189,6 @@ Respond ONLY with the JSON array, no markdown.`
         continue;
       }
 
-      // Update each wine with AI-detected data
       for (let j = 0; j < batch.length && j < parsed.length; j++) {
         const wine = batch[j];
         const ai = parsed[j];
@@ -1008,7 +1200,6 @@ Respond ONLY with the JSON array, no markdown.`
         if (ai.sub_region) updateData.sub_region = ai.sub_region;
         if (ai.appellation) updateData.appellation = ai.appellation;
         if (ai.wine_type) {
-          // Map wine_type to body/sweetness or other fields as needed
           const typeMap: Record<string, string> = {
             red: "Red", white: "White", "rosé": "Rosé",
             sparkling: "Sparkling", dessert: "Dessert",
@@ -1023,7 +1214,6 @@ Respond ONLY with the JSON array, no markdown.`
           updateData.producer = ai.producer;
         }
 
-        // Only update if we got meaningful data
         if (Object.keys(updateData).length > 0) {
           updateData.enrichment_status = "ai_enriched";
           const { error } = await client.from("wines").update(updateData).eq("id", wine.id);
@@ -1036,13 +1226,11 @@ Respond ONLY with the JSON array, no markdown.`
     }
   }
 
-  // Estimate cost: Gemini 2.5 Flash ~ $0.15/1M input tokens, $0.60/1M output tokens
-  // Approximate combined rate ~ $0.30/1M tokens
   const estimatedCost = (totalTokens / 1_000_000) * 0.30;
 
   stats.ai_enriched = enriched;
   stats.ai_tokens_used = totalTokens;
-  stats.ai_estimated_cost_usd = Math.round(estimatedCost * 10000) / 10000; // 4 decimal places
+  stats.ai_estimated_cost_usd = Math.round(estimatedCost * 10000) / 10000;
   console.log(`AI enrichment: enriched ${enriched}/${unenriched.length} wines, ${totalTokens} tokens (~$${estimatedCost.toFixed(4)})`);
 }
 
@@ -1054,7 +1242,6 @@ function parseXmlItems(xml: string, tagName: string): any[] {
     const item: any = {};
     const content = match[1];
 
-    // Parse nested barcodes
     const barcodesMatch = content.match(/<barcodes>([\s\S]*?)<\/barcodes>/);
     if (barcodesMatch) {
       const barcodeItems: any[] = [];
@@ -1072,7 +1259,6 @@ function parseXmlItems(xml: string, tagName: string): any[] {
       if (barcodeItems.length > 0) item.barcodes = barcodeItems;
     }
 
-    // Parse nested containers
     const containersMatch = content.match(/<containers>([\s\S]*?)<\/containers>/);
     if (containersMatch) {
       const containerItems: any[] = [];
@@ -1094,7 +1280,6 @@ function parseXmlItems(xml: string, tagName: string): any[] {
       if (containerItems.length > 0) item.containers = containerItems;
     }
 
-    // Parse simple fields
     const fieldRegex = /<(\w+)>([^<]*)<\/\1>/g;
     let fieldMatch;
     while ((fieldMatch = fieldRegex.exec(content)) !== null) {

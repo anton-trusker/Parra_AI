@@ -79,7 +79,6 @@ serve(async (req) => {
       const stockText = await stockResp.text();
 
       // Store raw response
-      const today = new Date().toISOString().split("T")[0];
       await adminClient.from("syrve_raw_objects").insert({
         entity_type: "stock_snapshot",
         syrve_id: `snapshot_${storeId}_${today}`,
@@ -94,10 +93,14 @@ serve(async (req) => {
       const syrveProductIds = stockItems.map((s: any) => s.product_id).filter(Boolean);
       const { data: products } = await adminClient
         .from("products")
-        .select("id, syrve_product_id")
+        .select("id, syrve_product_id, main_unit_id")
         .in("syrve_product_id", syrveProductIds);
 
-      const productLookup = new Map((products || []).map((p: any) => [p.syrve_product_id, p.id]));
+      const productLookup = new Map((products || []).map((p: any) => [p.syrve_product_id, p]));
+
+      // Look up internal store ID for stock_levels
+      const { data: storeRow } = await adminClient.from("stores").select("id").eq("syrve_store_id", storeId).maybeSingle();
+      const internalStoreId = storeRow?.id;
 
       // Also map to wines via wine_variants.syrve_product_id
       const { data: variants } = await adminClient
@@ -107,21 +110,40 @@ serve(async (req) => {
 
       const variantLookup = new Map((variants || []).map((v: any) => [v.syrve_product_id, v]));
 
-      // Insert stock snapshots for wines we can map
+      // Insert stock snapshots for wines we can map + populate stock_levels
       let snapshotCount = 0;
       for (const item of stockItems) {
         const variant = variantLookup.get(item.product_id);
-        if (!variant) continue;
+        if (variant) {
+          await adminClient.from("stock_snapshots").insert({
+            wine_id: variant.base_wine_id,
+            session_id: session_id || null,
+            stock_unopened: Math.floor(item.amount || 0),
+            stock_opened: 0,
+            snapshot_type: "syrve_sync",
+            triggered_by: user.id,
+          });
+          snapshotCount++;
+        }
 
-        await adminClient.from("stock_snapshots").insert({
-          wine_id: variant.base_wine_id,
-          session_id: session_id || null,
-          stock_unopened: Math.floor(item.amount || 0),
-          stock_opened: 0,
-          snapshot_type: "syrve_sync",
-          triggered_by: user.id,
-        });
-        snapshotCount++;
+        // Update stock_levels per product per store
+        const prod = productLookup.get(item.product_id);
+        if (prod && internalStoreId) {
+          await adminClient.from("stock_levels").upsert({
+            product_id: prod.id,
+            store_id: internalStoreId,
+            quantity: item.amount || 0,
+            unit_id: prod.main_unit_id || null,
+            source: 'syrve_snapshot',
+            last_synced_at: new Date().toISOString(),
+          }, { onConflict: "product_id,store_id" });
+
+          // Also update products.current_stock
+          await adminClient.from("products").update({
+            current_stock: item.amount || 0,
+            stock_updated_at: new Date().toISOString(),
+          }).eq("id", prod.id);
+        }
       }
 
       // Log API call

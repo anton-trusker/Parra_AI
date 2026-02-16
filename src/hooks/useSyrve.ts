@@ -168,6 +168,7 @@ export function useSyrveSync() {
       qc.invalidateQueries({ queryKey: ['syrve_stores'] });
       qc.invalidateQueries({ queryKey: ['syrve_products'] });
       qc.invalidateQueries({ queryKey: ['syrve_categories'] });
+      qc.invalidateQueries({ queryKey: ['measurement_units'] });
     },
   });
 }
@@ -218,7 +219,20 @@ export function useSyrveCategories() {
       const { data, error } = await supabase
         .from('categories')
         .select('*')
-        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+  });
+}
+
+export function useMeasurementUnits() {
+  return useQuery({
+    queryKey: ['measurement_units'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('measurement_units')
+        .select('*')
         .order('name');
       if (error) throw error;
       return data || [];
@@ -235,6 +249,86 @@ export function useSyrveBarcodeCount() {
         .select('*', { count: 'exact', head: true });
       if (error) throw error;
       return count || 0;
+    },
+  });
+}
+
+export function useLastSyncStats() {
+  return useQuery({
+    queryKey: ['last_sync_stats'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('syrve_sync_runs')
+        .select('*')
+        .eq('status', 'success')
+        .order('finished_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as SyrveSyncRun | null;
+    },
+  });
+}
+
+export function useProductCount() {
+  return useQuery({
+    queryKey: ['product_count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
+      if (error) throw error;
+      return count || 0;
+    },
+  });
+}
+
+export function useCategoryProductCounts() {
+  return useQuery({
+    queryKey: ['category_product_counts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('category_id')
+        .eq('is_active', true)
+        .not('category_id', 'is', null);
+      if (error) throw error;
+      const counts = new Map<string, number>();
+      for (const row of (data || [])) {
+        const cid = row.category_id as string;
+        counts.set(cid, (counts.get(cid) || 0) + 1);
+      }
+      return counts;
+    },
+  });
+}
+
+export function useCleanAllSyrveData() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await supabase.functions.invoke('syrve-clean-all', {
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : undefined,
+      });
+      if (resp.error) throw new Error(resp.error.message || 'Clean all failed');
+      const body = resp.data;
+      if (body?.error) throw new Error(body.error);
+      return body;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['syrve_config'] });
+      qc.invalidateQueries({ queryKey: ['syrve_stores'] });
+      qc.invalidateQueries({ queryKey: ['syrve_categories'] });
+      qc.invalidateQueries({ queryKey: ['syrve_products'] });
+      qc.invalidateQueries({ queryKey: ['product_count'] });
+      qc.invalidateQueries({ queryKey: ['category_product_counts'] });
+      qc.invalidateQueries({ queryKey: ['last_sync_stats'] });
+      qc.invalidateQueries({ queryKey: ['measurement_units'] });
+      qc.invalidateQueries({ queryKey: ['syrve_sync_runs'] });
     },
   });
 }
@@ -272,7 +366,6 @@ export function useForceStopSync() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      // Clear sync lock
       const { data: config } = await supabase
         .from('syrve_config')
         .select('id')
@@ -284,7 +377,6 @@ export function useForceStopSync() {
           .update({ sync_lock_until: null } as any)
           .eq('id', config.id);
       }
-      // Mark all running sync runs as failed
       const { data: runningRuns } = await supabase
         .from('syrve_sync_runs')
         .select('id')

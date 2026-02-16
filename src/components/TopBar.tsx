@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Building2, Command } from 'lucide-react';
+import { Search, Warehouse, Command } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -13,13 +13,13 @@ export default function TopBar() {
   return (
     <header className="hidden lg:flex items-center justify-between gap-4 px-8 py-3 border-b border-border/60 bg-background/80 backdrop-blur-sm">
       <div className="flex items-center gap-3">
-        <Building2 className="w-4 h-4 text-muted-foreground" />
+        <Warehouse className="w-4 h-4 text-muted-foreground" />
         <Select value={selectedStore} onValueChange={setSelectedStore}>
           <SelectTrigger className="w-[220px] h-9 text-sm border-border/50 bg-muted/30">
-            <SelectValue placeholder="All Locations" />
+            <SelectValue placeholder="All Warehouses" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Locations</SelectItem>
+            <SelectItem value="all">All Warehouses</SelectItem>
             {stores.map((s) => (
               <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}

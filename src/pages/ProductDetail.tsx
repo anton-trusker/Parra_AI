@@ -1,55 +1,21 @@
-import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Package, Barcode, Database, DollarSign, Warehouse, Bot, History, ImageIcon, TrendingUp, TrendingDown, Link2, ArrowRight } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Package, Barcode, Database, DollarSign, Warehouse, Bot, History, ImageIcon, Link2, ArrowRight, Ruler, FolderTree } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useProduct, useProductBarcodes } from '@/hooks/useProducts';
+import { useProduct, useProductBarcodes, useProductChildren, useProductStockByStore } from '@/hooks/useProducts';
 import { mockAiScans } from '@/data/mockAiScans';
-import { mockStockByStore } from '@/data/mockStockByStore';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-
-// Mock data
-const mockStockHistory = [
-  { date: '2026-02-15', event: 'Inventory count completed', change: -2, stockAfter: 12, user: 'Maria Silva' },
-  { date: '2026-02-12', event: 'Stock adjustment', change: +3, stockAfter: 14, user: 'João Costa' },
-  { date: '2026-02-10', event: 'Inventory count completed', change: -1, stockAfter: 11, user: 'Maria Silva' },
-  { date: '2026-02-05', event: 'Syrve sync update', change: 0, stockAfter: 12, user: 'System' },
-  { date: '2026-01-31', event: 'Year-end audit', change: -3, stockAfter: 12, user: 'João Costa' },
-];
-
-const mockStockChart = [
-  { date: 'Jan 20', stock: 18 }, { date: 'Jan 27', stock: 15 }, { date: 'Feb 3', stock: 14 },
-  { date: 'Feb 7', stock: 11 }, { date: 'Feb 10', stock: 14 }, { date: 'Feb 15', stock: 12 },
-];
-
-const mockMovements = [
-  { id: '1', date: '2026-02-15 09:30', type: 'count', from: 'Inventory Session #IC-2025-008', qty: -2, balance: 12 },
-  { id: '2', date: '2026-02-12 14:15', type: 'adjustment', from: 'Manual adjustment by João Costa', qty: +3, balance: 14 },
-  { id: '3', date: '2026-02-10 08:00', type: 'count', from: 'Inventory Session #IC-2025-007', qty: -1, balance: 11 },
-  { id: '4', date: '2026-02-05 03:00', type: 'sync', from: 'Syrve stock sync', qty: 0, balance: 12 },
-  { id: '5', date: '2026-01-31 16:00', type: 'count', from: 'Year-end audit session', qty: -3, balance: 12 },
-];
-
-const mockRelatedDishes = [
-  { id: 'dish-1', name: 'Wine by Glass - House Red', type: 'DISH', usageQty: '0.15L per serving' },
-  { id: 'dish-2', name: 'Wine Tasting Flight - Red', type: 'DISH', usageQty: '0.075L per flight' },
-  { id: 'dish-3', name: 'Sangria Pitcher', type: 'PREPARED', usageQty: '0.5L per pitcher' },
-];
-
-const mockIngredients = [
-  { id: 'ing-1', name: 'House Red Wine', type: 'GOODS', usageQty: '0.5L' },
-  { id: 'ing-2', name: 'Fresh Orange Juice', type: 'GOODS', usageQty: '0.2L' },
-  { id: 'ing-3', name: 'Sugar Syrup', type: 'GOODS', usageQty: '0.05L' },
-];
 
 export default function ProductDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { data: product, isLoading } = useProduct(id);
   const { data: barcodes = [] } = useProductBarcodes(id);
+  const { data: children = [] } = useProductChildren(id);
+  const { data: stockByStore = [] } = useProductStockByStore(id);
   const productAiScans = mockAiScans.filter(s => s.productId === id).slice(0, 5);
-  const storeStock = mockStockByStore.find(s => s.productId === id);
 
   if (isLoading) {
     return (
@@ -71,6 +37,16 @@ export default function ProductDetail() {
 
   const isGoods = product.product_type === 'GOODS';
   const isDish = product.product_type === 'DISH' || product.product_type === 'PREPARED';
+  const parentProduct = Array.isArray(product.parent_product) ? product.parent_product[0] : product.parent_product;
+  const containers = product.syrve_data?.containers;
+  const metadata = product.metadata || {};
+  const syrveData = product.syrve_data || {};
+
+  // Extract useful info from syrve_data
+  const cookingPlaceType = metadata.cookingPlaceType || syrveData.cookingPlaceType || null;
+  const productCategory = metadata.productCategory || syrveData.productCategory || null;
+
+  const totalStoreStock = stockByStore.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0);
 
   return (
     <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
@@ -85,10 +61,15 @@ export default function ProductDetail() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl lg:text-3xl font-heading font-bold">{product.name}</h1>
-          <div className="flex items-center gap-2 mt-1">
-            {product.product_type && <Badge variant="secondary">{product.product_type}</Badge>}
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
+            {product.product_type && <TypeBadge type={product.product_type} />}
             {product.categories?.name && <Badge variant="outline">{product.categories.name}</Badge>}
+            {productCategory && productCategory !== product.categories?.name && (
+              <Badge variant="outline" className="text-muted-foreground">{productCategory}</Badge>
+            )}
             {!product.is_active && <Badge variant="destructive">Inactive</Badge>}
+            {product.is_marked && <Badge variant="secondary">Marked</Badge>}
+            {product.is_by_glass && <Badge variant="secondary">By Glass</Badge>}
           </div>
         </div>
       </div>
@@ -100,7 +81,6 @@ export default function ProductDetail() {
           <TabsTrigger value="relationships" className="gap-2"><Link2 className="w-4 h-4" />Relationships</TabsTrigger>
           <TabsTrigger value="images" className="gap-2"><ImageIcon className="w-4 h-4" />Images & AI</TabsTrigger>
           <TabsTrigger value="integrations" className="gap-2"><Database className="w-4 h-4" />Integrations</TabsTrigger>
-          <TabsTrigger value="history" className="gap-2"><History className="w-4 h-4" />History</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -113,11 +93,38 @@ export default function ProductDetail() {
                   <InfoRow label="SKU" value={product.sku} />
                   <InfoRow label="Code" value={product.code} />
                   <InfoRow label="Type" value={product.product_type} />
-                  <InfoRow label="Unit Capacity" value={product.unit_capacity?.toString()} />
-                  <InfoRow label="Description" value={product.description} />
+                  <InfoRow label="Category" value={product.categories?.name} />
+                  {product.description && <InfoRow label="Description" value={product.description} />}
+                  {cookingPlaceType && <InfoRow label="Cooking Place" value={cookingPlaceType} />}
                 </div>
               </CardContent>
             </Card>
+
+            <Card className="rounded-xl border-border/60">
+              <CardContent className="p-5">
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Ruler className="w-4 h-4 text-muted-foreground" />Unit & Volume</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <InfoRow label="Main Unit" value={syrveData.mainUnit || product.main_unit_id || null} />
+                  <InfoRow label="Unit Capacity" value={product.unit_capacity ? `${product.unit_capacity}` : null} />
+                  {Array.isArray(containers) && containers.length > 0 && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground mb-1">Containers</p>
+                      <div className="space-y-1">
+                        {containers.map((c: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between text-sm bg-muted/30 rounded px-2 py-1">
+                            <span>{c.name || 'unit'}</span>
+                            <span className="text-muted-foreground">{c.count != null ? `${c.count}L` : '—'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <Card className="rounded-xl border-border/60">
               <CardContent className="p-5">
                 <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><DollarSign className="w-4 h-4 text-muted-foreground" />Pricing</h3>
@@ -129,79 +136,56 @@ export default function ProductDetail() {
                 </div>
               </CardContent>
             </Card>
-          </div>
 
-          <Card className="rounded-xl border-border/60">
-            <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Barcode className="w-4 h-4 text-muted-foreground" />Barcodes ({barcodes.length})</h3>
-              {barcodes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No barcodes linked</p>
-              ) : (
-                <div className="space-y-2">
-                  {barcodes.map(bc => (
-                    <div key={bc.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-                      <div>
-                        <span className="font-mono text-sm">{bc.barcode}</span>
-                        {bc.container_name && <span className="text-xs text-muted-foreground ml-2">({bc.container_name})</span>}
+            <Card className="rounded-xl border-border/60">
+              <CardContent className="p-5">
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Barcode className="w-4 h-4 text-muted-foreground" />Barcodes ({barcodes.length})</h3>
+                {barcodes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No barcodes linked</p>
+                ) : (
+                  <div className="space-y-2">
+                    {barcodes.map(bc => (
+                      <div key={bc.id} className="flex items-center justify-between p-2.5 rounded-lg bg-muted/30">
+                        <div>
+                          <span className="font-mono text-sm">{bc.barcode}</span>
+                          {bc.container_name && <span className="text-xs text-muted-foreground ml-2">({bc.container_name})</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {bc.is_primary && <Badge variant="default" className="text-[10px]">Primary</Badge>}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {bc.is_primary && <Badge variant="default" className="text-[10px]">Primary</Badge>}
-                        <Badge variant="outline" className="text-[10px]">{bc.source || 'unknown'}</Badge>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Stock Tab */}
         <TabsContent value="stock" className="space-y-5">
-          {/* Stock chart */}
           <Card className="rounded-xl border-border/60">
             <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Stock Level Trend</h3>
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={mockStockChart}>
-                    <defs>
-                      <linearGradient id="stockGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                    <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
-                    <Area type="monotone" dataKey="stock" stroke="hsl(var(--primary))" fill="url(#stockGrad)" strokeWidth={2} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Stock by store */}
-          <Card className="rounded-xl border-border/60">
-            <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Warehouse className="w-4 h-4 text-muted-foreground" />Stock by Location</h3>
-              {storeStock ? (
+              <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                <Warehouse className="w-4 h-4 text-muted-foreground" />Stock by Store
+              </h3>
+              {stockByStore.length > 0 ? (
                 <div className="space-y-0">
                   <div className="grid grid-cols-4 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border/50 px-1">
-                    <span>Location</span><span className="text-right">Unopened</span><span className="text-right">Open</span><span className="text-right">Last Counted</span>
+                    <span>Store</span><span>Type</span><span className="text-right">Quantity</span><span className="text-right">Unit Cost</span>
                   </div>
-                  {storeStock.stores.map(s => (
-                    <div key={s.storeId} className="grid grid-cols-4 gap-2 py-2.5 border-b border-border/30 last:border-0 text-sm px-1">
-                      <span>{s.storeName}</span>
-                      <span className="text-right tabular-nums">{s.unopened}</span>
-                      <span className="text-right tabular-nums">{s.open}</span>
-                      <span className="text-right text-xs text-muted-foreground">{s.lastCounted ? new Date(s.lastCounted).toLocaleDateString() : '—'}</span>
+                  {stockByStore.map(s => (
+                    <div key={s.id} className="grid grid-cols-4 gap-2 py-2.5 border-b border-border/30 last:border-0 text-sm px-1">
+                      <span className="font-medium">{s.stores?.name || 'Unknown'}</span>
+                      <span className="text-muted-foreground text-xs">{s.stores?.store_type || '—'}</span>
+                      <span className="text-right tabular-nums font-medium">{Number(s.quantity).toFixed(2)}</span>
+                      <span className="text-right tabular-nums text-muted-foreground">{s.unit_cost?.toFixed(2) ?? '—'}</span>
                     </div>
                   ))}
-                  <div className="grid grid-cols-4 gap-2 pt-2 font-medium text-sm px-1">
+                  <div className="grid grid-cols-4 gap-2 pt-2 font-semibold text-sm px-1">
                     <span>Total</span>
-                    <span className="text-right tabular-nums">{storeStock.totalUnopened}</span>
-                    <span className="text-right tabular-nums">{storeStock.totalOpen}</span>
+                    <span />
+                    <span className="text-right tabular-nums">{totalStoreStock.toFixed(2)}</span>
                     <span />
                   </div>
                 </div>
@@ -214,25 +198,14 @@ export default function ProductDetail() {
             </CardContent>
           </Card>
 
-          {/* Movement history */}
+          {/* Overall stock summary */}
           <Card className="rounded-xl border-border/60">
             <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Stock Movements</h3>
-              <div className="space-y-0">
-                <div className="grid grid-cols-5 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border/50 px-1">
-                  <span>Date</span><span>Type</span><span className="col-span-1">Source</span><span className="text-right">Change</span><span className="text-right">Balance</span>
-                </div>
-                {mockMovements.map(m => (
-                  <div key={m.id} className="grid grid-cols-5 gap-2 py-2.5 border-b border-border/30 last:border-0 text-sm px-1 items-center">
-                    <span className="text-xs text-muted-foreground">{m.date}</span>
-                    <Badge variant="outline" className="text-[10px] w-fit">{m.type}</Badge>
-                    <span className="text-xs text-muted-foreground truncate">{m.from}</span>
-                    <span className={`text-right tabular-nums font-medium ${m.qty > 0 ? 'text-emerald-500' : m.qty < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                      {m.qty > 0 ? `+${m.qty}` : m.qty}
-                    </span>
-                    <span className="text-right tabular-nums">{m.balance}</span>
-                  </div>
-                ))}
+              <h3 className="text-sm font-semibold text-foreground mb-3">Summary</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <InfoRow label="Total Stock" value={product.current_stock?.toString()} highlight />
+                <InfoRow label="Not in Store Movement" value={product.not_in_store_movement ? 'Yes' : 'No'} />
+                <InfoRow label="Last Stock Update" value={product.stock_updated_at ? new Date(product.stock_updated_at).toLocaleDateString() : null} />
               </div>
             </CardContent>
           </Card>
@@ -240,66 +213,68 @@ export default function ProductDetail() {
 
         {/* Relationships Tab */}
         <TabsContent value="relationships" className="space-y-5">
-          {isGoods && (
+          {/* Parent product */}
+          {parentProduct && (
             <Card className="rounded-xl border-border/60">
               <CardContent className="p-5">
-                <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2"><Link2 className="w-4 h-4 text-muted-foreground" />Used in Dishes</h3>
-                <p className="text-xs text-muted-foreground mb-4">Dishes and prepared items that consume this ingredient</p>
-                {mockRelatedDishes.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Not used in any dishes</p>
-                ) : (
-                  <div className="space-y-2">
-                    {mockRelatedDishes.map(dish => (
-                      <div key={dish.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer">
-                        <div className="flex items-center gap-3">
-                          <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                          <div>
-                            <p className="text-sm font-medium">{dish.name}</p>
-                            <p className="text-xs text-muted-foreground">{dish.usageQty}</p>
-                          </div>
-                        </div>
-                        <Badge variant="outline" className="text-[10px]">{dish.type}</Badge>
-                      </div>
-                    ))}
+                <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Link2 className="w-4 h-4 text-muted-foreground" />Parent Product</h3>
+                <div
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/products/${parentProduct.id}`)}
+                >
+                  <div className="flex items-center gap-3">
+                    <ArrowRight className="w-4 h-4 text-muted-foreground rotate-180" />
+                    <span className="text-sm font-medium">{parentProduct.name}</span>
                   </div>
-                )}
+                  <TypeBadge type={parentProduct.product_type} />
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {isDish && (
+          {/* Child products (dishes using this goods) */}
+          {children.length > 0 && (
             <Card className="rounded-xl border-border/60">
               <CardContent className="p-5">
-                <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2"><Link2 className="w-4 h-4 text-muted-foreground" />Ingredients</h3>
-                <p className="text-xs text-muted-foreground mb-4">Raw goods consumed when this dish is prepared</p>
-                {mockIngredients.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No ingredients defined</p>
-                ) : (
-                  <div className="space-y-2">
-                    {mockIngredients.map(ing => (
-                      <div key={ing.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer">
-                        <div className="flex items-center gap-3">
-                          <ArrowRight className="w-4 h-4 text-muted-foreground" />
-                          <div>
-                            <p className="text-sm font-medium">{ing.name}</p>
-                            <p className="text-xs text-muted-foreground">{ing.usageQty}</p>
+                <h3 className="text-sm font-semibold text-foreground mb-1 flex items-center gap-2">
+                  <Link2 className="w-4 h-4 text-muted-foreground" />
+                  {isGoods ? 'Used in Dishes' : 'Child Products'} ({children.length})
+                </h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  {isGoods ? 'Dishes and prepared items linked to this ingredient' : 'Products derived from this item'}
+                </p>
+                <div className="space-y-2">
+                  {children.map((child: any) => (
+                    <div
+                      key={child.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => navigate(`/products/${child.id}`)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <ArrowRight className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">{child.name}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            {child.unit_capacity && <span>{child.unit_capacity}L</span>}
+                            {child.sale_price && <span>€{child.sale_price.toFixed(2)}</span>}
+                            {child.current_stock != null && <span>Stock: {child.current_stock}</span>}
                           </div>
                         </div>
-                        <Badge variant="outline" className="text-[10px]">{ing.type}</Badge>
                       </div>
-                    ))}
-                  </div>
-                )}
+                      <TypeBadge type={child.product_type} />
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {!isGoods && !isDish && (
+          {!parentProduct && children.length === 0 && (
             <Card className="rounded-xl border-border/60">
               <CardContent className="p-5 text-center py-12">
                 <Link2 className="w-10 h-10 mx-auto mb-3 text-muted-foreground opacity-40" />
-                <p className="text-sm text-muted-foreground">No relationships available for this product type</p>
-                <p className="text-xs text-muted-foreground mt-1">Relationships are shown for Goods (used in dishes) and Dishes/Prepared items (ingredients)</p>
+                <p className="text-sm text-muted-foreground">No relationships found</p>
+                <p className="text-xs text-muted-foreground mt-1">Parent/child links are established during Syrve sync</p>
               </CardContent>
             </Card>
           )}
@@ -357,52 +332,37 @@ export default function ProductDetail() {
               <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Database className="w-4 h-4 text-muted-foreground" />Syrve Mapping</h3>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <InfoRow label="Syrve Product ID" value={product.syrve_product_id} />
+                <InfoRow label="Main Unit (Syrve)" value={syrveData.mainUnit || product.main_unit_id} />
                 <InfoRow label="Last Synced" value={product.synced_at ? new Date(product.synced_at).toLocaleString() : null} />
                 <InfoRow label="Active" value={product.is_active ? 'Yes' : 'No'} />
                 <InfoRow label="Deleted in Syrve" value={product.is_deleted ? 'Yes' : 'No'} />
+                <InfoRow label="Parent Group ID" value={syrveData.parentId || null} />
               </div>
+              {metadata.vintage && <InfoRow label="Vintage (extracted)" value={String(metadata.vintage)} />}
             </CardContent>
           </Card>
           <Card className="rounded-xl border-border/60">
             <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Raw Syrve Data</h3>
-              <pre className="text-xs bg-muted/30 p-4 rounded-lg overflow-x-auto max-h-96 text-muted-foreground">
-                {JSON.stringify(product.syrve_data, null, 2)}
+              <h3 className="text-sm font-semibold text-foreground mb-3">Raw Metadata</h3>
+              <pre className="text-xs bg-muted/30 p-4 rounded-lg overflow-x-auto max-h-64 text-muted-foreground">
+                {JSON.stringify(metadata, null, 2)}
               </pre>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* History Tab */}
-        <TabsContent value="history" className="space-y-5">
-          <Card className="rounded-xl border-border/60">
-            <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2"><History className="w-4 h-4 text-muted-foreground" />Stock History</h3>
-              <div className="space-y-0">
-                {mockStockHistory.map((entry, idx) => (
-                  <div key={idx} className="flex items-start gap-3 py-3 border-b border-border/30 last:border-0">
-                    <div className="mt-1 w-2 h-2 rounded-full bg-primary shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{entry.event}</p>
-                      <p className="text-xs text-muted-foreground">{entry.date} · {entry.user}</p>
-                    </div>
-                    <div className="text-right">
-                      {entry.change !== 0 && (
-                        <span className={`text-sm tabular-nums font-medium ${entry.change < 0 ? 'text-destructive' : 'text-emerald-500'}`}>
-                          {entry.change > 0 ? `+${entry.change}` : entry.change}
-                        </span>
-                      )}
-                      <p className="text-xs text-muted-foreground tabular-nums">Stock: {entry.stockAfter}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
     </div>
   );
+}
+
+function TypeBadge({ type }: { type: string | null }) {
+  const colors: Record<string, string> = {
+    GOODS: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+    DISH: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+    MODIFIER: 'bg-sky-500/20 text-sky-400 border border-sky-500/30',
+    PREPARED: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+  };
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${colors[type || ''] || 'bg-secondary text-secondary-foreground border border-border'}`}>{type || '—'}</span>;
 }
 
 function InfoRow({ label, value, highlight }: { label: string; value: string | null | undefined; highlight?: boolean }) {

@@ -1,116 +1,117 @@
 
 
-# Store Documents and Create New Supabase Project Implementation Plan
+# Syrve Integration Improvements
 
-## Overview
+## Summary
 
-This plan covers two main tasks:
-1. Store the three uploaded specification documents in the `new/syrve_integration` folder
-2. Create a new organized documentation folder with implementation guides for building the full Syrve integration on a **new Supabase project** (`aysdomtvoxizusmmxfug`)
-
-The uploaded documents define a significantly expanded architecture compared to the current project -- moving from a single-tenant wine inventory system to a **multi-tenant restaurant operations SaaS platform** with measurement units, warehouses, storage areas, multi-integration support, billing, and more.
+Enhance the Syrve Settings page with smarter category filtering, better re-import options, refresh buttons per section, a "Clean All" reset, dynamic product type detection, and fixes to ensure full category hierarchy import with proper parent linking.
 
 ---
 
-## Part 1: Store Uploaded Documents
+## Changes Overview
 
-Copy the three uploaded specification documents into `new/syrve_integration/`:
+### 1. Categories: Show "with products" by default + toggle to view all
 
-| Source File | Destination |
-|---|---|
-| `Complete-Platform-Database-Specification.md` | `new/syrve_integration/complete_platform_db_spec.md` |
-| `Phase_1_Extended_Integration.md` | `new/syrve_integration/phase_1_extended_integration.md` |
-| `Phase_1A_Syrve_Integration_Data_Import_-_Complete_Technical_Specification.md` | `new/syrve_integration/phase_1a_data_import_spec.md` |
+- Add a `product_count` indicator per category by querying `products` table grouped by `category_id`
+- Default the category picker to highlight/filter categories that have products in the selected warehouses
+- Add a toggle: "Show categories with products" (default ON) vs "Show all categories"
+- This is a frontend-only enhancement on the CategoryTreePicker component
 
----
+### 2. Refresh buttons on Warehouses and Categories sections
 
-## Part 2: Create Implementation Documentation
+- Add a small refresh icon button next to each section header (Warehouses, Categories)
+- Clicking it calls `syrve-sync` with `sync_type: 'stores'` or `sync_type: 'categories'` respectively, re-fetching from Syrve and updating the DB
+- After completion, invalidate the relevant query cache to update the picker
 
-Create a new folder `new/implementation/` with structured, actionable documents that break down the full integration into implementable phases for the new Supabase project.
+### 3. Improved Re-import Mode (compact UI + clearer options)
 
-### Document Structure
+Replace the current 4-option grid (merge/hide/replace/fresh) with 2 clear actions:
 
-```
-new/implementation/
-  00-overview.md              -- Master index, architecture summary, new project details
-  01-database-schema.md       -- Complete SQL migrations for the new Supabase project
-  02-enums-and-types.md       -- All custom PostgreSQL enums and types
-  03-tenant-security-layer.md -- Tenants, profiles, user_roles, RLS policies, helper functions
-  04-syrve-integration-tables.md  -- syrve_config, raw_objects, sync_runs, api_logs, outbox
-  05-organization-warehouses.md   -- org_nodes, stores, warehouses, storage_areas
-  06-measurement-units.md     -- measurement_units table, conversion functions, import logic
-  07-catalog-products.md      -- categories, products, barcodes, containers, modifiers, mappings
-  08-stock-levels.md          -- stock_levels (warehouse-aware), stock history
-  09-inventory-operations.md  -- sessions, baseline, count_events, aggregates, review_notes, adjustments, variances
-  10-rls-policies.md          -- Complete RLS policy set for all tables
-  11-triggers-functions.md    -- Aggregate triggers, audit triggers, search vectors, helper functions
-  12-edge-functions.md        -- All edge function specifications (connect-test, sync-bootstrap, stock-snapshot, submit-inventory, AI recognition, outbox processor)
-  13-api-endpoints.md         -- Complete API surface with request/response contracts
-  14-react-hooks.md           -- Frontend hooks (useProducts, useInventory, useStores, useAI, useSyrveSync)
-  15-migration-from-current.md -- Delta analysis: what exists vs what's needed, migration path
-```
+- **"Save & Import"** (default button) -- Imports new products, updates existing ones. Products no longer matching the selection are marked `is_active = false` (soft deactivate, data preserved). They won't show in results but data remains.
+- **"Clean Import"** -- A separate destructive button that deletes ALL Syrve-sourced data (products, barcodes, stock_levels, categories, stores, measurement_units, syrve_raw_objects) and runs a fresh bootstrap import from scratch.
 
-### Key Content Per Document
+This replaces the confusing merge/hide/replace/fresh grid with two clear, distinct actions.
 
-**00-overview.md**: New Supabase project URL, three-layer architecture diagram, technology stack, implementation phases (Phase 1A: Data Import, Phase 1B: Inventory Counting, Phase 1C: Syrve Document Submission), excluded features list.
+### 4. "Clean All Data" button
 
-**01-database-schema.md**: Ordered SQL migration files ready to run on the new project. Migration order:
-1. Extensions (pgcrypto, uuid-ossp, pg_trgm, btree_gin)
-2. Enums and types
-3. Layer 1: Tenants, profiles, user_roles, app_settings, tenant_modules
-4. Layer 2: Integration providers, tenant_integrations, categories, products, product_barcodes, product_containers, product_modifiers, product_integration_mappings, stock_levels
-5. Syrve-specific: syrve_config, syrve_raw_objects, syrve_sync_runs, syrve_api_logs, syrve_outbox_jobs
-6. Organization: org_nodes, stores, warehouses, storage_areas
-7. Measurement: measurement_units
-8. Layer 3: inventory_sessions, inventory_baseline_items, inventory_count_events, inventory_product_aggregates, inventory_review_notes, inventory_product_adjustments, inventory_variances
-9. AI: ai_operations, custom_field_definitions
-10. Indexes and performance optimizations
+- Add a "Clean All Syrve Data" button (with confirmation dialog) that truncates all Syrve integration tables:
+  - `products` (where syrve_product_id is not null)
+  - `product_barcodes` (source = 'syrve')
+  - `stock_levels` (source = 'syrve')
+  - `categories`
+  - `stores`
+  - `measurement_units`
+  - `syrve_raw_objects`
+  - `syrve_sync_runs`
+  - `syrve_api_logs`
+- Resets `syrve_config.connection_status` to `'not_configured'`
+- This effectively returns the system to a pre-integration state
 
-**03-tenant-security-layer.md**: Multi-tenant isolation using `tenant_id` on all tables, `auth.get_user_tenant_id()` helper function, `auth.is_admin()` and `auth.has_role()` functions, RLS policy patterns.
+### 5. Dynamic product types from Syrve
 
-**05-organization-warehouses.md**: Syrve store = warehouse mapping, warehouse types (MAIN, STORE, PRODUCTION, EXTERNAL, VIRTUAL), storage areas (BAR, CELLAR, KITCHEN, etc.), hierarchy relationships.
+- Currently the `PRODUCT_TYPES` list is hardcoded to 5 values (GOODS, DISH, MODIFIER, PREPARED, SERVICE)
+- During `syrve-connect-test`, extract unique product types from the fetched product list and return them
+- On the frontend, merge hardcoded defaults with any additional types discovered from Syrve
+- Alternative (simpler): query distinct `product_type` from `products` table and from `syrve_raw_objects` to build the list dynamically
 
-**06-measurement-units.md**: Import ALL units from Syrve `/units/list`, conversion factor system with base units, `convert_quantity()` function, `convert_count_to_syrve_unit()` function for inventory submission.
+### 6. Full category import verification
 
-**09-inventory-operations.md**: Complete lifecycle -- draft -> in_progress -> counting_complete -> under_review -> pending_approval -> approved -> sending -> synced. Event-sourced counting model, manager review notes and adjustments, variance computation.
+**Current issue**: The category sync uses `/v2/entities/products/group/list` which returns product groups. Per the Syrve API docs, there's also `rootType=ProductGroup` via `/v2/entities/list`. The current endpoint should return the full hierarchy.
 
-**12-edge-functions.md**: Specifications for:
-- `syrve-connect-test`: Test credentials, fetch stores/departments
-- `syrve-sync-bootstrap`: Full data import (org -> units -> categories -> products -> stock)
-- `syrve-sync-products`: Incremental product sync
-- `syrve-stock-snapshot`: Fetch current stock per warehouse
-- `syrve-submit-inventory`: Build XML, submit via outbox pattern
-- `process-outbox-jobs`: Background worker for reliable Syrve document delivery
-- `ai-recognize-product`: Multi-model AI image recognition
+**Fix**: Ensure the `syncCategories` function and `syrve-connect-test` category import:
+- Use `includeDeleted=true` to get ALL groups (then mark deleted ones as inactive)
+- Parse both `parentId` and `parent` fields from the response (already done)
+- After upserting, re-resolve ALL parent_id references (not just those with parent_syrve_id) to catch any orphaned links
+- Add logging of how many root vs child categories were imported
 
-**15-migration-from-current.md**: Maps current project tables to new schema, identifies gaps (no tenants, no measurement_units, no warehouses, no stock_levels, simplified inventory model), recommends migration strategy.
+### 7. Parent/UUID linking verification in sync
+
+- After category sync: verify all `parent_syrve_id` values resolve to valid `parent_id` UUIDs. Log any orphans.
+- After product sync: verify all `main_unit_id` values are resolved from Syrve GUIDs to internal UUIDs. Log any unresolved.
+- After stock sync: verify `store_id` and `product_id` references are valid.
 
 ---
 
 ## Technical Details
 
-### New Supabase Project
-- URL: `https://aysdomtvoxizusmmxfug.supabase.co`
-- This is a separate project from the current one (`uzymtgcklmunettdiucs`)
-- The documentation will contain ready-to-run SQL for the new project
+### Files to Modify
 
-### Key Architectural Differences from Current Project
+| File | Changes |
+|------|---------|
+| `src/pages/SyrveSettings.tsx` | Add refresh buttons, replace reimport grid with 2 buttons, add Clean All button, dynamic product types, category filter toggle |
+| `src/components/syrve/CategoryTreePicker.tsx` | Add `productCounts` prop and "show with products" toggle filter |
+| `src/hooks/useSyrve.ts` | Add `useCategoryProductCounts()` hook, add `useCleanAllSyrveData()` mutation |
+| `supabase/functions/syrve-connect-test/index.ts` | Extract unique product types, include in response |
+| `supabase/functions/syrve-sync/index.ts` | Update `syncCategories` to use `includeDeleted=true`, add orphan parent logging, improve `applyReimportMode` to use soft-deactivate by default, add clean import support |
 
-| Aspect | Current Project | New Architecture |
-|---|---|---|
-| Multi-tenancy | None (single tenant) | Full tenant isolation via `tenant_id` |
-| Stores/Warehouses | Simple `stores` table | `org_nodes` + `stores` + `warehouses` + `storage_areas` |
-| Measurement Units | None (hardcoded) | Full `measurement_units` table with conversions |
-| Stock Tracking | `current_stock` field on products | Separate `stock_levels` table (per warehouse, per unit) |
-| Product Model | Wine-focused with `wines` table | Universal product model with `product_type` enum |
-| Inventory | Basic event logging | Full lifecycle with review notes, adjustments, variances |
-| Integration | Syrve-only, tightly coupled | Multi-provider adapter pattern |
-| RLS | Role-based (admin/super_admin) | Tenant-scoped + role-based |
+### New Hook: `useCategoryProductCounts`
 
-### Files Created (Total: 18)
-- 3 copied specification documents
-- 15 new implementation guide documents
+```typescript
+// Returns Map<category_id, product_count> for categories that have products
+useQuery({
+  queryKey: ['category_product_counts'],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('category_id')
+      .eq('is_active', true)
+      .not('category_id', 'is', null);
+    // Count per category_id
+    return countMap;
+  }
+});
+```
 
-### No Code Changes
-This plan only creates documentation files. No application code, database migrations, or edge functions are modified.
+### New Mutation: `useCleanAllSyrveData`
+
+Calls a series of delete operations via the Supabase client to clean all Syrve-related tables, then resets config status.
+
+### Edge Function Changes
+
+**`syrve-connect-test`**: After fetching products list (lightweight -- just to extract types), collect unique `type`/`productType` values and return as `product_types: string[]` in the response.
+
+**`syrve-sync`**: 
+- Default reimport behavior changed: non-matching products get `is_active = false` instead of being deleted
+- Add `sync_type: 'clean_import'` that first cleans all data then runs bootstrap
+- Add parent resolution verification with console logging
 

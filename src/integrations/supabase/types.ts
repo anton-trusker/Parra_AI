@@ -853,6 +853,53 @@ export type Database = {
         }
         Relationships: []
       }
+      measurement_units: {
+        Row: {
+          created_at: string | null
+          factor: number | null
+          id: string
+          is_main: boolean
+          main_unit_id: string | null
+          main_unit_syrve_id: string | null
+          name: string
+          short_name: string | null
+          synced_at: string | null
+          syrve_unit_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          factor?: number | null
+          id?: string
+          is_main?: boolean
+          main_unit_id?: string | null
+          main_unit_syrve_id?: string | null
+          name: string
+          short_name?: string | null
+          synced_at?: string | null
+          syrve_unit_id: string
+        }
+        Update: {
+          created_at?: string | null
+          factor?: number | null
+          id?: string
+          is_main?: boolean
+          main_unit_id?: string | null
+          main_unit_syrve_id?: string | null
+          name?: string
+          short_name?: string | null
+          synced_at?: string | null
+          syrve_unit_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_units_main_unit_id_fkey"
+            columns: ["main_unit_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_barcodes: {
         Row: {
           barcode: string
@@ -911,6 +958,7 @@ export type Database = {
           metadata: Json | null
           name: string
           not_in_store_movement: boolean | null
+          parent_product_id: string | null
           price_updated_at: string | null
           product_type: string | null
           purchase_price: number | null
@@ -939,6 +987,7 @@ export type Database = {
           metadata?: Json | null
           name: string
           not_in_store_movement?: boolean | null
+          parent_product_id?: string | null
           price_updated_at?: string | null
           product_type?: string | null
           purchase_price?: number | null
@@ -967,6 +1016,7 @@ export type Database = {
           metadata?: Json | null
           name?: string
           not_in_store_movement?: boolean | null
+          parent_product_id?: string | null
           price_updated_at?: string | null
           product_type?: string | null
           purchase_price?: number | null
@@ -985,6 +1035,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_parent_product_id_fkey"
+            columns: ["parent_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -1060,6 +1117,77 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      stock_levels: {
+        Row: {
+          created_at: string | null
+          id: string
+          last_synced_at: string | null
+          product_id: string
+          quantity: number
+          source: string | null
+          store_id: string
+          sync_run_id: string | null
+          unit_cost: number | null
+          unit_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          last_synced_at?: string | null
+          product_id: string
+          quantity?: number
+          source?: string | null
+          store_id: string
+          sync_run_id?: string | null
+          unit_cost?: number | null
+          unit_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          last_synced_at?: string | null
+          product_id?: string
+          quantity?: number
+          source?: string | null
+          store_id?: string
+          sync_run_id?: string | null
+          unit_cost?: number | null
+          unit_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_levels_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_levels_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_levels_sync_run_id_fkey"
+            columns: ["sync_run_id"]
+            isOneToOne: false
+            referencedRelation: "syrve_sync_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_levels_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_units"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_snapshots: {
         Row: {
