@@ -35,6 +35,7 @@ import {
 } from '@/hooks/useSyrve';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { cn } from '@/lib/utils';
 
 const DEFAULT_PRODUCT_TYPES = [
   { value: 'GOODS', label: 'Goods', description: 'Physical items / products' },
