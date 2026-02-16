@@ -1,10 +1,12 @@
 import { useState, useMemo } from 'react';
-import { ChevronRight, ChevronDown, FolderTree, Search, Trash2 } from 'lucide-react';
+import { ChevronRight, ChevronDown, FolderTree, Search, Trash2, Eye, EyeOff } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +24,7 @@ interface CategoryTreePickerProps {
   selectedIds: string[];
   onSelectionChange: (ids: string[]) => void;
   onDeleteCategory?: (id: string) => void;
+  productCounts?: Map<string, number>;
   title?: string;
   summaryPrefix?: string;
 }
@@ -68,13 +71,24 @@ function countSelected(node: TreeNode, selectedIds: Set<string>): { selected: nu
   return { selected, total };
 }
 
+function hasMatch(node: TreeNode, term: string): boolean {
+  if (node.category.name.toLowerCase().includes(term.toLowerCase())) return true;
+  return node.children.some(c => hasMatch(c, term));
+}
+
+function hasProducts(node: TreeNode, productCounts: Map<string, number>): boolean {
+  if (productCounts.has(node.category.id)) return true;
+  return node.children.some(c => hasProducts(c, productCounts));
+}
+
 function TreeNodeRow({
-  node, depth, selectedIds, expandedIds, onToggleSelect, onToggleExpand, onSelectBranch, onDelete, searchTerm,
+  node, depth, selectedIds, expandedIds, onToggleSelect, onToggleExpand, onSelectBranch, onDelete, searchTerm, productCounts, showOnlyWithProducts,
 }: {
   node: TreeNode; depth: number; selectedIds: Set<string>; expandedIds: Set<string>;
   onToggleSelect: (id: string) => void; onToggleExpand: (id: string) => void;
   onSelectBranch: (node: TreeNode, selected: boolean) => void;
   onDelete?: (id: string) => void; searchTerm: string;
+  productCounts?: Map<string, number>; showOnlyWithProducts: boolean;
 }) {
   const hasChildren = node.children.length > 0;
   const isExpanded = expandedIds.has(node.category.id);
@@ -88,7 +102,10 @@ function TreeNodeRow({
   const hasMatchingDescendant = searchTerm ? node.children.some(child => hasMatch(child, searchTerm)) : true;
   if (searchTerm && !matchesSearch && !hasMatchingDescendant) return null;
 
-  // Count selected in this branch
+  // Filter by product counts
+  if (showOnlyWithProducts && productCounts && !hasProducts(node, productCounts)) return null;
+
+  const pCount = productCounts?.get(node.category.id) || 0;
   const { selected: branchSelected, total: branchTotal } = hasChildren ? countSelected(node, selectedIds) : { selected: 0, total: 0 };
   const hasPartialSelection = hasChildren && branchSelected > 0 && branchSelected < branchTotal;
   const hasFullSelection = isSelected && allDescendantsSelected;
@@ -116,9 +133,7 @@ function TreeNodeRow({
           id={`tree-${node.category.id}`}
           checked={isSelected || (allDescendantsSelected && hasChildren)}
           data-state={isIndeterminate ? 'indeterminate' : undefined}
-          onCheckedChange={() => {
-            onToggleSelect(node.category.id);
-          }}
+          onCheckedChange={() => onToggleSelect(node.category.id)}
           className={cn("shrink-0", isIndeterminate && "border-accent bg-accent/20")}
         />
 
@@ -126,13 +141,19 @@ function TreeNodeRow({
           {node.category.name}
         </label>
 
+        {pCount > 0 && (
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+            {pCount}
+          </Badge>
+        )}
+
         {hasChildren && hasPartialSelection && (
           <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-accent/10 text-accent border-accent/30">
             {branchSelected}/{branchTotal}
           </Badge>
         )}
 
-        {hasChildren && !hasPartialSelection && (
+        {hasChildren && !hasPartialSelection && !pCount && (
           <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 opacity-60">
             {node.children.length}
           </Badge>
@@ -164,20 +185,17 @@ function TreeNodeRow({
       {(isExpanded || searchTerm) &&
         node.children.map(child => (
           <TreeNodeRow key={child.category.id} node={child} depth={depth + 1} selectedIds={selectedIds} expandedIds={expandedIds}
-            onToggleSelect={onToggleSelect} onToggleExpand={onToggleExpand} onSelectBranch={onSelectBranch} onDelete={onDelete} searchTerm={searchTerm} />
+            onToggleSelect={onToggleSelect} onToggleExpand={onToggleExpand} onSelectBranch={onSelectBranch} onDelete={onDelete}
+            searchTerm={searchTerm} productCounts={productCounts} showOnlyWithProducts={showOnlyWithProducts} />
         ))}
     </>
   );
 }
 
-function hasMatch(node: TreeNode, term: string): boolean {
-  if (node.category.name.toLowerCase().includes(term.toLowerCase())) return true;
-  return node.children.some(c => hasMatch(c, term));
-}
-
-export default function CategoryTreePicker({ categories, selectedIds, onSelectionChange, onDeleteCategory, title = 'Category Filter', summaryPrefix = 'Importing' }: CategoryTreePickerProps) {
+export default function CategoryTreePicker({ categories, selectedIds, onSelectionChange, onDeleteCategory, productCounts, title = 'Category Filter', summaryPrefix = 'Importing' }: CategoryTreePickerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [showOnlyWithProducts, setShowOnlyWithProducts] = useState(!!productCounts && productCounts.size > 0);
 
   const tree = useMemo(() => buildTree(categories), [categories]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -203,7 +221,6 @@ export default function CategoryTreePicker({ categories, selectedIds, onSelectio
   const expandAll = () => setExpandedIds(new Set(allIds));
   const collapseAll = () => setExpandedIds(new Set());
 
-  // Summary
   const totalCategories = allIds.length;
   const selectedCount = selectedIds.length;
 
@@ -212,9 +229,16 @@ export default function CategoryTreePicker({ categories, selectedIds, onSelectio
       <div className="flex items-center gap-2">
         <FolderTree className="w-4 h-4 text-muted-foreground shrink-0" />
         <p className="text-sm font-medium flex-1">{title}</p>
+        {productCounts && productCounts.size > 0 && (
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="filter-products" className="text-xs text-muted-foreground cursor-pointer">
+              {showOnlyWithProducts ? 'With products' : 'All'}
+            </Label>
+            <Switch id="filter-products" checked={showOnlyWithProducts} onCheckedChange={setShowOnlyWithProducts} className="scale-75" />
+          </div>
+        )}
       </div>
 
-      {/* Summary bar */}
       <div className={cn(
         "rounded-lg px-3 py-2 text-sm flex items-center justify-between",
         selectedCount === 0 ? "bg-muted/50 text-muted-foreground" : "bg-primary/10 text-primary"
@@ -247,7 +271,7 @@ export default function CategoryTreePicker({ categories, selectedIds, onSelectio
             tree.map(node => (
               <TreeNodeRow key={node.category.id} node={node} depth={0} selectedIds={selectedSet} expandedIds={expandedIds}
                 onToggleSelect={toggleSelect} onToggleExpand={toggleExpand} onSelectBranch={selectBranch}
-                onDelete={onDeleteCategory} searchTerm={searchTerm} />
+                onDelete={onDeleteCategory} searchTerm={searchTerm} productCounts={productCounts} showOnlyWithProducts={showOnlyWithProducts} />
             ))
           )}
         </div>

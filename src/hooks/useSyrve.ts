@@ -219,7 +219,6 @@ export function useSyrveCategories() {
       const { data, error } = await supabase
         .from('categories')
         .select('*')
-        .eq('is_active', true)
         .order('name');
       if (error) throw error;
       return data || [];
@@ -285,6 +284,67 @@ export function useProductCount() {
   });
 }
 
+export function useCategoryProductCounts() {
+  return useQuery({
+    queryKey: ['category_product_counts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('category_id')
+        .eq('is_active', true)
+        .not('category_id', 'is', null);
+      if (error) throw error;
+      const counts = new Map<string, number>();
+      for (const row of (data || [])) {
+        const cid = row.category_id as string;
+        counts.set(cid, (counts.get(cid) || 0) + 1);
+      }
+      return counts;
+    },
+  });
+}
+
+export function useCleanAllSyrveData() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      // Delete in dependency order
+      await supabase.from('stock_levels').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('product_barcodes').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('products').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('categories').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('stores').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('measurement_units').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('syrve_raw_objects').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('syrve_sync_runs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('syrve_api_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      // Reset syrve_config status
+      const { data: config } = await supabase.from('syrve_config').select('id').limit(1).maybeSingle();
+      if (config) {
+        await supabase.from('syrve_config').update({
+          connection_status: 'not_configured',
+          selected_category_ids: null,
+          selected_store_ids: null,
+          default_store_id: null,
+          default_store_name: null,
+        } as any).eq('id', config.id);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['syrve_config'] });
+      qc.invalidateQueries({ queryKey: ['syrve_stores'] });
+      qc.invalidateQueries({ queryKey: ['syrve_categories'] });
+      qc.invalidateQueries({ queryKey: ['syrve_products'] });
+      qc.invalidateQueries({ queryKey: ['product_count'] });
+      qc.invalidateQueries({ queryKey: ['category_product_counts'] });
+      qc.invalidateQueries({ queryKey: ['last_sync_stats'] });
+      qc.invalidateQueries({ queryKey: ['measurement_units'] });
+      qc.invalidateQueries({ queryKey: ['syrve_sync_runs'] });
+    },
+  });
+}
+
 export interface SyrveApiLog {
   id: string;
   action_type: string;
@@ -318,7 +378,6 @@ export function useForceStopSync() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      // Clear sync lock
       const { data: config } = await supabase
         .from('syrve_config')
         .select('id')
@@ -330,7 +389,6 @@ export function useForceStopSync() {
           .update({ sync_lock_until: null } as any)
           .eq('id', config.id);
       }
-      // Mark all running sync runs as failed
       const { data: runningRuns } = await supabase
         .from('syrve_sync_runs')
         .select('id')

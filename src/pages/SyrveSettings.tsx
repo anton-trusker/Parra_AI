@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import {
   ArrowLeft, Wifi, WifiOff, Settings2, RefreshCw, CheckCircle2, Loader2,
   Store, Building2, Beaker, Eye, EyeOff, Package, Clock, Zap, ChevronDown, Warehouse,
-  ChevronRight, FileText, ArrowRightLeft, Filter, BarChart3, Box, Layers, Info,
+  ChevronRight, FileText, ArrowRightLeft, Filter, BarChart3, Box, Layers, Info, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useUpdateAppSetting } from '@/hooks/useAppSettings';
 import CategoryTreePicker from '@/components/syrve/CategoryTreePicker';
 import {
@@ -29,11 +30,13 @@ import {
   useSyrveSync,
   useLastSyncStats,
   useProductCount,
+  useCategoryProductCounts,
+  useCleanAllSyrveData,
 } from '@/hooks/useSyrve';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 
-const PRODUCT_TYPES = [
+const DEFAULT_PRODUCT_TYPES = [
   { value: 'GOODS', label: 'Goods', description: 'Physical items / products' },
   { value: 'DISH', label: 'Dishes', description: 'Prepared menu items' },
   { value: 'MODIFIER', label: 'Modifiers', description: 'Modifiers & additions' },
@@ -59,10 +62,12 @@ export default function SyrveSettings() {
   const { data: categories } = useSyrveCategories();
   const { data: lastSync } = useLastSyncStats();
   const { data: productCount } = useProductCount();
+  const { data: categoryProductCounts } = useCategoryProductCounts();
   const testConnection = useTestSyrveConnection();
   const saveConfig = useSaveSyrveConfig();
   const syncMutation = useSyrveSync();
   const updateSetting = useUpdateAppSetting();
+  const cleanAllMutation = useCleanAllSyrveData();
 
   // Connection fields
   const [serverUrl, setServerUrl] = useState('');
@@ -76,6 +81,7 @@ export default function SyrveSettings() {
   const [businessInfo, setBusinessInfo] = useState<any>(null);
   const [importingBusiness, setImportingBusiness] = useState(false);
   const [categoriesCount, setCategoriesCount] = useState(0);
+  const [discoveredProductTypes, setDiscoveredProductTypes] = useState<string[]>([]);
 
   // Store & category selection
   const [selectedStoreId, setSelectedStoreId] = useState('');
@@ -108,7 +114,10 @@ export default function SyrveSettings() {
     schedule: false,
   });
 
-  // Prune wine_category_ids when selectedCategoryIds changes
+  // Refresh loading states
+  const [refreshingStores, setRefreshingStores] = useState(false);
+  const [refreshingCategories, setRefreshingCategories] = useState(false);
+
   useEffect(() => {
     if (selectedCategoryIds.length > 0 && fieldMapping.wine_category_ids?.length > 0) {
       const validIds = fieldMapping.wine_category_ids.filter((id: string) => selectedCategoryIds.includes(id));
@@ -118,15 +127,23 @@ export default function SyrveSettings() {
     }
   }, [selectedCategoryIds]);
 
-  // Saving import settings
   const [savingSettings, setSavingSettings] = useState(false);
   const [activeSyncRunId, setActiveSyncRunId] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<{ stage: string; progress: number } | null>(null);
   const [syncFinished, setSyncFinished] = useState(false);
   const [configDirty, setConfigDirty] = useState(false);
 
-  // Track config changes for "Save & Re-import" label
   const markDirty = useCallback(() => setConfigDirty(true), []);
+
+  // Build merged product types list
+  const allProductTypes = (() => {
+    const known = new Set(DEFAULT_PRODUCT_TYPES.map(pt => pt.value));
+    const extra = discoveredProductTypes.filter(t => !known.has(t));
+    return [
+      ...DEFAULT_PRODUCT_TYPES,
+      ...extra.map(t => ({ value: t, label: t.charAt(0) + t.slice(1).toLowerCase(), description: `Discovered from Syrve` })),
+    ];
+  })();
 
   // Poll sync progress
   useEffect(() => {
@@ -148,7 +165,7 @@ export default function SyrveSettings() {
           if (data.status === 'success') {
             const unitsInfo = s?.measurement_units ? `, ${s.measurement_units} units` : '';
             const aiInfo = s?.ai_enriched ? `, ${s.ai_enriched} AI-enriched (~$${s.ai_estimated_cost_usd || 0})` : '';
-            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories${unitsInfo}, ${s?.prices_updated || 0} prices, ${s?.stock_updated || 0} stock levels${s?.wines_created ? `, ${s.wines_created} wines created` : ''}${aiInfo}.`);
+            toast.success(`Sync completed! ${s?.products || 0} products, ${s?.categories || 0} categories${unitsInfo}, ${s?.prices_updated || 0} prices, ${s?.stock_updated || 0} stock levels${s?.wines_created ? `, ${s.wines_created} wines created` : ''}${aiInfo}${s?.deactivated ? `, ${s.deactivated} deactivated` : ''}.`);
           } else {
             toast.error(`Sync failed: ${data.error || 'Unknown error'}`);
           }
@@ -159,6 +176,7 @@ export default function SyrveSettings() {
           qc.invalidateQueries({ queryKey: ['syrve_stores'] });
           qc.invalidateQueries({ queryKey: ['last_sync_stats'] });
           qc.invalidateQueries({ queryKey: ['product_count'] });
+          qc.invalidateQueries({ queryKey: ['category_product_counts'] });
         }
       }
     }, 1500);
@@ -201,11 +219,12 @@ export default function SyrveSettings() {
       setServerVersion(result.server_version || '');
       setBusinessInfo(result.business_info || null);
       setCategoriesCount(result.categories_count || 0);
+      setDiscoveredProductTypes(result.product_types || []);
       setTested(true);
       toast.success(`Connected! Found ${result.stores?.length || 0} warehouses, ${result.categories_count || 0} categories, ${result.measurement_units || 0} units.`);
-      // Refresh categories from DB (they were saved during test)
       qc.invalidateQueries({ queryKey: ['syrve_categories'] });
       qc.invalidateQueries({ queryKey: ['syrve_stores'] });
+      qc.invalidateQueries({ queryKey: ['category_product_counts'] });
     } catch (err: any) {
       toast.error(err.message || 'Connection failed');
       setTested(false);
@@ -235,6 +254,38 @@ export default function SyrveSettings() {
     }
   };
 
+  const handleRefreshStores = async () => {
+    setRefreshingStores(true);
+    try {
+      syncMutation.mutate('stores', {
+        onSuccess: (data: any) => {
+          setActiveSyncRunId(data?.sync_run_id || null);
+          setSyncProgress({ stage: 'syncing_stores', progress: 10 });
+          toast.success('Refreshing warehouses from Syrve...');
+        },
+        onError: (err: any) => toast.error(err.message || 'Failed'),
+      });
+    } finally {
+      setRefreshingStores(false);
+    }
+  };
+
+  const handleRefreshCategories = async () => {
+    setRefreshingCategories(true);
+    try {
+      syncMutation.mutate('categories', {
+        onSuccess: (data: any) => {
+          setActiveSyncRunId(data?.sync_run_id || null);
+          setSyncProgress({ stage: 'syncing_categories', progress: 30 });
+          toast.success('Refreshing categories from Syrve...');
+        },
+        onError: (err: any) => toast.error(err.message || 'Failed'),
+      });
+    } finally {
+      setRefreshingCategories(false);
+    }
+  };
+
   const handleSaveAndImport = async () => {
     if (!passwordHash) {
       toast.error('Test connection first');
@@ -242,7 +293,6 @@ export default function SyrveSettings() {
     }
     setSavingSettings(true);
     try {
-      // 1. Save connection config
       const selectedStore = testStores.find(s => s.id === selectedStoreId)
         || stores?.find(s => s.syrve_store_id === selectedStoreId);
       await saveConfig.mutateAsync({
@@ -255,7 +305,6 @@ export default function SyrveSettings() {
         selected_category_ids: selectedCategoryIds.length > 0 ? selectedCategoryIds : undefined,
       });
 
-      // 2. Save import settings
       const configId = config?.id;
       if (configId) {
         await supabase
@@ -271,7 +320,6 @@ export default function SyrveSettings() {
           .eq('id', configId);
       }
 
-      // 3. Trigger bootstrap sync
       syncMutation.mutate('bootstrap', {
         onSuccess: (data: any) => {
           setActiveSyncRunId(data?.sync_run_id || null);
@@ -290,7 +338,6 @@ export default function SyrveSettings() {
     if (!config?.id) return;
     setSavingSettings(true);
     try {
-      // Save connection if we have fresh password
       if (passwordHash) {
         const selectedStore = testStores.find(s => s.id === selectedStoreId)
           || stores?.find(s => s.syrve_store_id === selectedStoreId);
@@ -341,6 +388,15 @@ export default function SyrveSettings() {
     });
   };
 
+  const handleCleanAll = async () => {
+    try {
+      await cleanAllMutation.mutateAsync();
+      toast.success('All Syrve data cleaned. You can now reconfigure the integration.');
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to clean data');
+    }
+  };
+
   const toggleProductType = (type: string) => {
     setProductTypeFilters(prev =>
       prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
@@ -372,8 +428,6 @@ export default function SyrveSettings() {
     { key: 'syncing_stores', label: 'Syncing Warehouses' },
     { key: 'syncing_units', label: 'Syncing Units' },
     { key: 'syncing_categories', label: 'Syncing Categories' },
-    { key: 'deleting_products', label: 'Deleting Products' },
-    { key: 'deleted_products', label: 'Products Deleted' },
     { key: 'importing_products', label: 'Importing Products' },
     { key: 'fetching_prices', label: 'Fetching Prices' },
     { key: 'fetching_stock', label: 'Fetching Stock' },
@@ -387,7 +441,7 @@ export default function SyrveSettings() {
 
   const renderStageSteps = (currentStage: string) => {
     const currentIdx = SYNC_STAGES.findIndex(s => s.key === currentStage);
-    return SYNC_STAGES.filter(s => !['deleted_products'].includes(s.key)).map((s) => {
+    return SYNC_STAGES.map((s) => {
       const stageIdx = SYNC_STAGES.findIndex(st => st.key === s.key);
       const isDone = stageIdx < currentIdx;
       const isCurrent = s.key === currentStage;
@@ -413,9 +467,9 @@ export default function SyrveSettings() {
     ? testStores.map(s => ({ id: s.id, name: s.name, code: s.code }))
     : (stores || []).map(s => ({ id: s.syrve_store_id, name: s.name, code: s.code }));
 
-  const SectionHeader = ({ icon: Icon, title, subtitle, sectionKey, badge, open, onToggle }: {
+  const SectionHeader = ({ icon: Icon, title, subtitle, sectionKey, badge, open, onToggle, onRefresh, refreshing }: {
     icon: any; title: string; subtitle: string; sectionKey: string; badge?: React.ReactNode;
-    open: boolean; onToggle: () => void;
+    open: boolean; onToggle: () => void; onRefresh?: () => void; refreshing?: boolean;
   }) => (
     <div
       className="cursor-pointer hover:bg-muted/30 transition-colors rounded-t-lg p-4"
@@ -434,12 +488,19 @@ export default function SyrveSettings() {
             <p className="text-xs text-muted-foreground">{subtitle}</p>
           </div>
         </div>
-        {open ? <ChevronDown className="w-5 h-5 text-muted-foreground" /> : <ChevronRight className="w-5 h-5 text-muted-foreground" />}
+        <div className="flex items-center gap-1">
+          {onRefresh && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" disabled={refreshing || !!activeSyncRunId}
+              onClick={(e) => { e.stopPropagation(); onRefresh(); }}>
+              <RefreshCw className={cn("w-3.5 h-3.5", refreshing && "animate-spin")} />
+            </Button>
+          )}
+          {open ? <ChevronDown className="w-5 h-5 text-muted-foreground" /> : <ChevronRight className="w-5 h-5 text-muted-foreground" />}
+        </div>
       </div>
     </div>
   );
 
-  // Sync progress card (shared)
   const SyncProgressCard = () => (
     (activeSyncRunId || syncMutation.isPending) ? (
       <Card>
@@ -464,7 +525,6 @@ export default function SyrveSettings() {
   if (!isConfigured) {
     return (
       <div className="space-y-4 animate-fade-in">
-        {/* Header */}
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
             <ArrowLeft className="w-5 h-5" />
@@ -567,32 +627,31 @@ export default function SyrveSettings() {
           </CardContent>
         </Card>
 
-        {/* Steps 2-4 only show after successful test */}
         {tested && (
           <>
             {/* Step 2: Warehouses */}
             <Card>
               <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Warehouse className="w-5 h-5 text-primary" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Warehouse className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">Step 2: Select Warehouses</CardTitle>
+                      <CardDescription className="text-xs">Choose which warehouses to integrate</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-base">Step 2: Select Warehouses</CardTitle>
-                    <CardDescription className="text-xs">Choose which warehouses to integrate</CardDescription>
-                  </div>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefreshStores} disabled={refreshingStores || !!activeSyncRunId}>
+                    <RefreshCw className={cn("w-3.5 h-3.5", refreshingStores && "animate-spin")} />
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4 pt-0">
                 {availableStores.length > 0 && (
                   <div className="flex items-center gap-2 mb-2">
-                    <Checkbox
-                      checked={selectedStoreIds.length === availableStores.length && availableStores.length > 0}
-                      onCheckedChange={toggleAllStores}
-                    />
-                    <Label className="text-sm cursor-pointer" onClick={toggleAllStores}>
-                      Select All ({availableStores.length})
-                    </Label>
+                    <Checkbox checked={selectedStoreIds.length === availableStores.length && availableStores.length > 0} onCheckedChange={toggleAllStores} />
+                    <Label className="text-sm cursor-pointer" onClick={toggleAllStores}>Select All ({availableStores.length})</Label>
                   </div>
                 )}
                 <div className="space-y-2">
@@ -605,12 +664,10 @@ export default function SyrveSettings() {
                           <Checkbox checked={isSelected}
                             onCheckedChange={(checked) => {
                               if (checked) {
-                                const next = [...selectedStoreIds, store.id];
-                                setSelectedStoreIds(next);
+                                const next = [...selectedStoreIds, store.id]; setSelectedStoreIds(next);
                                 if (next.length === 1) setSelectedStoreId(store.id);
                               } else {
-                                const next = selectedStoreIds.filter(id => id !== store.id);
-                                setSelectedStoreIds(next);
+                                const next = selectedStoreIds.filter(id => id !== store.id); setSelectedStoreIds(next);
                                 if (isDefault) setSelectedStoreId(next[0] || '');
                               }
                             }} />
@@ -635,14 +692,19 @@ export default function SyrveSettings() {
             {/* Step 3: Categories */}
             <Card>
               <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Filter className="w-5 h-5 text-primary" />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Filter className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">Step 3: Select Categories</CardTitle>
+                      <CardDescription className="text-xs">Choose which product categories to import</CardDescription>
+                    </div>
                   </div>
-                  <div>
-                    <CardTitle className="text-base">Step 3: Select Categories</CardTitle>
-                    <CardDescription className="text-xs">Choose which product categories to import</CardDescription>
-                  </div>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleRefreshCategories} disabled={refreshingCategories || !!activeSyncRunId}>
+                    <RefreshCw className={cn("w-3.5 h-3.5", refreshingCategories && "animate-spin")} />
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">
@@ -652,6 +714,7 @@ export default function SyrveSettings() {
                       categories={categories as any}
                       selectedIds={selectedCategoryIds}
                       onSelectionChange={setSelectedCategoryIds}
+                      productCounts={categoryProductCounts}
                     />
                     <div className="flex items-center gap-2 mt-3 p-2.5 rounded-lg bg-muted/50 text-muted-foreground">
                       <Info className="w-4 h-4 shrink-0" />
@@ -681,7 +744,7 @@ export default function SyrveSettings() {
                 <div className="space-y-3">
                   <Label className="text-sm font-medium">Product Types to Import</Label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {PRODUCT_TYPES.map(pt => (
+                    {allProductTypes.map(pt => (
                       <div key={pt.value} className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors">
                         <Checkbox id={`pt-${pt.value}`} checked={productTypeFilters.includes(pt.value)} onCheckedChange={() => toggleProductType(pt.value)} />
                         <label htmlFor={`pt-${pt.value}`} className="cursor-pointer">
@@ -692,36 +755,40 @@ export default function SyrveSettings() {
                     ))}
                   </div>
                 </div>
-                <Separator />
-                <div className="space-y-3">
-                  <Label className="text-sm font-medium">Re-import Mode</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { value: 'merge', label: 'Merge', icon: '🔀', description: 'Keep existing, add new' },
-                      { value: 'hide', label: 'Hide Others', icon: '👁️‍🗨️', description: 'Deactivate non-matching' },
-                      { value: 'replace', label: 'Replace', icon: '🗑️', description: 'Delete non-matching' },
-                      { value: 'fresh', label: 'Fresh Import', icon: '🔄', description: 'Delete all, import fresh' },
-                    ].map(mode => (
-                      <div key={mode.value}
-                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${reimportMode === mode.value ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/40'}`}
-                        onClick={() => setReimportMode(mode.value)}>
-                        <div className="text-xl mb-1">{mode.icon}</div>
-                        <p className="text-sm font-semibold">{mode.label}</p>
-                        <p className="text-xs text-muted-foreground">{mode.description}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </CardContent>
             </Card>
 
             {/* Save & Import */}
             <div className="space-y-4">
-              <Button onClick={handleSaveAndImport} disabled={savingSettings || !!activeSyncRunId || syncMutation.isPending || selectedStoreIds.length === 0}
-                size="lg" className="w-full gap-2 text-base py-6">
-                {(savingSettings || syncMutation.isPending) ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
-                Save & Import Products
-              </Button>
+              <div className="flex gap-3">
+                <Button onClick={handleSaveAndImport} disabled={savingSettings || !!activeSyncRunId || syncMutation.isPending || selectedStoreIds.length === 0}
+                  size="lg" className="flex-1 gap-2 text-base py-6">
+                  {(savingSettings || syncMutation.isPending) ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
+                  Save & Import Products
+                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" size="lg" className="gap-2 py-6" disabled={!!activeSyncRunId || syncMutation.isPending}>
+                      <Trash2 className="w-4 h-4" />
+                      Clean Import
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Clean Import</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will delete ALL existing Syrve products, barcodes, and stock data, then perform a fresh import. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={() => {
+                        handleSaveSettings().then(() => handleSync('clean_import'));
+                      }}>Clean & Import</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
               {selectedStoreIds.length === 0 && (
                 <p className="text-xs text-destructive text-center">Select at least one warehouse to continue</p>
               )}
@@ -742,7 +809,6 @@ export default function SyrveSettings() {
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
           <ArrowLeft className="w-5 h-5" />
@@ -786,12 +852,12 @@ export default function SyrveSettings() {
         </Card>
       </div>
 
-      {/* Last sync info */}
       {lastSync && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
           <CheckCircle2 className="w-3 h-3 text-primary" />
           Last sync: {new Date(lastSync.finished_at || lastSync.started_at).toLocaleString()} •{' '}
           {lastSyncStats?.products || 0} products, {lastSyncStats?.prices_updated || 0} prices, {lastSyncStats?.stock_updated || 0} stock
+          {lastSyncStats?.deactivated ? `, ${lastSyncStats.deactivated} deactivated` : ''}
         </div>
       )}
 
@@ -807,6 +873,28 @@ export default function SyrveSettings() {
           <Zap className="w-4 h-4" />
           Refresh Prices & Stock Only
         </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="outline" disabled={!!activeSyncRunId || syncMutation.isPending} className="gap-2">
+              <Trash2 className="w-4 h-4" />
+              Clean Import
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clean Import</AlertDialogTitle>
+              <AlertDialogDescription>
+                Delete all products, barcodes, stock data, then re-import everything fresh from Syrve. Data is preserved in Syrve.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={() => {
+                handleSaveSettings().then(() => handleSync('clean_import'));
+              }}>Clean & Import</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <SyncProgressCard />
@@ -853,7 +941,8 @@ export default function SyrveSettings() {
       <Card>
         <SectionHeader icon={Warehouse} title="Warehouses / Storages" sectionKey="stores"
           subtitle={`${selectedStoreIds.length} selected of ${availableStores.length}`}
-          open={editSections.stores} onToggle={() => toggleEdit('stores')} />
+          open={editSections.stores} onToggle={() => toggleEdit('stores')}
+          onRefresh={handleRefreshStores} refreshing={refreshingStores} />
         {editSections.stores && (
           <CardContent className="space-y-4 pt-0 px-4 pb-4">
             <div className="flex items-center gap-2 mb-2">
@@ -901,13 +990,15 @@ export default function SyrveSettings() {
       <Card>
         <SectionHeader icon={Filter} title="Category Filter" sectionKey="categories"
           subtitle={selectedCategoryIds.length > 0 ? `${selectedCategoryIds.length} categories selected` : 'All categories'}
-          open={editSections.categories} onToggle={() => toggleEdit('categories')} />
+          open={editSections.categories} onToggle={() => toggleEdit('categories')}
+          onRefresh={handleRefreshCategories} refreshing={refreshingCategories} />
         {editSections.categories && (
           <CardContent className="pt-0 px-4 pb-4">
             {categories && categories.length > 0 ? (
               <>
                 <CategoryTreePicker categories={categories as any} selectedIds={selectedCategoryIds}
                   onSelectionChange={(ids) => { setSelectedCategoryIds(ids); markDirty(); }}
+                  productCounts={categoryProductCounts}
                   onDeleteCategory={async (id) => {
                     const { data: children } = await supabase.from('categories').select('id').eq('parent_id', id);
                     const ids = [id, ...(children || []).map(c => c.id)];
@@ -930,14 +1021,14 @@ export default function SyrveSettings() {
       {/* Import Rules */}
       <Card>
         <SectionHeader icon={Package} title="Import Rules" sectionKey="import"
-          subtitle={`${productTypeFilters.length} product types • ${reimportMode} mode`}
+          subtitle={`${productTypeFilters.length} product types • Soft deactivation mode`}
           open={editSections.import} onToggle={() => toggleEdit('import')} />
         {editSections.import && (
           <CardContent className="space-y-6 pt-0 px-4 pb-4">
             <div className="space-y-3">
               <Label className="text-sm font-medium">Product Types to Import</Label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {PRODUCT_TYPES.map(pt => (
+                {allProductTypes.map(pt => (
                   <div key={pt.value} className="flex items-start gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors">
                     <Checkbox id={`pt-${pt.value}`} checked={productTypeFilters.includes(pt.value)} onCheckedChange={() => toggleProductType(pt.value)} />
                     <label htmlFor={`pt-${pt.value}`} className="cursor-pointer">
@@ -969,32 +1060,10 @@ export default function SyrveSettings() {
               <div><p className="text-sm font-medium">Import Inactive Products</p><p className="text-xs text-muted-foreground">Include deleted/inactive products from Syrve</p></div>
               <Switch checked={importInactive} onCheckedChange={(v) => { setImportInactive(v); markDirty(); }} />
             </div>
-            <Separator />
-            <div className="space-y-3">
-              <Label className="text-sm font-medium">Re-import Mode</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { value: 'merge', label: 'Merge', icon: '🔀', description: 'Keep existing, add new' },
-                  { value: 'hide', label: 'Hide Others', icon: '👁️‍🗨️', description: 'Deactivate non-matching' },
-                  { value: 'replace', label: 'Replace', icon: '🗑️', description: 'Delete non-matching' },
-                  { value: 'fresh', label: 'Fresh Import', icon: '🔄', description: 'Delete all, import fresh' },
-                ].map(mode => (
-                  <div key={mode.value}
-                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${reimportMode === mode.value ? 'border-primary bg-primary/5' : 'border-border hover:border-muted-foreground/40'}`}
-                    onClick={() => { setReimportMode(mode.value); markDirty(); }}>
-                    <div className="text-xl mb-1">{mode.icon}</div>
-                    <p className="text-sm font-semibold">{mode.label}</p>
-                    <p className="text-xs text-muted-foreground">{mode.description}</p>
-                  </div>
-                ))}
-              </div>
-              {(reimportMode === 'replace' || reimportMode === 'fresh') && (
-                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
-                  <p className="text-xs text-destructive font-medium">
-                    ⚠️ {reimportMode === 'fresh' ? 'This will DELETE ALL existing products before importing.' : 'This will permanently delete non-matching products.'}
-                  </p>
-                </div>
-              )}
+            <div className="p-3 rounded-lg bg-muted/50 border">
+              <p className="text-xs text-muted-foreground">
+                <strong>Import behavior:</strong> New products are added, existing products are updated. Products no longer matching your selection are soft-deactivated (data preserved, hidden from results).
+              </p>
             </div>
           </CardContent>
         )}
@@ -1041,12 +1110,35 @@ export default function SyrveSettings() {
         )}
       </Card>
 
-      {/* Save Settings button (always visible for existing connection) */}
+      {/* Save Settings + Clean All */}
       <div className="flex gap-3">
         <Button onClick={handleSaveSettings} disabled={savingSettings || !!activeSyncRunId} variant="outline" className="gap-2">
           {savingSettings && <Loader2 className="w-4 h-4 animate-spin" />}
           Save Settings
         </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="ghost" className="gap-2 text-destructive hover:text-destructive" disabled={cleanAllMutation.isPending || !!activeSyncRunId}>
+              <Trash2 className="w-4 h-4" />
+              Clean All Syrve Data
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clean All Syrve Data?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete ALL imported data: products, categories, stores, measurement units, stock levels, barcodes, sync history, and API logs. The connection will be reset to "Not Configured". This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction className="bg-destructive text-destructive-foreground" onClick={handleCleanAll}>
+                {cleanAllMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Delete Everything
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Quick Links */}
