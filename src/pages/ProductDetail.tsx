@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useProduct, useProductBarcodes, useProductChildren, useProductStockByStore } from '@/hooks/useProducts';
+import { useProduct, useProductBarcodes, useProductChildren, useProductStockByStore, useMeasurementUnitsMap, resolveUnitName } from '@/hooks/useProducts';
 import { mockAiScans } from '@/data/mockAiScans';
 
 export default function ProductDetail() {
@@ -15,6 +15,7 @@ export default function ProductDetail() {
   const { data: barcodes = [] } = useProductBarcodes(id);
   const { data: children = [] } = useProductChildren(id);
   const { data: stockByStore = [] } = useProductStockByStore(id);
+  const { data: unitsMap } = useMeasurementUnitsMap();
   const productAiScans = mockAiScans.filter(s => s.productId === id).slice(0, 5);
 
   if (isLoading) {
@@ -104,7 +105,7 @@ export default function ProductDetail() {
               <CardContent className="p-5">
                 <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Ruler className="w-4 h-4 text-muted-foreground" />Unit & Volume</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <InfoRow label="Main Unit" value={syrveData.mainUnit || (product.main_unit_id ? product.main_unit_id : null)} />
+                  <InfoRow label="Main Unit" value={resolveUnitName(product.main_unit_id, unitsMap) || syrveData.mainUnit || null} />
                   <InfoRow label="Unit Capacity" value={product.unit_capacity ? `${product.unit_capacity}` : null} />
                   {Array.isArray(containers) && containers.length > 0 && (
                     <div className="col-span-2">
@@ -332,7 +333,7 @@ export default function ProductDetail() {
               <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Database className="w-4 h-4 text-muted-foreground" />Syrve Mapping</h3>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <InfoRow label="Syrve Product ID" value={product.syrve_product_id} />
-                <InfoRow label="Main Unit (Syrve)" value={syrveData.mainUnit || product.main_unit_id} />
+                <InfoRow label="Main Unit (Syrve)" value={resolveUnitName(product.main_unit_id, unitsMap) || syrveData.mainUnit || product.main_unit_id} />
                 <InfoRow label="Last Synced" value={product.synced_at ? new Date(product.synced_at).toLocaleString() : null} />
                 <InfoRow label="Active" value={product.is_active ? 'Yes' : 'No'} />
                 <InfoRow label="Deleted in Syrve" value={product.is_deleted ? 'Yes' : 'No'} />

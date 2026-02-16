@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useColumnStore } from '@/stores/columnStore';
-import { useProducts, Product } from '@/hooks/useProducts';
+import { useProducts, Product, useMeasurementUnitsMap, resolveUnitName } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
 import { useStores } from '@/hooks/useStores';
 import { Search, Package, X, MoreHorizontal, Eye, Copy, History, Trash2, CheckSquare, Download, Tag, Power, AlertTriangle, Ban, DollarSign, ChevronRight, ChevronDown, UtensilsCrossed, BoxIcon, TrendingDown, Hash } from 'lucide-react';
@@ -169,6 +169,7 @@ export default function ProductCatalog() {
 
   const { data: categories = [] } = useSyrveCategories();
   const { data: stores = [] } = useStores();
+  const { data: unitsMap } = useMeasurementUnitsMap();
 
   // Split by type
   const goodsProducts = useMemo(() => products.filter(p => p.product_type === 'GOODS'), [products]);
@@ -290,7 +291,7 @@ export default function ProductCatalog() {
         </Tooltip>
       );
     }},
-    { key: 'unit', label: 'Unit', render: p => <span className="text-muted-foreground text-xs">{p.syrve_data?.mainUnit || '—'}</span> },
+    { key: 'unit', label: 'Unit', render: p => <span className="text-muted-foreground text-xs">{resolveUnitName(p.main_unit_id, unitsMap) || p.syrve_data?.mainUnit || '—'}</span> },
     { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'purchase_price', label: 'Cost', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
@@ -301,7 +302,7 @@ export default function ProductCatalog() {
     }},
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
     { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
-  ], [selectedIds, goodsToDishesMap]);
+  ], [selectedIds, goodsToDishesMap, unitsMap]);
 
   const dishesColumns = useMemo((): DataTableColumn<Product>[] => [
     { key: 'select', label: '', minWidth: 40, render: p => (
@@ -345,11 +346,11 @@ export default function ProductCatalog() {
     { key: 'sale_price', label: 'Sale Price', align: 'right', render: p => (
       <span className="text-accent font-semibold tabular-nums">{p.sale_price?.toFixed(2) ?? '—'}</span>
     ), sortFn: (a, b) => (a.sale_price || 0) - (b.sale_price || 0) },
-    { key: 'unit', label: 'Unit', render: p => <span className="text-muted-foreground text-xs">{p.syrve_data?.mainUnit || '—'}</span> },
+    { key: 'unit', label: 'Unit', render: p => <span className="text-muted-foreground text-xs">{resolveUnitName(p.main_unit_id, unitsMap) || p.syrve_data?.mainUnit || '—'}</span> },
     { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.unit_capacity ?? '—'}</span> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
     { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
-  ], [selectedIds, navigate]);
+  ], [selectedIds, navigate, unitsMap]);
 
   const goodsVisibleCols = useMemo(() => ['select', 'name', 'sku', 'category', 'store', 'unit', 'unit_capacity', 'stock', 'dishes_count', 'actions'], []);
   const dishesVisibleCols = useMemo(() => ['select', 'name', 'code', 'category', 'store', 'parent', 'sale_price', 'unit', 'actions'], []);
