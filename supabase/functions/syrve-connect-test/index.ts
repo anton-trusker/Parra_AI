@@ -113,6 +113,58 @@ serve(async (req) => {
       console.error("Error fetching departments:", e);
     }
 
+    // 5b. Fetch measurement units
+    let measurementUnits: any[] = [];
+    try {
+      const unitsUrl = `${server_url}/v2/entities/list?key=${syrveToken}&rootType=MeasureUnit`;
+      const unitsResp = await fetch(unitsUrl);
+      if (unitsResp.ok) {
+        const unitsText = await unitsResp.text();
+        try {
+          measurementUnits = JSON.parse(unitsText);
+          if (!Array.isArray(measurementUnits)) measurementUnits = [measurementUnits];
+        } catch {
+          measurementUnits = parseXmlItems(unitsText, "unitDto");
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching measurement units:", e);
+    }
+
+    // Save measurement units to DB
+    if (measurementUnits.length > 0) {
+      const adminClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      for (const unit of measurementUnits) {
+        const syrveId = unit.id;
+        if (!syrveId) continue;
+        await adminClient.from("measurement_units").upsert({
+          syrve_unit_id: syrveId,
+          name: unit.name || "Unknown",
+          short_name: unit.shortName || unit.short_name || null,
+          code: unit.code || null,
+          main_unit_syrve_id: unit.mainUnitId || unit.main_unit_id || null,
+          is_main: unit.isMain || unit.is_main || false,
+          factor: unit.factor || unit.ratio || 1,
+          syrve_data: unit,
+          synced_at: new Date().toISOString(),
+        }, { onConflict: "syrve_unit_id" });
+      }
+
+      // Resolve main_unit_id references
+      const { data: allUnits } = await adminClient.from("measurement_units").select("id, syrve_unit_id, main_unit_syrve_id");
+      if (allUnits) {
+        const lookup = new Map(allUnits.map((u: any) => [u.syrve_unit_id, u.id]));
+        for (const u of allUnits) {
+          if (u.main_unit_syrve_id && lookup.has(u.main_unit_syrve_id)) {
+            await adminClient.from("measurement_units").update({ main_unit_id: lookup.get(u.main_unit_syrve_id) }).eq("id", u.id);
+          }
+        }
+      }
+    }
+
     // 6. Always logout to release license
     try {
       await fetch(`${server_url}/logout?key=${syrveToken}`);
@@ -128,6 +180,7 @@ serve(async (req) => {
       stores,
       departments,
       business_info: businessInfo,
+      measurement_units: measurementUnits.length,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -157,6 +210,23 @@ function parseStoresXml(xml: string): any[] {
     });
   }
   return stores;
+}
+
+function parseXmlItems(xml: string, tagName: string): any[] {
+  const items: any[] = [];
+  const regex = new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`, "g");
+  let match;
+  while ((match = regex.exec(xml)) !== null) {
+    const item = match[1];
+    const obj: any = {};
+    const fieldRegex = /<([a-zA-Z]+)>([^<]*)<\/\1>/g;
+    let fieldMatch;
+    while ((fieldMatch = fieldRegex.exec(item)) !== null) {
+      obj[fieldMatch[1]] = fieldMatch[2];
+    }
+    if (Object.keys(obj).length > 0) items.push(obj);
+  }
+  return items;
 }
 
 /**

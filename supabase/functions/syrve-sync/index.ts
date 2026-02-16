@@ -77,7 +77,7 @@ serve(async (req) => {
 
     let syrveToken: string | null = null;
     let serverUrl = '';
-    const stats: any = { stores: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0, prices_updated: 0, stock_updated: 0, stage: 'authenticating', progress: 0 };
+    const stats: any = { stores: 0, measurement_units: 0, categories: 0, products: 0, barcodes: 0, skipped: 0, errors: 0, deactivated: 0, deleted: 0, prices_updated: 0, stock_updated: 0, stage: 'authenticating', progress: 0 };
     const selectedCategoryIds: string[] = config.selected_category_ids || [];
     const productTypeFilters: string[] = config.product_type_filters || ['GOODS', 'DISH'];
     const importInactive: boolean = config.import_inactive_products || false;
@@ -109,8 +109,14 @@ serve(async (req) => {
 
       // 2. Sync based on type
       if (runType === "bootstrap" || runType === "stores") {
-        await updateProgress('syncing_stores', 15);
+        await updateProgress('syncing_stores', 10);
         await syncStores(adminClient, serverUrl, syrveToken, syncRun?.id, stats);
+      }
+
+      // 2b. Sync measurement units
+      if (runType === "bootstrap" || runType === "stores") {
+        await updateProgress('syncing_units', 20);
+        await syncMeasurementUnits(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
       }
 
       if (runType === "bootstrap" || runType === "categories") {
@@ -275,6 +281,65 @@ async function syncStores(client: any, baseUrl: string, token: string, syncRunId
     }, { onConflict: "syrve_store_id" });
 
     stats.stores++;
+  }
+}
+
+async function syncMeasurementUnits(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any) {
+  const start = Date.now();
+  const url = `${baseUrl}/v2/entities/list?key=${token}&rootType=MeasureUnit`;
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      await logApi(client, syncRunId, "FETCH_UNITS", "error", url, `HTTP ${resp.status}`, Date.now() - start);
+      console.error(`Failed to fetch measurement units: ${resp.status}`);
+      return;
+    }
+
+    const text = await resp.text();
+    await logApi(client, syncRunId, "FETCH_UNITS", "success", url, undefined, Date.now() - start, text.substring(0, 500));
+
+    let units: any[];
+    try {
+      units = JSON.parse(text);
+      if (!Array.isArray(units)) units = [units];
+    } catch {
+      units = parseXmlItems(text, "unitDto");
+    }
+
+    for (const unit of units) {
+      const syrveId = unit.id;
+      if (!syrveId) continue;
+
+      await client.from("measurement_units").upsert({
+        syrve_unit_id: syrveId,
+        name: unit.name || "Unknown",
+        short_name: unit.shortName || unit.short_name || null,
+        code: unit.code || null,
+        main_unit_syrve_id: unit.mainUnitId || unit.main_unit_id || null,
+        is_main: unit.isMain || unit.is_main || false,
+        factor: unit.factor || unit.ratio || 1,
+        syrve_data: unit,
+        synced_at: new Date().toISOString(),
+      }, { onConflict: "syrve_unit_id" });
+
+      stats.measurement_units = (stats.measurement_units || 0) + 1;
+    }
+
+    // Resolve main_unit_id references
+    const { data: allUnits } = await client.from("measurement_units").select("id, syrve_unit_id, main_unit_syrve_id");
+    if (allUnits) {
+      const lookup = new Map(allUnits.map((u: any) => [u.syrve_unit_id, u.id]));
+      for (const u of allUnits) {
+        if (u.main_unit_syrve_id && lookup.has(u.main_unit_syrve_id)) {
+          await client.from("measurement_units").update({ main_unit_id: lookup.get(u.main_unit_syrve_id) }).eq("id", u.id);
+        }
+      }
+    }
+
+    console.log(`Measurement units: imported ${stats.measurement_units}`);
+  } catch (e) {
+    console.error("syncMeasurementUnits error:", e);
+    await logApi(client, syncRunId, "FETCH_UNITS", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
   }
 }
 
