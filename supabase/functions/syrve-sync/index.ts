@@ -486,9 +486,15 @@ async function syncProducts(
     products = parseXmlItems(text, "productDto");
   }
 
-  // Get category mapping
-  const { data: categories } = await client.from("categories").select("id, syrve_group_id");
-  const catLookup = new Map((categories || []).map((c: any) => [c.syrve_group_id, c.id]));
+  // Get category mapping (only active, non-deleted categories)
+  const { data: allCategories } = await client.from("categories").select("id, syrve_group_id, is_active, is_deleted");
+  const catLookup = new Map((allCategories || []).map((c: any) => [c.syrve_group_id, c.id]));
+  // Build set of inactive/deleted category syrve IDs to exclude products
+  const inactiveCategorySyrveIds = new Set(
+    (allCategories || [])
+      .filter((c: any) => c.is_active === false || c.is_deleted === true)
+      .map((c: any) => c.syrve_group_id)
+  );
 
   // Build set of selected category syrve IDs for filtering
   let selectedSyrveIds: Set<string> | null = null;
@@ -521,6 +527,12 @@ async function syncProducts(
     if (!syrveId) continue;
 
     const parentGroupId = product.parent || product.parentId;
+
+    // Skip products belonging to inactive/deleted categories
+    if (parentGroupId && inactiveCategorySyrveIds.has(parentGroupId)) {
+      stats.skipped = (stats.skipped || 0) + 1;
+      continue;
+    }
 
     // Category filter: skip if product HAS a category but it's not in the selected set
     // Products WITHOUT a category (null/empty parentGroupId) are always imported
@@ -859,7 +871,7 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
         stockBatch.push({
           product_id: prod.id, store_id: internalStoreId, quantity: item.amount,
           unit_cost: item.sum && item.amount ? item.sum / item.amount : null,
-          unit_id: prod.main_unit_id || null, source: 'syrve',
+          unit_id: unitLookup.get(prod.main_unit_id) || null, source: 'syrve',
           sync_run_id: syncRunId, last_synced_at: new Date().toISOString(),
         });
       }
