@@ -29,7 +29,7 @@ interface DataTableProps<T> {
   defaultPageSize?: number;
 }
 
-export default function DataTable<T>({
+function DataTableInner<T>({
   data, columns, visibleColumns, columnWidths, onColumnResize, onRowClick, rowClassName,
   keyExtractor, emptyMessage = 'No data', compact = false, paginated = true, defaultPageSize = 25,
 }: DataTableProps<T>) {
@@ -229,3 +229,5 @@ export default function DataTable<T>({
     </div>
   );
 }
+
+export default DataTableInner as typeof DataTableInner;

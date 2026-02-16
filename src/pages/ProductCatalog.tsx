@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useColumnStore } from '@/stores/columnStore';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { useSyrveCategories } from '@/hooks/useSyrve';
 import { useStores } from '@/hooks/useStores';
-import { Search, SlidersHorizontal, LayoutGrid, Table2, Package, X, MoreHorizontal, Eye, Copy, History, Trash2, CheckSquare, Download, Tag, Power, FolderTree, Store, Layers, Warehouse, AlertTriangle, Ban, DollarSign, ChevronRight, ChevronDown, UtensilsCrossed, BoxIcon, Link2 } from 'lucide-react';
+import { Search, Package, X, MoreHorizontal, Eye, Copy, History, Trash2, CheckSquare, Download, Tag, Power, AlertTriangle, Ban, DollarSign, ChevronRight, ChevronDown, UtensilsCrossed, BoxIcon, Layers, TrendingDown, Hash } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,25 +15,44 @@ import ColumnManager, { ColumnDef } from '@/components/ColumnManager';
 import MultiSelectFilter from '@/components/MultiSelectFilter';
 import DataTable, { DataTableColumn } from '@/components/DataTable';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
-/* ─── Shared components ─── */
+/* ═══════════════════════════════════════════════════
+   Shared UI Components
+   ═══════════════════════════════════════════════════ */
 
 function TypeBadge({ type }: { type: string | null }) {
-  const colors: Record<string, string> = {
-    GOODS: 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
-    DISH: 'bg-amber-500/20 text-amber-400 border border-amber-500/30',
-    MODIFIER: 'bg-sky-500/20 text-sky-400 border border-sky-500/30',
-    OUTER: 'bg-purple-500/20 text-purple-400 border border-purple-500/30',
-    PREPARED: 'bg-orange-500/20 text-orange-400 border border-orange-500/30',
+  const styles: Record<string, string> = {
+    GOODS: 'bg-emerald-500/15 text-emerald-500 dark:text-emerald-400 border-emerald-500/25',
+    DISH: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25',
+    MODIFIER: 'bg-sky-500/15 text-sky-500 dark:text-sky-400 border-sky-500/25',
+    OUTER: 'bg-purple-500/15 text-purple-500 dark:text-purple-400 border-purple-500/25',
+    PREPARED: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/25',
   };
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${colors[type || ''] || 'bg-secondary text-secondary-foreground border border-border'}`}>{type || '—'}</span>;
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold border ${styles[type || ''] || 'bg-secondary text-secondary-foreground border-border'}`}>
+      {type || '—'}
+    </span>
+  );
 }
 
 function StockIndicator({ stock }: { stock: number | null }) {
   if (stock === null || stock === undefined) return <span className="text-muted-foreground">—</span>;
-  if (stock <= 0) return <span className="inline-flex items-center gap-1 text-destructive font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-destructive" />{stock}</span>;
-  if (stock < 5) return <span className="inline-flex items-center gap-1 text-amber-500 font-semibold"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />{stock}</span>;
-  return <span className="inline-flex items-center gap-1 font-semibold" style={{ color: 'hsl(var(--wine-success))' }}><span className="w-1.5 h-1.5 rounded-full" style={{ background: 'hsl(var(--wine-success))' }} />{stock}</span>;
+  if (stock <= 0) return (
+    <span className="inline-flex items-center gap-1.5 text-destructive font-semibold">
+      <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />{stock}
+    </span>
+  );
+  if (stock < 5) return (
+    <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'hsl(var(--wine-warning))' }}>
+      <span className="w-2 h-2 rounded-full" style={{ background: 'hsl(var(--wine-warning))' }} />{stock}
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'hsl(var(--wine-success))' }}>
+      <span className="w-2 h-2 rounded-full" style={{ background: 'hsl(var(--wine-success))' }} />{stock}
+    </span>
+  );
 }
 
 function ContainerInfo({ syrveData }: { syrveData: any }) {
@@ -41,12 +60,12 @@ function ContainerInfo({ syrveData }: { syrveData: any }) {
   if (!Array.isArray(containers) || containers.length === 0) return <span className="text-muted-foreground">—</span>;
   return (
     <div className="flex flex-col gap-0.5">
-      {containers.slice(0, 3).map((c: any, i: number) => (
+      {containers.slice(0, 2).map((c: any, i: number) => (
         <span key={i} className="text-xs text-muted-foreground">
           {c.name || 'unit'}{c.count != null ? ` (${c.count}L)` : ''}
         </span>
       ))}
-      {containers.length > 3 && <span className="text-xs text-muted-foreground/60">+{containers.length - 3} more</span>}
+      {containers.length > 2 && <span className="text-[10px] text-muted-foreground/50">+{containers.length - 2} more</span>}
     </div>
   );
 }
@@ -56,7 +75,7 @@ function RowActionsMenu({ product }: { product: Product }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
-        <Button variant="ghost" size="icon" className="h-7 w-7">
+        <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
           <MoreHorizontal className="w-4 h-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -71,9 +90,32 @@ function RowActionsMenu({ product }: { product: Product }) {
   );
 }
 
-/* ─── Column definitions per tab ─── */
+/* ═══════════════════════════════════════════════════
+   Summary Stat Card
+   ═══════════════════════════════════════════════════ */
 
-const GOODS_COLUMN_DEFS: ColumnDef[] = [
+function StatCard({ icon: Icon, label, value, subValue, accent }: {
+  icon: React.ElementType; label: string; value: string | number; subValue?: string; accent?: string;
+}) {
+  return (
+    <div className="stat-card flex items-center gap-4">
+      <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ background: accent ? `${accent}15` : 'hsl(var(--muted))' }}>
+        <Icon className="w-5 h-5" style={{ color: accent || 'hsl(var(--muted-foreground))' }} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-2xl font-heading font-bold tabular-nums leading-tight">{value}</p>
+        <p className="text-xs text-muted-foreground truncate">{label}</p>
+        {subValue && <p className="text-[10px] text-muted-foreground/70 mt-0.5">{subValue}</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   Column Definitions
+   ═══════════════════════════════════════════════════ */
+
+const GOODS_COL_DEFS: ColumnDef[] = [
   { key: 'name', label: 'Name' },
   { key: 'sku', label: 'SKU' },
   { key: 'code', label: 'Code' },
@@ -87,7 +129,7 @@ const GOODS_COLUMN_DEFS: ColumnDef[] = [
   { key: 'synced_at', label: 'Synced At' },
 ];
 
-const DISHES_COLUMN_DEFS: ColumnDef[] = [
+const DISHES_COL_DEFS: ColumnDef[] = [
   { key: 'name', label: 'Name' },
   { key: 'code', label: 'Code' },
   { key: 'category', label: 'Category' },
@@ -98,7 +140,9 @@ const DISHES_COLUMN_DEFS: ColumnDef[] = [
   { key: 'synced_at', label: 'Synced At' },
 ];
 
-/* ─── Main component ─── */
+/* ═══════════════════════════════════════════════════
+   Main Component
+   ═══════════════════════════════════════════════════ */
 
 export default function ProductCatalog() {
   const navigate = useNavigate();
@@ -124,11 +168,11 @@ export default function ProductCatalog() {
   const { data: categories = [] } = useSyrveCategories();
   const { data: stores = [] } = useStores();
 
-  // Split products by type
+  // Split by type
   const goodsProducts = useMemo(() => products.filter(p => p.product_type === 'GOODS'), [products]);
   const dishProducts = useMemo(() => products.filter(p => p.product_type === 'DISH' || p.product_type === 'PREPARED'), [products]);
 
-  // Build goods→dishes map for "All" tab hierarchy
+  // Goods→dishes hierarchy map
   const goodsToDishesMap = useMemo(() => {
     const map = new Map<string, Product[]>();
     for (const d of dishProducts) {
@@ -151,8 +195,8 @@ export default function ProductCatalog() {
     return opts;
   }, [products]);
 
-  // Apply local filters
-  const applyFilters = (list: Product[]) => {
+  // Filtering
+  const applyFilters = useCallback((list: Product[]) => {
     let result = list;
     if (categoryFilter.length > 0) result = result.filter(p => categoryFilter.includes(p.categories?.name || ''));
     if (stockStatusFilter.length > 0) {
@@ -168,19 +212,24 @@ export default function ProductCatalog() {
     if (quickFilter === 'noPrice') result = result.filter(p => p.sale_price == null || p.sale_price === 0);
     if (quickFilter === 'inactive') result = result.filter(p => !p.is_active);
     return result;
-  };
+  }, [categoryFilter, stockStatusFilter, quickFilter]);
 
-  const filteredGoods = useMemo(() => applyFilters(goodsProducts), [goodsProducts, categoryFilter, stockStatusFilter, quickFilter]);
-  const filteredDishes = useMemo(() => applyFilters(dishProducts), [dishProducts, categoryFilter, stockStatusFilter, quickFilter]);
-  const filteredAll = useMemo(() => applyFilters(products), [products, categoryFilter, stockStatusFilter, quickFilter]);
+  const filteredGoods = useMemo(() => applyFilters(goodsProducts), [goodsProducts, applyFilters]);
+  const filteredDishes = useMemo(() => applyFilters(dishProducts), [dishProducts, applyFilters]);
 
-  // Quick filter counts (on all products)
-  const quickFilterCounts = useMemo(() => ({
-    lowStock: products.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5).length,
-    outOfStock: products.filter(p => (p.current_stock ?? 0) <= 0).length,
-    noPrice: products.filter(p => p.sale_price == null || p.sale_price === 0).length,
-    inactive: products.filter(p => !p.is_active).length,
-  }), [products]);
+  // Tab-aware stats
+  const currentList = activeTab === 'goods' ? filteredGoods : activeTab === 'dishes' ? filteredDishes : [...filteredGoods, ...filteredDishes];
+  const stats = useMemo(() => {
+    const lowStock = currentList.filter(p => (p.current_stock ?? 0) > 0 && (p.current_stock ?? 0) < 5).length;
+    const outOfStock = currentList.filter(p => (p.current_stock ?? 0) <= 0).length;
+    const noPrice = currentList.filter(p => p.sale_price == null || p.sale_price === 0).length;
+    const inactive = currentList.filter(p => !p.is_active).length;
+    const linkedDishes = dishProducts.filter(d => {
+      const pid = (Array.isArray(d.parent_product) ? d.parent_product[0]?.id : d.parent_product?.id);
+      return !!pid;
+    }).length;
+    return { lowStock, outOfStock, noPrice, inactive, linkedDishes };
+  }, [currentList, dishProducts]);
 
   const toggleQuickFilter = (key: string) => setQuickFilter(prev => prev === key ? null : key);
 
@@ -197,100 +246,143 @@ export default function ProductCatalog() {
     });
   };
 
-  /* ─── Goods table columns ─── */
+  /* ─── Table column builders ─── */
   const goodsColumns = useMemo((): DataTableColumn<Product>[] => [
     { key: 'select', label: '', minWidth: 40, render: p => (
       <div onClick={e => e.stopPropagation()}><Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} /></div>
     ) },
-    { key: 'name', label: 'Name', minWidth: 200, render: p => {
+    { key: 'name', label: 'Name', minWidth: 220, render: p => {
       const dishCount = goodsToDishesMap.get(p.id)?.length || 0;
       return (
         <div className="flex items-center gap-2">
-          <span className="font-medium">{p.name}</span>
-          {dishCount > 0 && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5 text-amber-400 border-amber-500/30"><UtensilsCrossed className="w-3 h-3" />{dishCount}</Badge>}
+          <BoxIcon className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />
+          <span className="font-medium truncate">{p.name}</span>
+          {dishCount > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5 shrink-0 border-amber-500/25" style={{ color: 'hsl(38 45% 60%)' }}>
+                  <UtensilsCrossed className="w-3 h-3" />{dishCount}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>{dishCount} dish{dishCount !== 1 ? 'es' : ''} linked</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       );
     }, sortFn: (a, b) => a.name.localeCompare(b.name) },
     { key: 'sku', label: 'SKU', render: p => <span className="text-muted-foreground font-mono text-xs">{p.sku || '—'}</span> },
     { key: 'code', label: 'Code', render: p => <span className="text-muted-foreground text-xs">{p.code || '—'}</span> },
-    { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{p.categories?.name || '—'}</span> },
+    { key: 'category', label: 'Category', render: p => (
+      <Badge variant="secondary" className="text-[11px] font-normal">{p.categories?.name || 'Uncategorized'}</Badge>
+    )},
     { key: 'unit', label: 'Unit', render: p => <span className="text-muted-foreground text-xs">{p.syrve_data?.mainUnit || '—'}</span> },
-    { key: 'unit_capacity', label: 'Volume/Weight', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
+    { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
-    { key: 'purchase_price', label: 'Purchase Price', align: 'right', render: p => <span className="text-muted-foreground">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
+    { key: 'purchase_price', label: 'Cost', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
     { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
     { key: 'dishes_count', label: 'Dishes', align: 'center', render: p => {
       const count = goodsToDishesMap.get(p.id)?.length || 0;
-      return count > 0 ? <span className="text-amber-400 font-medium">{count}</span> : <span className="text-muted-foreground">—</span>;
+      return count > 0 ? <span className="font-medium tabular-nums" style={{ color: 'hsl(38 45% 60%)' }}>{count}</span> : <span className="text-muted-foreground/40">—</span>;
     }},
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
     { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
   ], [selectedIds, goodsToDishesMap]);
 
-  /* ─── Dishes table columns ─── */
   const dishesColumns = useMemo((): DataTableColumn<Product>[] => [
     { key: 'select', label: '', minWidth: 40, render: p => (
       <div onClick={e => e.stopPropagation()}><Checkbox checked={selectedIds.has(p.id)} onCheckedChange={() => toggleSelect(p.id)} /></div>
     ) },
-    { key: 'name', label: 'Name', minWidth: 200, render: p => <span className="font-medium">{p.name}</span>, sortFn: (a, b) => a.name.localeCompare(b.name) },
+    { key: 'name', label: 'Name', minWidth: 220, render: p => (
+      <div className="flex items-center gap-2">
+        <UtensilsCrossed className="w-4 h-4 shrink-0" style={{ color: 'hsl(38 45% 60%)' }} />
+        <span className="font-medium truncate">{p.name}</span>
+      </div>
+    ), sortFn: (a, b) => a.name.localeCompare(b.name) },
     { key: 'code', label: 'Code', render: p => <span className="text-muted-foreground text-xs">{p.code || '—'}</span> },
-    { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{p.categories?.name || '—'}</span> },
-    { key: 'parent', label: 'Linked Goods', minWidth: 160, render: p => {
+    { key: 'category', label: 'Category', render: p => (
+      <Badge variant="secondary" className="text-[11px] font-normal">{p.categories?.name || 'Uncategorized'}</Badge>
+    )},
+    { key: 'parent', label: 'Linked Goods', minWidth: 180, render: p => {
       const parent = Array.isArray(p.parent_product) ? p.parent_product[0] : p.parent_product;
-      if (!parent) return <span className="text-muted-foreground/50 text-xs">Not linked</span>;
+      if (!parent) return <span className="text-destructive/60 text-xs flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Not linked</span>;
       return (
-        <span className="text-xs text-emerald-400 hover:underline cursor-pointer" onClick={e => { e.stopPropagation(); navigate(`/products/${parent.id}`); }}>
-          {parent.name}
+        <span
+          className="text-xs font-medium hover:underline cursor-pointer flex items-center gap-1.5 text-emerald-500 dark:text-emerald-400"
+          onClick={e => { e.stopPropagation(); navigate(`/products/${parent.id}`); }}
+        >
+          <BoxIcon className="w-3 h-3" />{parent.name}
         </span>
       );
     }},
-    { key: 'sale_price', label: 'Sale Price', align: 'right', render: p => <span className="text-accent font-medium">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.sale_price || 0) - (b.sale_price || 0) },
+    { key: 'sale_price', label: 'Sale Price', align: 'right', render: p => (
+      <span className="text-accent font-semibold tabular-nums">{p.sale_price?.toFixed(2) ?? '—'}</span>
+    ), sortFn: (a, b) => (a.sale_price || 0) - (b.sale_price || 0) },
     { key: 'unit', label: 'Unit', render: p => <span className="text-muted-foreground text-xs">{p.syrve_data?.mainUnit || '—'}</span> },
-    { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span> },
+    { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.unit_capacity ?? '—'}</span> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
     { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
   ], [selectedIds, navigate]);
 
-  const goodsVisibleCols = useMemo(() => ['select', 'name', 'sku', 'code', 'category', 'unit', 'unit_capacity', 'stock', 'dishes_count', 'actions'], []);
-  const dishesVisibleCols = useMemo(() => ['select', 'name', 'code', 'category', 'parent', 'sale_price', 'unit', 'unit_capacity', 'actions'], []);
+  const goodsVisibleCols = useMemo(() => ['select', 'name', 'sku', 'category', 'unit', 'unit_capacity', 'stock', 'dishes_count', 'actions'], []);
+  const dishesVisibleCols = useMemo(() => ['select', 'name', 'code', 'category', 'parent', 'sale_price', 'unit', 'actions'], []);
+
+  const hasFilters = categoryFilter.length > 0 || stockStatusFilter.length > 0 || !!quickFilter;
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl lg:text-3xl font-heading font-bold">Product Catalog</h1>
-          <p className="text-muted-foreground mt-1">
-            <span className="text-foreground font-medium">{goodsProducts.length}</span> goods · <span className="text-foreground font-medium">{dishProducts.length}</span> dishes
-          </p>
-        </div>
+    <div className="space-y-5 animate-fade-in">
+      {/* ─── Header ─── */}
+      <div>
+        <h1 className="text-2xl lg:text-3xl font-heading font-bold">Product Catalog</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Manage your inventory goods and restaurant dishes
+        </p>
       </div>
 
-      {/* Main Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <div className="flex items-center justify-between gap-4">
-          <TabsList className="bg-muted/50 h-11">
-            <TabsTrigger value="all" className="gap-2 px-4"><Layers className="w-4 h-4" />All <Badge variant="outline" className="ml-1 text-[10px] px-1.5 h-5">{products.length}</Badge></TabsTrigger>
-            <TabsTrigger value="goods" className="gap-2 px-4"><BoxIcon className="w-4 h-4" />Goods <Badge variant="outline" className="ml-1 text-[10px] px-1.5 h-5 text-emerald-400 border-emerald-500/30">{goodsProducts.length}</Badge></TabsTrigger>
-            <TabsTrigger value="dishes" className="gap-2 px-4"><UtensilsCrossed className="w-4 h-4" />Dishes <Badge variant="outline" className="ml-1 text-[10px] px-1.5 h-5 text-amber-400 border-amber-500/30">{dishProducts.length}</Badge></TabsTrigger>
+      {/* ─── Stats Row ─── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={BoxIcon} label="Goods" value={goodsProducts.length} accent="hsl(152 55% 42%)" subValue={`${filteredGoods.length} showing`} />
+        <StatCard icon={UtensilsCrossed} label="Dishes" value={dishProducts.length} accent="hsl(38 45% 60%)" subValue={`${stats.linkedDishes} linked`} />
+        <StatCard icon={TrendingDown} label="Low / Out of Stock" value={stats.lowStock + stats.outOfStock} accent="hsl(0 72% 51%)" subValue={`${stats.lowStock} low · ${stats.outOfStock} out`} />
+        <StatCard icon={Hash} label="Categories" value={categoryOptions.length} subValue={`across ${stores.length} store${stores.length !== 1 ? 's' : ''}`} />
+      </div>
+
+      {/* ─── Main Tabs ─── */}
+      <Tabs value={activeTab} onValueChange={v => { setActiveTab(v); setSelectedIds(new Set()); }} className="space-y-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <TabsList className="bg-muted/50 h-11 p-1">
+            <TabsTrigger value="all" className="gap-2 px-4 data-[state=active]:shadow-sm">
+              <Layers className="w-4 h-4" />All
+              <Badge variant="outline" className="ml-0.5 text-[10px] px-1.5 h-5 border-border">{products.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="goods" className="gap-2 px-4 data-[state=active]:shadow-sm">
+              <BoxIcon className="w-4 h-4" />Goods
+              <Badge variant="outline" className="ml-0.5 text-[10px] px-1.5 h-5 border-emerald-500/25 text-emerald-500 dark:text-emerald-400">{goodsProducts.length}</Badge>
+            </TabsTrigger>
+            <TabsTrigger value="dishes" className="gap-2 px-4 data-[state=active]:shadow-sm">
+              <UtensilsCrossed className="w-4 h-4" />Dishes
+              <Badge variant="outline" className="ml-0.5 text-[10px] px-1.5 h-5 border-amber-500/25" style={{ color: 'hsl(38 45% 60%)' }}>{dishProducts.length}</Badge>
+            </TabsTrigger>
           </TabsList>
+
+          <div className="flex items-center gap-2">
+            {activeTab === 'goods' && <ColumnManager columns={GOODS_COL_DEFS} visibleColumns={goodsVisibleCols} onChange={() => {}} />}
+            {activeTab === 'dishes' && <ColumnManager columns={DISHES_COL_DEFS} visibleColumns={dishesVisibleCols} onChange={() => {}} />}
+          </div>
         </div>
 
-        {/* Quick Filters */}
+        {/* ─── Quick Filters ─── */}
         <div className="quick-filter-bar">
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mr-1">Quick:</span>
-          <button onClick={() => toggleQuickFilter('lowStock')} className={`quick-filter-pill ${quickFilter === 'lowStock' ? 'active' : ''}`}>
-            <AlertTriangle className="w-3 h-3" /> Low Stock <span className="text-[10px] opacity-70">({quickFilterCounts.lowStock})</span>
-          </button>
-          <button onClick={() => toggleQuickFilter('outOfStock')} className={`quick-filter-pill ${quickFilter === 'outOfStock' ? 'active' : ''}`}>
-            <Ban className="w-3 h-3" /> Out of Stock <span className="text-[10px] opacity-70">({quickFilterCounts.outOfStock})</span>
-          </button>
-          <button onClick={() => toggleQuickFilter('noPrice')} className={`quick-filter-pill ${quickFilter === 'noPrice' ? 'active' : ''}`}>
-            <DollarSign className="w-3 h-3" /> No Price <span className="text-[10px] opacity-70">({quickFilterCounts.noPrice})</span>
-          </button>
-          <button onClick={() => toggleQuickFilter('inactive')} className={`quick-filter-pill ${quickFilter === 'inactive' ? 'active' : ''}`}>
-            <Power className="w-3 h-3" /> Inactive <span className="text-[10px] opacity-70">({quickFilterCounts.inactive})</span>
-          </button>
+          {[
+            { key: 'lowStock', icon: AlertTriangle, label: 'Low Stock', count: stats.lowStock },
+            { key: 'outOfStock', icon: Ban, label: 'Out of Stock', count: stats.outOfStock },
+            { key: 'noPrice', icon: DollarSign, label: 'No Price', count: stats.noPrice },
+            { key: 'inactive', icon: Power, label: 'Inactive', count: stats.inactive },
+          ].map(qf => (
+            <button key={qf.key} onClick={() => toggleQuickFilter(qf.key)} className={`quick-filter-pill ${quickFilter === qf.key ? 'active' : ''}`}>
+              <qf.icon className="w-3 h-3" /> {qf.label} <span className="text-[10px] opacity-70">({qf.count})</span>
+            </button>
+          ))}
           {quickFilter && (
             <button onClick={() => setQuickFilter(null)} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 ml-1">
               <X className="w-3 h-3" /> Clear
@@ -298,11 +390,11 @@ export default function ProductCatalog() {
           )}
         </div>
 
-        {/* Search & Filters */}
+        {/* ─── Search & Filters ─── */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search by name, SKU, code..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-11 bg-card border-border" />
+            <Input placeholder="Search by name, SKU, code..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-10 bg-card border-border" />
           </div>
           <div className="flex items-center gap-2">
             <MultiSelectFilter label="Category" options={categoryOptions} selected={categoryFilter} onChange={setCategoryFilter} />
@@ -311,12 +403,12 @@ export default function ProductCatalog() {
           </div>
         </div>
 
-        {/* Active filter pills */}
-        {(categoryFilter.length > 0 || stockStatusFilter.length > 0 || quickFilter) && (
-          <div className="flex flex-wrap gap-1.5">
+        {/* ─── Active filter pills ─── */}
+        {hasFilters && (
+          <div className="flex flex-wrap gap-1.5 items-center">
             {categoryFilter.map(c => (
               <Badge key={c} variant="secondary" className="gap-1 cursor-pointer text-xs hover:bg-destructive/10 hover:text-destructive transition-colors border border-border" onClick={() => setCategoryFilter(prev => prev.filter(x => x !== c))}>
-                Category: {c} <X className="w-3 h-3" />
+                {c} <X className="w-3 h-3" />
               </Badge>
             ))}
             {stockStatusFilter.map(s => (
@@ -328,11 +420,9 @@ export default function ProductCatalog() {
           </div>
         )}
 
-        {/* ─── ALL TAB ─── */}
-        <TabsContent value="all" className="space-y-0">
-          {isLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
-          ) : (
+        {/* ═══════ ALL TAB ═══════ */}
+        <TabsContent value="all" className="mt-0">
+          {isLoading ? <LoadingSkeleton /> : (
             <AllProductsHierarchy
               goods={filteredGoods}
               dishes={filteredDishes}
@@ -343,10 +433,10 @@ export default function ProductCatalog() {
           )}
         </TabsContent>
 
-        {/* ─── GOODS TAB ─── */}
-        <TabsContent value="goods" className="space-y-0">
-          {isLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
+        {/* ═══════ GOODS TAB ═══════ */}
+        <TabsContent value="goods" className="mt-0">
+          {isLoading ? <LoadingSkeleton /> : filteredGoods.length === 0 ? (
+            <EmptyTab icon={BoxIcon} label="No goods match your filters" />
           ) : (
             <div className="rounded-xl border border-border overflow-hidden bg-card">
               <DataTable
@@ -363,10 +453,10 @@ export default function ProductCatalog() {
           )}
         </TabsContent>
 
-        {/* ─── DISHES TAB ─── */}
-        <TabsContent value="dishes" className="space-y-0">
-          {isLoading ? (
-            <div className="space-y-2">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 rounded-lg" />)}</div>
+        {/* ═══════ DISHES TAB ═══════ */}
+        <TabsContent value="dishes" className="mt-0">
+          {isLoading ? <LoadingSkeleton /> : filteredDishes.length === 0 ? (
+            <EmptyTab icon={UtensilsCrossed} label="No dishes match your filters" />
           ) : (
             <div className="rounded-xl border border-border overflow-hidden bg-card">
               <DataTable
@@ -384,9 +474,9 @@ export default function ProductCatalog() {
         </TabsContent>
       </Tabs>
 
-      {/* Bulk Actions Bar */}
+      {/* ─── Bulk Actions ─── */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card border-2 border-primary/30 rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 animate-fade-in">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-card border-2 border-primary/30 rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4 animate-fade-in backdrop-blur-sm">
           <div className="flex items-center gap-2">
             <CheckSquare className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium">{selectedIds.size} selected</span>
@@ -402,19 +492,41 @@ export default function ProductCatalog() {
   );
 }
 
-/* ─── ALL Tab: Hierarchical Goods → Dishes view ─── */
+/* ═══════════════════════════════════════════════════
+   Shared sub-components
+   ═══════════════════════════════════════════════════ */
+
+function LoadingSkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <Skeleton key={i} className="h-12 rounded-lg" style={{ opacity: 1 - i * 0.1 }} />
+      ))}
+    </div>
+  );
+}
+
+function EmptyTab({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
+  return (
+    <div className="text-center py-20 text-muted-foreground">
+      <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-muted/50 flex items-center justify-center">
+        <Icon className="w-8 h-8 opacity-40" />
+      </div>
+      <p className="text-sm">{label}</p>
+      <p className="text-xs text-muted-foreground/60 mt-1">Try adjusting your search or filters</p>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════
+   ALL Tab — Hierarchical Goods → Dishes
+   ═══════════════════════════════════════════════════ */
 
 function AllProductsHierarchy({
-  goods,
-  dishes,
-  goodsToDishesMap,
-  orphanDishes,
-  navigate,
+  goods, dishes, goodsToDishesMap, orphanDishes, navigate,
 }: {
-  goods: Product[];
-  dishes: Product[];
-  goodsToDishesMap: Map<string, Product[]>;
-  orphanDishes: Product[];
+  goods: Product[]; dishes: Product[];
+  goodsToDishesMap: Map<string, Product[]>; orphanDishes: Product[];
   navigate: (path: string) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -427,34 +539,35 @@ function AllProductsHierarchy({
     });
   };
 
-  const expandAll = () => {
-    const ids = goods.filter(g => (goodsToDishesMap.get(g.id)?.length || 0) > 0).map(g => g.id);
-    setExpanded(new Set(ids));
-  };
+  const expandableIds = useMemo(
+    () => goods.filter(g => (goodsToDishesMap.get(g.id)?.length || 0) > 0).map(g => g.id),
+    [goods, goodsToDishesMap]
+  );
+
+  const expandAll = () => setExpanded(new Set(expandableIds));
   const collapseAll = () => setExpanded(new Set());
 
-  const hasExpandable = goods.some(g => (goodsToDishesMap.get(g.id)?.length || 0) > 0);
-
   if (goods.length === 0 && dishes.length === 0) {
-    return (
-      <div className="text-center py-16 text-muted-foreground">
-        <Package className="w-12 h-12 mx-auto mb-3 opacity-50" />
-        <p>No products found. Run a Syrve sync first.</p>
-      </div>
-    );
+    return <EmptyTab icon={Package} label="No products found. Run a Syrve sync first." />;
   }
 
   return (
-    <div>
-      {hasExpandable && (
-        <div className="flex items-center justify-end gap-2 mb-2">
-          <Button variant="ghost" size="sm" className="text-xs h-7" onClick={expandAll}>Expand All</Button>
-          <Button variant="ghost" size="sm" className="text-xs h-7" onClick={collapseAll}>Collapse All</Button>
+    <div className="space-y-2">
+      {expandableIds.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            {goods.length} goods · {dishes.length} dishes · {orphanDishes.length} unlinked
+          </p>
+          <div className="flex gap-1">
+            <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={expandAll}>Expand All</Button>
+            <Button variant="ghost" size="sm" className="text-xs h-7 px-2" onClick={collapseAll}>Collapse All</Button>
+          </div>
         </div>
       )}
+
       <div className="rounded-xl border border-border overflow-hidden bg-card">
         {/* Header */}
-        <div className="grid grid-cols-[40px_1fr_100px_80px_80px_80px_40px] gap-2 px-4 py-2.5 bg-muted/50 border-b border-border text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <div className="grid grid-cols-[36px_1fr_120px_80px_90px_80px_36px] gap-2 px-4 py-2.5 bg-muted/50 border-b border-border text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
           <div />
           <div>Product</div>
           <div>Category</div>
@@ -464,7 +577,7 @@ function AllProductsHierarchy({
           <div />
         </div>
 
-        {/* Goods rows with expandable dishes */}
+        {/* Goods rows */}
         {goods.map(g => {
           const linkedDishes = goodsToDishesMap.get(g.id) || [];
           const isExpanded = expanded.has(g.id);
@@ -472,26 +585,33 @@ function AllProductsHierarchy({
 
           return (
             <div key={g.id}>
-              {/* Goods Row */}
               <div
-                className="grid grid-cols-[40px_1fr_100px_80px_80px_80px_40px] gap-2 items-center px-4 py-2.5 border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer group"
+                className="grid grid-cols-[36px_1fr_120px_80px_90px_80px_36px] gap-2 items-center px-4 py-2.5 border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer group"
                 onClick={() => navigate(`/products/${g.id}`)}
               >
-                <div onClick={e => { e.stopPropagation(); if (hasDishes) toggleExpand(g.id); }} className="flex items-center justify-center">
+                {/* Expand toggle */}
+                <div
+                  onClick={e => { e.stopPropagation(); if (hasDishes) toggleExpand(g.id); }}
+                  className={`flex items-center justify-center rounded-md w-7 h-7 transition-colors ${hasDishes ? 'hover:bg-muted cursor-pointer' : ''}`}
+                >
                   {hasDishes ? (
                     isExpanded
-                      ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                      ? <ChevronDown className="w-4 h-4 text-foreground" />
                       : <ChevronRight className="w-4 h-4 text-muted-foreground" />
                   ) : <div className="w-4" />}
                 </div>
-                <div className="flex items-center gap-2 min-w-0">
+
+                {/* Name */}
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <BoxIcon className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />
                   <span className="font-medium text-sm truncate">{g.name}</span>
                   {hasDishes && (
-                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5 shrink-0 text-amber-400 border-amber-500/30">
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 gap-0.5 shrink-0 border-amber-500/25" style={{ color: 'hsl(38 45% 60%)' }}>
                       <UtensilsCrossed className="w-3 h-3" />{linkedDishes.length}
                     </Badge>
                   )}
                 </div>
+
                 <span className="text-xs text-muted-foreground truncate">{g.categories?.name || '—'}</span>
                 <div className="text-right"><StockIndicator stock={g.current_stock} /></div>
                 <span className="text-right text-sm text-muted-foreground tabular-nums">{g.purchase_price?.toFixed(2) ?? '—'}</span>
@@ -499,56 +619,73 @@ function AllProductsHierarchy({
                 <RowActionsMenu product={g} />
               </div>
 
-              {/* Expanded Dishes */}
-              {isExpanded && linkedDishes.map(d => (
-                <div
-                  key={d.id}
-                  className="grid grid-cols-[40px_1fr_100px_80px_80px_80px_40px] gap-2 items-center px-4 py-2 border-b border-border/20 bg-amber-500/[0.03] hover:bg-amber-500/[0.06] transition-colors cursor-pointer"
-                  onClick={() => navigate(`/products/${d.id}`)}
-                >
-                  <div className="flex items-center justify-center">
-                    <div className="w-3 h-3 border-l-2 border-b-2 border-amber-500/30 rounded-bl ml-1" />
-                  </div>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <UtensilsCrossed className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span className="text-sm truncate">{d.name}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground truncate">{d.categories?.name || '—'}</span>
-                  <div className="text-right"><span className="text-muted-foreground/50 text-xs">—</span></div>
-                  <span className="text-right text-sm text-accent tabular-nums font-medium">{d.sale_price?.toFixed(2) ?? '—'}</span>
-                  <div className="flex justify-center"><TypeBadge type="DISH" /></div>
-                  <RowActionsMenu product={d} />
+              {/* Expanded child dishes */}
+              {isExpanded && (
+                <div className="border-b border-border/20">
+                  {linkedDishes.map((d, idx) => (
+                    <div
+                      key={d.id}
+                      className="grid grid-cols-[36px_1fr_120px_80px_90px_80px_36px] gap-2 items-center pl-4 pr-4 py-2 hover:bg-accent/5 transition-colors cursor-pointer group"
+                      style={{ background: 'hsl(38 45% 60% / 0.03)' }}
+                      onClick={() => navigate(`/products/${d.id}`)}
+                    >
+                      <div className="flex items-center justify-center">
+                        <div className="relative w-5 h-full flex items-center justify-center ml-1">
+                          <div className="absolute top-0 bottom-1/2 left-1/2 w-px" style={{ background: 'hsl(38 45% 60% / 0.2)' }} />
+                          <div className="absolute top-1/2 left-1/2 w-2.5 h-px" style={{ background: 'hsl(38 45% 60% / 0.2)' }} />
+                          {idx < linkedDishes.length - 1 && (
+                            <div className="absolute top-1/2 bottom-0 left-1/2 w-px" style={{ background: 'hsl(38 45% 60% / 0.2)' }} />
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <UtensilsCrossed className="w-3.5 h-3.5 shrink-0" style={{ color: 'hsl(38 45% 60%)' }} />
+                        <span className="text-sm truncate text-foreground/80">{d.name}</span>
+                      </div>
+                      <span className="text-xs text-muted-foreground truncate">{d.categories?.name || '—'}</span>
+                      <div className="text-right"><span className="text-muted-foreground/40 text-xs">—</span></div>
+                      <span className="text-right text-sm text-accent tabular-nums font-medium">{d.sale_price?.toFixed(2) ?? '—'}</span>
+                      <div className="flex justify-center"><TypeBadge type={d.product_type} /></div>
+                      <RowActionsMenu product={d} />
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           );
         })}
 
-        {/* Orphan dishes (not linked to any goods) */}
+        {/* Orphan dishes section */}
         {orphanDishes.length > 0 && (
           <>
-            <div className="px-4 py-2 bg-muted/30 border-b border-border/50 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Unlinked Dishes ({orphanDishes.length})
+            <div className="px-4 py-2.5 bg-muted/30 border-b border-border/50 flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 text-destructive/60" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Unlinked Dishes</span>
+              <Badge variant="outline" className="text-[10px] px-1.5 h-5 border-destructive/20 text-destructive/70">{orphanDishes.length}</Badge>
             </div>
             {orphanDishes.map(d => (
               <div
                 key={d.id}
-                className="grid grid-cols-[40px_1fr_100px_80px_80px_80px_40px] gap-2 items-center px-4 py-2.5 border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer"
+                className="grid grid-cols-[36px_1fr_120px_80px_90px_80px_36px] gap-2 items-center px-4 py-2.5 border-b border-border/30 hover:bg-muted/20 transition-colors cursor-pointer group"
                 onClick={() => navigate(`/products/${d.id}`)}
               >
                 <div />
                 <div className="flex items-center gap-2">
-                  <UtensilsCrossed className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <UtensilsCrossed className="w-4 h-4 shrink-0" style={{ color: 'hsl(38 45% 60%)' }} />
                   <span className="text-sm font-medium truncate">{d.name}</span>
                 </div>
                 <span className="text-xs text-muted-foreground truncate">{d.categories?.name || '—'}</span>
-                <div className="text-right"><span className="text-muted-foreground/50 text-xs">—</span></div>
+                <div className="text-right"><span className="text-muted-foreground/40 text-xs">—</span></div>
                 <span className="text-right text-sm text-accent tabular-nums font-medium">{d.sale_price?.toFixed(2) ?? '—'}</span>
-                <div className="flex justify-center"><TypeBadge type="DISH" /></div>
+                <div className="flex justify-center"><TypeBadge type={d.product_type} /></div>
                 <RowActionsMenu product={d} />
               </div>
             ))}
           </>
+        )}
+
+        {goods.length === 0 && orphanDishes.length === 0 && (
+          <div className="py-16 text-center text-muted-foreground text-sm">No products match your filters</div>
         )}
       </div>
     </div>
