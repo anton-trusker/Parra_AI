@@ -254,6 +254,37 @@ export function useSyrveBarcodeCount() {
   });
 }
 
+export function useLastSyncStats() {
+  return useQuery({
+    queryKey: ['last_sync_stats'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('syrve_sync_runs')
+        .select('*')
+        .eq('status', 'success')
+        .order('finished_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data as SyrveSyncRun | null;
+    },
+  });
+}
+
+export function useProductCount() {
+  return useQuery({
+    queryKey: ['product_count'],
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
+      if (error) throw error;
+      return count || 0;
+    },
+  });
+}
+
 export interface SyrveApiLog {
   id: string;
   action_type: string;

@@ -141,10 +141,18 @@ serve(async (req) => {
           await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
         }
 
-        // Fetch stock for ALL selected stores
+        // Fetch stock for ALL selected stores (or all stores if none selected)
         if (fieldMapping.sync_stock !== false) {
           await updateProgress('fetching_stock', 85);
-          const storeIds = config.selected_store_ids || (config.default_store_id ? [config.default_store_id] : []);
+          let storeIds = config.selected_store_ids || [];
+          if (storeIds.length === 0 && config.default_store_id) {
+            storeIds = [config.default_store_id];
+          }
+          // If still no specific stores, fetch all from DB
+          if (storeIds.length === 0) {
+            const { data: allStores } = await adminClient.from("stores").select("syrve_store_id").eq("is_active", true);
+            storeIds = (allStores || []).map((s: any) => s.syrve_store_id);
+          }
           for (const sid of storeIds) {
             await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, sid);
           }
@@ -162,10 +170,15 @@ serve(async (req) => {
         await updateProgress('fetching_prices', 30);
         await syncPrices(adminClient, serverUrl, syrveToken!, syncRun?.id, stats);
 
-        const storeIds = config.selected_store_ids || (config.default_store_id ? [config.default_store_id] : []);
-        if (storeIds.length > 0) {
+        let psStoreIds = config.selected_store_ids || [];
+        if (psStoreIds.length === 0 && config.default_store_id) psStoreIds = [config.default_store_id];
+        if (psStoreIds.length === 0) {
+          const { data: allStores } = await adminClient.from("stores").select("syrve_store_id").eq("is_active", true);
+          psStoreIds = (allStores || []).map((s: any) => s.syrve_store_id);
+        }
+        if (psStoreIds.length > 0) {
           await updateProgress('fetching_stock', 60);
-          for (const sid of storeIds) {
+          for (const sid of psStoreIds) {
             await syncStock(adminClient, serverUrl, syrveToken!, syncRun?.id, stats, sid);
           }
         }
@@ -480,6 +493,8 @@ async function syncProducts(
 
     const parentGroupId = product.parent || product.parentId;
 
+    // Category filter: skip if product HAS a category but it's not in the selected set
+    // Products WITHOUT a category (null/empty parentGroupId) are always imported
     if (selectedSyrveIds && parentGroupId && !selectedSyrveIds.has(parentGroupId)) {
       stats.skipped = (stats.skipped || 0) + 1;
       continue;

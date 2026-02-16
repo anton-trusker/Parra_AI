@@ -165,6 +165,79 @@ serve(async (req) => {
       }
     }
 
+    // 5c. Fetch and save categories (product groups hierarchy)
+    let categoriesCount = 0;
+    try {
+      const catUrl = `${server_url}/v2/entities/products/group/list?includeDeleted=false&key=${syrveToken}`;
+      const catResp = await fetch(catUrl);
+      if (catResp.ok) {
+        const catText = await catResp.text();
+        let groups: any[];
+        try {
+          groups = JSON.parse(catText);
+          if (!Array.isArray(groups)) groups = [groups];
+        } catch {
+          groups = parseXmlItems(catText, "groupDto");
+        }
+
+        if (groups.length > 0) {
+          const adminClient2 = createClient(
+            Deno.env.get("SUPABASE_URL")!,
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+          );
+
+          for (const group of groups) {
+            const syrveId = group.id || group.groupId;
+            if (!syrveId) continue;
+
+            await adminClient2.from("categories").upsert({
+              syrve_group_id: syrveId,
+              name: group.name || "Unknown",
+              parent_syrve_id: group.parentId || group.parent || null,
+              is_deleted: group.deleted || false,
+              is_active: !(group.deleted || false),
+              syrve_data: group,
+              synced_at: new Date().toISOString(),
+            }, { onConflict: "syrve_group_id" });
+
+            categoriesCount++;
+          }
+
+          // Resolve parent_id references
+          const { data: allCats } = await adminClient2.from("categories").select("id, syrve_group_id, parent_syrve_id");
+          if (allCats) {
+            const lookup = new Map(allCats.map((c: any) => [c.syrve_group_id, c.id]));
+            for (const cat of allCats) {
+              if (cat.parent_syrve_id && lookup.has(cat.parent_syrve_id)) {
+                await adminClient2.from("categories").update({ parent_id: lookup.get(cat.parent_syrve_id) }).eq("id", cat.id);
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching categories:", e);
+    }
+
+    // Save stores to DB
+    if (stores.length > 0) {
+      const adminClient3 = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+      );
+      for (const store of stores) {
+        if (!store.id) continue;
+        await adminClient3.from("stores").upsert({
+          syrve_store_id: store.id,
+          name: store.name || "Unknown",
+          code: store.code || null,
+          store_type: store.type || null,
+          syrve_data: store,
+          synced_at: new Date().toISOString(),
+        }, { onConflict: "syrve_store_id" });
+      }
+    }
+
     // 6. Always logout to release license
     try {
       await fetch(`${server_url}/logout?key=${syrveToken}`);
@@ -181,6 +254,7 @@ serve(async (req) => {
       departments,
       business_info: businessInfo,
       measurement_units: measurementUnits.length,
+      categories_count: categoriesCount,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
