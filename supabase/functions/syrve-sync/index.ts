@@ -886,6 +886,20 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
       if (error) console.error("Stock upsert error:", error.message);
     }
 
+    // Also update products.current_stock with total stock across all stores
+    // Aggregate by product_id from the batch we just upserted
+    const productStockMap = new Map<string, number>();
+    for (const sl of stockBatch) {
+      productStockMap.set(sl.product_id, (productStockMap.get(sl.product_id) || 0) + (Number(sl.quantity) || 0));
+    }
+    const productUpdates = Array.from(productStockMap.entries());
+    for (let i = 0; i < productUpdates.length; i += BATCH_SIZE) {
+      const batch = productUpdates.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(([pid, qty]) =>
+        client.from("products").update({ current_stock: qty, stock_updated_at: new Date().toISOString() }).eq("id", pid)
+      ));
+    }
+
     console.log(`Stock: matched ${stats.stock_updated}, unmatched ${unmatchedProducts} for store ${storeId}`);
   } catch (e) {
     console.error("syncStock error:", e);
