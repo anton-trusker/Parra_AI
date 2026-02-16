@@ -18,6 +18,9 @@ export interface Product {
   current_stock: number | null;
   unit_capacity: number | null;
   main_unit_id: string | null;
+  parent_product_id: string | null;
+  is_marked: boolean;
+  is_by_glass: boolean;
   syrve_data: any;
   metadata: any;
   synced_at: string | null;
@@ -27,6 +30,7 @@ export interface Product {
   stock_updated_at: string | null;
   not_in_store_movement: boolean | null;
   categories?: { name: string } | null;
+  parent_product?: { id: string; name: string; product_type: string | null }[] | { id: string; name: string; product_type: string | null } | null;
 }
 
 export interface ProductBarcode {
@@ -40,6 +44,15 @@ export interface ProductBarcode {
   created_at: string | null;
 }
 
+export interface ProductStockByStore {
+  id: string;
+  store_id: string;
+  quantity: number;
+  unit_cost: number | null;
+  last_synced_at: string | null;
+  stores: { id: string; name: string; store_type: string | null } | null;
+}
+
 export function useProducts(filters?: {
   search?: string;
   productType?: string[];
@@ -51,7 +64,11 @@ export function useProducts(filters?: {
     queryFn: async () => {
       let query = supabase
         .from('products')
-        .select('*, categories!products_category_id_fkey(name, is_active, is_deleted)')
+        .select(`
+          *,
+          categories!products_category_id_fkey(name, is_active, is_deleted),
+          parent_product:products!products_parent_product_id_fkey(id, name, product_type)
+        `)
         .eq('is_deleted', false)
         .order('name');
 
@@ -68,7 +85,11 @@ export function useProducts(filters?: {
 
       const { data, error } = await query.limit(500);
       if (error) throw error;
-      return ((data || []) as Product[]).filter(p => {
+      return ((data || []) as unknown as Product[]).filter(p => {
+        // Normalize parent_product from array to single object
+        if (Array.isArray(p.parent_product)) {
+          p.parent_product = p.parent_product[0] || null;
+        }
         if (!p.categories) return true;
         const cat = p.categories as any;
         return cat.is_active !== false && cat.is_deleted !== true;
@@ -84,13 +105,57 @@ export function useProduct(id: string | undefined) {
       if (!id) return null;
       const { data, error } = await supabase
         .from('products')
-        .select('*, categories!products_category_id_fkey(name)')
+        .select(`
+          *,
+          categories!products_category_id_fkey(name),
+          parent_product:products!products_parent_product_id_fkey(id, name, product_type)
+        `)
         .eq('id', id)
         .single();
       if (error) throw error;
-      return data as Product;
+      const product = data as unknown as Product;
+      // Normalize parent_product from array to single object
+      if (Array.isArray(product.parent_product)) {
+        product.parent_product = product.parent_product[0] || null;
+      }
+      return product;
     },
     enabled: !!id,
+  });
+}
+
+export function useProductChildren(parentId: string | undefined) {
+  return useQuery({
+    queryKey: ['product_children', parentId],
+    queryFn: async () => {
+      if (!parentId) return [];
+      const { data, error } = await supabase
+        .from('products')
+        .select('id, name, product_type, sale_price, current_stock, unit_capacity')
+        .eq('parent_product_id', parentId)
+        .eq('is_deleted', false)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!parentId,
+  });
+}
+
+export function useProductStockByStore(productId: string | undefined) {
+  return useQuery({
+    queryKey: ['product_stock_by_store', productId],
+    queryFn: async () => {
+      if (!productId) return [];
+      const { data, error } = await supabase
+        .from('stock_levels')
+        .select('id, store_id, quantity, unit_cost, last_synced_at, stores(id, name, store_type)')
+        .eq('product_id', productId)
+        .order('quantity', { ascending: false });
+      if (error) throw error;
+      return (data || []) as ProductStockByStore[];
+    },
+    enabled: !!productId,
   });
 }
 
