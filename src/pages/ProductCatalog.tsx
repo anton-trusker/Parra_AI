@@ -44,27 +44,26 @@ function getContainerVolume(syrveData: any): number | null {
   return primary?.count != null ? Number(primary.count) : null;
 }
 
-/** Format stock with qty: "3 kg · Qty: 2.25" */
-function formatStockWithQty(stock: number | null, syrveData: any, mainUnitName?: string | null): { label: string; qty: string | null } {
-  if (stock === null || stock === undefined) return { label: '—', qty: null };
-  const containerVol = getContainerVolume(syrveData);
-  const unit = mainUnitName || syrveData?.mainUnit || '';
-  const qtyStr = containerVol ? `${(stock * containerVol).toFixed(2)}` : null;
-  return { label: `${stock}${unit ? ` ${unit}` : ''}`, qty: qtyStr };
+/** Get primary container name from syrve_data */
+function getContainerName(syrveData: any): string | null {
+  const containers = syrveData?.containers;
+  if (!Array.isArray(containers) || containers.length === 0) return null;
+  const primary = containers.find((c: any) => !c.deleted) || containers[0];
+  return primary?.name || null;
 }
 
-function StockIndicator({ stock, syrveData, mainUnitName }: { stock: number | null; syrveData?: any; mainUnitName?: string | null }) {
-  if (stock === null || stock === undefined) return <span className="text-muted-foreground">—</span>;
-  const { label, qty } = formatStockWithQty(stock, syrveData, mainUnitName);
+/** Stock indicator – shows value + unit with color coding */
+function StockIndicator({ value, unit }: { value: number | null; unit?: string }) {
+  if (value === null || value === undefined) return <span className="text-muted-foreground">—</span>;
+  const label = `${value}${unit ? ` ${unit}` : ''}`;
   const indicator = (colorVar: string, pulse = false) => (
     <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: `hsl(var(${colorVar}))` }}>
       <span className={`w-2 h-2 rounded-full ${pulse ? 'animate-pulse' : ''}`} style={{ background: `hsl(var(${colorVar}))` }} />
       <span className="tabular-nums">{label}</span>
-      {qty && <span className="text-[10px] font-normal text-muted-foreground ml-0.5">Qty: {qty}</span>}
     </span>
   );
-  if (stock <= 0) return indicator('--destructive', true);
-  if (stock < 5) return indicator('--wine-warning');
+  if (value <= 0) return indicator('--destructive', true);
+  if (value < 5) return indicator('--wine-warning');
   return indicator('--wine-success');
 }
 
@@ -139,6 +138,7 @@ const GOODS_COL_DEFS: ColumnDef[] = [
   { key: 'containers', label: 'Containers' },
   { key: 'purchase_price', label: 'Purchase Price' },
   { key: 'stock', label: 'Stock' },
+  { key: 'qty', label: 'Qty' },
   { key: 'dishes_count', label: 'Dishes' },
   { key: 'synced_at', label: 'Synced At' },
 ];
@@ -308,7 +308,21 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'purchase_price', label: 'Cost', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
-    { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} syrveData={p.syrve_data} mainUnitName={resolveUnitName(p.main_unit_id, unitsMap)} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
+    { key: 'stock', label: 'Stock', align: 'right', render: p => {
+      const unitName = resolveUnitName(p.main_unit_id, unitsMap) || p.syrve_data?.mainUnit || '';
+      return <StockIndicator value={p.current_stock} unit={unitName} />;
+    }, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
+    { key: 'qty', label: 'Qty', align: 'right', render: p => {
+      const containerCount = getContainerVolume(p.syrve_data);
+      const containerName = getContainerName(p.syrve_data);
+      if (containerCount == null || p.current_stock == null) return <span className="text-muted-foreground">—</span>;
+      const qty = p.current_stock * containerCount;
+      return <span className="tabular-nums text-muted-foreground">{qty.toFixed(2)}{containerName ? ` ${containerName}` : ''}</span>;
+    }, sortFn: (a, b) => {
+      const aVol = getContainerVolume(a.syrve_data);
+      const bVol = getContainerVolume(b.syrve_data);
+      return ((a.current_stock || 0) * (aVol || 0)) - ((b.current_stock || 0) * (bVol || 0));
+    }},
     { key: 'dishes_count', label: 'Dishes', align: 'center', render: p => {
       const count = goodsToDishesMap.get(p.id)?.length || 0;
       return count > 0 ? <span className="font-medium tabular-nums" style={{ color: 'hsl(38 45% 60%)' }}>{count}</span> : <span className="text-muted-foreground/40">—</span>;
@@ -365,7 +379,7 @@ export default function ProductCatalog() {
     { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
   ], [selectedIds, navigate, unitsMap]);
 
-  const goodsVisibleCols = useMemo(() => ['select', 'name', 'sku', 'category', 'store', 'unit', 'unit_capacity', 'stock', 'dishes_count', 'actions'], []);
+  const goodsVisibleCols = useMemo(() => ['select', 'name', 'sku', 'category', 'store', 'unit', 'unit_capacity', 'stock', 'qty', 'dishes_count', 'actions'], []);
   const dishesVisibleCols = useMemo(() => ['select', 'name', 'code', 'category', 'store', 'parent', 'sale_price', 'unit', 'actions'], []);
 
   const hasFilters = categoryFilter.length > 0 || stockStatusFilter.length > 0 || !!quickFilter;
