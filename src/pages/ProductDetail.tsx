@@ -56,7 +56,7 @@ export default function ProductDetail() {
   const mainUnitLabel = resolveUnitName(product.main_unit_id, unitsMap) || syrveData.mainUnit || '';
 
   const totalStoreStock = stockByStore.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0);
-  const totalAmount = containerVolume ? totalStoreStock * containerVolume : null;
+  const totalAmount = containerVolume ? totalStoreStock / containerVolume : null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
@@ -186,7 +186,7 @@ export default function ProductDetail() {
                   </div>
                   {stockByStore.map(s => {
                     const qty = Number(s.quantity) || 0;
-                    const amt = containerVolume ? qty * containerVolume : null;
+                    const amt = containerVolume ? qty / containerVolume : null;
                     return (
                       <div key={s.id} className="grid grid-cols-5 gap-2 py-2.5 border-b border-border/30 last:border-0 text-sm px-1">
                         <span className="font-medium">{s.stores?.name || 'Unknown'}</span>
@@ -220,7 +220,7 @@ export default function ProductDetail() {
               <h3 className="text-sm font-semibold text-foreground mb-3">Summary</h3>
               <div className="grid grid-cols-3 gap-4">
                 <InfoRow label="Total Stock" value={`${totalStoreStock || product.current_stock || 0}${mainUnitLabel ? ` ${mainUnitLabel}` : ''}`} highlight />
-                <InfoRow label="Total Qty" value={totalAmount != null ? totalAmount.toFixed(2) : (product.unit_capacity && product.current_stock ? (product.current_stock * product.unit_capacity).toFixed(2) : null)} />
+                <InfoRow label="Total Qty" value={totalAmount != null ? totalAmount.toFixed(2) : (product.unit_capacity && product.current_stock ? (product.current_stock / product.unit_capacity).toFixed(2) : null)} />
                 <InfoRow label="Not in Store Movement" value={product.not_in_store_movement ? 'Yes' : 'No'} />
                 <InfoRow label="Last Stock Update" value={product.stock_updated_at ? new Date(product.stock_updated_at).toLocaleDateString() : null} />
               </div>
