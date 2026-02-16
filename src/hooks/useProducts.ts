@@ -66,8 +66,7 @@ export function useProducts(filters?: {
         .from('products')
         .select(`
           *,
-          categories!products_category_id_fkey(name, is_active, is_deleted),
-          parent_product:products!products_parent_product_id_fkey(id, name, product_type)
+          categories!products_category_id_fkey(name, is_active, is_deleted)
         `)
         .eq('is_deleted', false)
         .order('name');
@@ -83,12 +82,26 @@ export function useProducts(filters?: {
         query = query.eq('category_id', filters.categoryId);
       }
 
-      const { data, error } = await query.limit(500);
+      const { data, error } = await query.limit(2000);
       if (error) throw error;
-      return ((data || []) as unknown as Product[]).filter(p => {
-        // Normalize parent_product from array to single object
-        if (Array.isArray(p.parent_product)) {
-          p.parent_product = p.parent_product[0] || null;
+
+      const products = (data || []) as unknown as Product[];
+
+      // Build parent lookup from the same dataset
+      const parentIds = new Set(products.map(p => p.parent_product_id).filter(Boolean) as string[]);
+      const parentLookup = new Map<string, { id: string; name: string; product_type: string | null }>();
+      for (const p of products) {
+        if (parentIds.has(p.id)) {
+          parentLookup.set(p.id, { id: p.id, name: p.name, product_type: p.product_type });
+        }
+      }
+
+      return products.filter(p => {
+        // Attach parent_product from lookup
+        if (p.parent_product_id && parentLookup.has(p.parent_product_id)) {
+          p.parent_product = parentLookup.get(p.parent_product_id)!;
+        } else {
+          p.parent_product = null;
         }
         if (!p.categories) return true;
         const cat = p.categories as any;
@@ -107,16 +120,22 @@ export function useProduct(id: string | undefined) {
         .from('products')
         .select(`
           *,
-          categories!products_category_id_fkey(name),
-          parent_product:products!products_parent_product_id_fkey(id, name, product_type)
+          categories!products_category_id_fkey(name)
         `)
         .eq('id', id)
         .single();
       if (error) throw error;
       const product = data as unknown as Product;
-      // Normalize parent_product from array to single object
-      if (Array.isArray(product.parent_product)) {
-        product.parent_product = product.parent_product[0] || null;
+      // Fetch parent product separately if needed
+      if (product.parent_product_id) {
+        const { data: parent } = await supabase
+          .from('products')
+          .select('id, name, product_type')
+          .eq('id', product.parent_product_id)
+          .maybeSingle();
+        product.parent_product = parent || null;
+      } else {
+        product.parent_product = null;
       }
       return product;
     },
