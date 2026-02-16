@@ -1,117 +1,156 @@
 
+# Separate Product Types with Enriched Views and Default Stock Filter
 
-# Syrve Integration Improvements
+## Overview
 
-## Summary
+Split the unified product catalog into dedicated pages for **Goods** and **Dishes**, each backed by its own database view that extracts commonly needed fields from `syrve_data` JSON. The Products page defaults to showing only items with available stock. Categories get type-aware tabs. The Syrve integration settings gain per-type category selection.
 
-Enhance the Syrve Settings page with smarter category filtering, better re-import options, refresh buttons per section, a "Clean All" reset, dynamic product type detection, and fixes to ensure full category hierarchy import with proper parent linking.
+## Current State
 
----
+- 1,370 GOODS products (391 with stock > 0)
+- 1,399 DISH products (1 with stock > 0)
+- One `v_stock_summary` view exists for GOODS with stock > 0
+- ProductCatalog page has Goods/Dishes tabs in one view
+- Categories page shows all categories as one tree
+- `syrve_data` JSON contains useful fields that are parsed in frontend code (containers, mainUnit, parent, unitWeight, etc.)
 
-## Changes Overview
+## Planned Changes
 
-### 1. Categories: Show "with products" by default + toggle to view all
+### 1. Database: Create Two Enriched Views
 
-- Add a `product_count` indicator per category by querying `products` table grouped by `category_id`
-- Default the category picker to highlight/filter categories that have products in the selected warehouses
-- Add a toggle: "Show categories with products" (default ON) vs "Show all categories"
-- This is a frontend-only enhancement on the CategoryTreePicker component
+**`v_goods_catalog`** -- All GOODS products with extracted syrve_data fields:
 
-### 2. Refresh buttons on Warehouses and Categories sections
+```text
+Columns:
+  product_id, name, sku, code, category_id, category_name,
+  main_unit_id, unit_capacity, purchase_price, sale_price,
+  is_active, parent_product_id, synced_at,
+  -- Extracted from syrve_data:
+  syrve_id, container_name, container_count (volume per container),
+  unit_weight, accounting_category_id,
+  -- Aggregated from stock_levels:
+  total_stock, total_value, store_count
+```
 
-- Add a small refresh icon button next to each section header (Warehouses, Categories)
-- Clicking it calls `syrve-sync` with `sync_type: 'stores'` or `sync_type: 'categories'` respectively, re-fetching from Syrve and updating the DB
-- After completion, invalidate the relevant query cache to update the picker
+**`v_dishes_catalog`** -- All DISH/PREPARED products with extracted fields:
 
-### 3. Improved Re-import Mode (compact UI + clearer options)
+```text
+Columns:
+  product_id, name, sku, code, category_id, category_name,
+  main_unit_id, unit_capacity, sale_price, default_sale_price,
+  is_active, parent_product_id, synced_at,
+  -- Extracted from syrve_data:
+  syrve_id, unit_weight, place_type, included_in_menu,
+  -- Resolved from parent:
+  parent_name, parent_product_type
+```
 
-Replace the current 4-option grid (merge/hide/replace/fresh) with 2 clear actions:
+**`selected_category_ids_by_type`** -- Add JSONB column to `syrve_config` for per-type category selections.
 
-- **"Save & Import"** (default button) -- Imports new products, updates existing ones. Products no longer matching the selection are marked `is_active = false` (soft deactivate, data preserved). They won't show in results but data remains.
-- **"Clean Import"** -- A separate destructive button that deletes ALL Syrve-sourced data (products, barcodes, stock_levels, categories, stores, measurement_units, syrve_raw_objects) and runs a fresh bootstrap import from scratch.
+### 2. Navigation Changes
 
-This replaces the confusing merge/hide/replace/fresh grid with two clear, distinct actions.
+Update sidebar and routes:
 
-### 4. "Clean All Data" button
+```text
+Inventory
+  Products        /products        (GOODS only, default: in-stock)
+  Dishes          /dishes          (DISH/PREPARED)
+  Stock           /stock           (unchanged)
+  Categories      /categories      (tabbed: Goods | Dishes)
+  By Store        /inventory/by-store
+  Sessions        /inventory/checks
+  Count Now       /count
+  AI Scans        /inventory/ai-scans
+```
 
-- Add a "Clean All Syrve Data" button (with confirmation dialog) that truncates all Syrve integration tables:
-  - `products` (where syrve_product_id is not null)
-  - `product_barcodes` (source = 'syrve')
-  - `stock_levels` (source = 'syrve')
-  - `categories`
-  - `stores`
-  - `measurement_units`
-  - `syrve_raw_objects`
-  - `syrve_sync_runs`
-  - `syrve_api_logs`
-- Resets `syrve_config.connection_status` to `'not_configured'`
-- This effectively returns the system to a pre-integration state
+### 3. Products Page (Goods Only)
 
-### 5. Dynamic product types from Syrve
+Refactor `ProductCatalog.tsx`:
+- Remove Goods/Dishes tab switcher
+- Query from `v_goods_catalog` view instead of joining products + stock_levels in hooks
+- **Default filter: show only products with stock > 0** (toggle "Show all" to see zero-stock items)
+- Stats cards update: Total Goods, In Stock, Low Stock, Out of Stock
+- Container info comes directly from view columns (no more JSON parsing in render)
+- Quick filter chips: "In Stock" (default active), "Low Stock", "Out of Stock", "No Price"
 
-- Currently the `PRODUCT_TYPES` list is hardcoded to 5 values (GOODS, DISH, MODIFIER, PREPARED, SERVICE)
-- During `syrve-connect-test`, extract unique product types from the fetched product list and return them
-- On the frontend, merge hardcoded defaults with any additional types discovered from Syrve
-- Alternative (simpler): query distinct `product_type` from `products` table and from `syrve_raw_objects` to build the list dynamically
+### 4. New Dishes Page
 
-### 6. Full category import verification
+Create `src/pages/DishesPage.tsx`:
+- Query from `v_dishes_catalog` view
+- Columns: Name, Code, Category, Linked Goods (parent_name), Sale Price, Default Sale Price, Unit, Volume, In Menu, Synced At
+- Stats: Total Dishes, Linked to Goods, Unlinked, With Price
+- Quick filters: "No Price", "Unlinked", "Not in Menu"
+- Row click navigates to `/products/:id` (detail page already handles both types)
 
-**Current issue**: The category sync uses `/v2/entities/products/group/list` which returns product groups. Per the Syrve API docs, there's also `rootType=ProductGroup` via `/v2/entities/list`. The current endpoint should return the full hierarchy.
+### 5. Categories Page -- Tabbed by Type
 
-**Fix**: Ensure the `syncCategories` function and `syrve-connect-test` category import:
-- Use `includeDeleted=true` to get ALL groups (then mark deleted ones as inactive)
-- Parse both `parentId` and `parent` fields from the response (already done)
-- After upserting, re-resolve ALL parent_id references (not just those with parent_syrve_id) to catch any orphaned links
-- Add logging of how many root vs child categories were imported
+Update `CategoriesPage.tsx`:
+- Add tabs: "Goods" and "Dishes"
+- Pass `productType` filter to `useCategoriesWithCounts` hook
+- Each tab shows only categories containing products of that type (and their ancestors)
+- Product counts reflect only the relevant type
 
-### 7. Parent/UUID linking verification in sync
+### 6. Syrve Settings -- Per-Type Category Selection
 
-- After category sync: verify all `parent_syrve_id` values resolve to valid `parent_id` UUIDs. Log any orphans.
-- After product sync: verify all `main_unit_id` values are resolved from Syrve GUIDs to internal UUIDs. Log any unresolved.
-- After stock sync: verify `store_id` and `product_id` references are valid.
+Update the import configuration section:
+- After selecting product types, show a separate `CategoryTreePicker` for each selected type
+- Save selections to `selected_category_ids_by_type` JSONB field
+- Fall back to `selected_category_ids` when the new field is absent
+
+### 7. Hook Updates
+
+- Add `useGoodsCatalog(search?, showAll?)` hook querying `v_goods_catalog`
+- Add `useDishesCatalog(search?)` hook querying `v_dishes_catalog`
+- Update `useCategoriesWithCounts` to accept optional `productType` parameter
+- Keep existing `useProducts` for backward compatibility (used in count, detail, etc.)
 
 ---
 
 ## Technical Details
 
-### Files to Modify
+### New Database Objects (Migration)
+
+| Object | Type | Purpose |
+|--------|------|---------|
+| `v_goods_catalog` | VIEW | Enriched goods with extracted JSON + aggregated stock |
+| `v_dishes_catalog` | VIEW | Enriched dishes with parent resolution |
+| `selected_category_ids_by_type` | COLUMN | Per-type category selection in syrve_config |
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `src/pages/DishesPage.tsx` | Dedicated dishes catalog page |
+| `src/hooks/useCatalogViews.ts` | Hooks for the two new views |
+
+### Modified Files
 
 | File | Changes |
 |------|---------|
-| `src/pages/SyrveSettings.tsx` | Add refresh buttons, replace reimport grid with 2 buttons, add Clean All button, dynamic product types, category filter toggle |
-| `src/components/syrve/CategoryTreePicker.tsx` | Add `productCounts` prop and "show with products" toggle filter |
-| `src/hooks/useSyrve.ts` | Add `useCategoryProductCounts()` hook, add `useCleanAllSyrveData()` mutation |
-| `supabase/functions/syrve-connect-test/index.ts` | Extract unique product types, include in response |
-| `supabase/functions/syrve-sync/index.ts` | Update `syncCategories` to use `includeDeleted=true`, add orphan parent logging, improve `applyReimportMode` to use soft-deactivate by default, add clean import support |
+| `src/App.tsx` | Add `/dishes` route |
+| `src/components/AppSidebar.tsx` | Add "Dishes" nav item with UtensilsCrossed icon |
+| `src/pages/ProductCatalog.tsx` | Remove tabs, use `v_goods_catalog`, default in-stock filter |
+| `src/pages/CategoriesPage.tsx` | Add Goods/Dishes tabs |
+| `src/hooks/useProducts.ts` | Add `productType` param to `useCategoriesWithCounts` |
+| `src/pages/SyrveSettings.tsx` | Per-type CategoryTreePicker sections |
+| `src/hooks/useSyrve.ts` | Support `selected_category_ids_by_type` |
+| `supabase/functions/syrve-sync/index.ts` | Read per-type category selections |
 
-### New Hook: `useCategoryProductCounts`
+### View SQL Design
 
-```typescript
-// Returns Map<category_id, product_count> for categories that have products
-useQuery({
-  queryKey: ['category_product_counts'],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from('products')
-      .select('category_id')
-      .eq('is_active', true)
-      .not('category_id', 'is', null);
-    // Count per category_id
-    return countMap;
-  }
-});
-```
+**v_goods_catalog** key extractions from syrve_data:
+- `(syrve_data->'containers'->0->>'name')` as container_name
+- `(syrve_data->'containers'->0->>'count')::numeric` as container_count
+- `(syrve_data->>'unitWeight')::numeric` as unit_weight
+- `(syrve_data->>'accountingCategory')` as accounting_category_id
+- Stock aggregated via LEFT JOIN on stock_levels with store_count
 
-### New Mutation: `useCleanAllSyrveData`
+**v_dishes_catalog** key extractions:
+- `(syrve_data->>'defaultIncludedInMenu')::boolean` as included_in_menu
+- `(syrve_data->>'unitWeight')::numeric` as unit_weight
+- `(syrve_data->>'placeType')` as place_type
+- Parent product name resolved via LEFT JOIN on products
 
-Calls a series of delete operations via the Supabase client to clean all Syrve-related tables, then resets config status.
+### Default Stock Filter Behavior
 
-### Edge Function Changes
-
-**`syrve-connect-test`**: After fetching products list (lightweight -- just to extract types), collect unique `type`/`productType` values and return as `product_types: string[]` in the response.
-
-**`syrve-sync`**: 
-- Default reimport behavior changed: non-matching products get `is_active = false` instead of being deleted
-- Add `sync_type: 'clean_import'` that first cleans all data then runs bootstrap
-- Add parent resolution verification with console logging
-
+The Products page adds a `showAll` boolean state (default: `false`). When `false`, the query includes `total_stock > 0` filter. A toggle button "Show all products" / "In stock only" switches this. The existing `v_stock_summary` view will be kept for backward compatibility but the new `v_goods_catalog` replaces its usage on the Products page.
