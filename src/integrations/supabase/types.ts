@@ -855,7 +855,6 @@ export type Database = {
       }
       measurement_units: {
         Row: {
-          code: string | null
           created_at: string | null
           factor: number | null
           id: string
@@ -865,12 +864,9 @@ export type Database = {
           name: string
           short_name: string | null
           synced_at: string | null
-          syrve_data: Json | null
           syrve_unit_id: string
-          updated_at: string | null
         }
         Insert: {
-          code?: string | null
           created_at?: string | null
           factor?: number | null
           id?: string
@@ -880,12 +876,9 @@ export type Database = {
           name: string
           short_name?: string | null
           synced_at?: string | null
-          syrve_data?: Json | null
           syrve_unit_id: string
-          updated_at?: string | null
         }
         Update: {
-          code?: string | null
           created_at?: string | null
           factor?: number | null
           id?: string
@@ -895,9 +888,7 @@ export type Database = {
           name?: string
           short_name?: string | null
           synced_at?: string | null
-          syrve_data?: Json | null
           syrve_unit_id?: string
-          updated_at?: string | null
         }
         Relationships: [
           {
@@ -967,6 +958,7 @@ export type Database = {
           metadata: Json | null
           name: string
           not_in_store_movement: boolean | null
+          parent_product_id: string | null
           price_updated_at: string | null
           product_type: string | null
           purchase_price: number | null
@@ -995,6 +987,7 @@ export type Database = {
           metadata?: Json | null
           name: string
           not_in_store_movement?: boolean | null
+          parent_product_id?: string | null
           price_updated_at?: string | null
           product_type?: string | null
           purchase_price?: number | null
@@ -1023,6 +1016,7 @@ export type Database = {
           metadata?: Json | null
           name?: string
           not_in_store_movement?: boolean | null
+          parent_product_id?: string | null
           price_updated_at?: string | null
           product_type?: string | null
           purchase_price?: number | null
@@ -1041,6 +1035,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_parent_product_id_fkey"
+            columns: ["parent_product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
