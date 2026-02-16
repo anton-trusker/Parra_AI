@@ -183,14 +183,8 @@ serve(async (req) => {
     const producer = extracted.producer ? String(extracted.producer) : "";
     const year = extracted.year ? String(extracted.year) : "";
 
-    // Build diverse search phrases: name, producer, combinations with year
-    const searchPhrases: string[] = [];
-    if (productName) searchPhrases.push(productName);
-    if (producer) searchPhrases.push(producer);
-    if (producer && productName) searchPhrases.push(`${producer} ${productName}`);
-    if (productName && year) searchPhrases.push(`${productName} ${year}`);
-    if (producer && year) searchPhrases.push(`${producer} ${year}`);
-
+    // Cascading search: most specific first, stop if high-confidence match found
+    const HIGH_SCORE_THRESHOLD = 50;
     let allCandidates: any[] = [];
     const seenIds = new Set<string>();
 
@@ -203,33 +197,75 @@ serve(async (req) => {
       }
     };
 
-    // Phase 1: ILIKE search with full phrases
-    const orConditions = searchPhrases.map(p => `name.ilike.%${p.replace(/'/g, "''")}%`);
-    if (orConditions.length > 0) {
-      const { data: ilikeCandidates, error: iErr } = await supabaseAdmin
+    // Quick score check: does any candidate already look like a strong match?
+    const hasHighScore = () => {
+      for (const c of allCandidates) {
+        const pName = (c.name || "").toLowerCase();
+        const eName = productName.toLowerCase();
+        const eProd = producer.toLowerCase();
+        let s = 0;
+        if (pName === eName) s += 40;
+        else if (pName.includes(eName) || eName.includes(pName)) s += 25;
+        if (eProd && pName.includes(eProd)) s += 20;
+        if (year && pName.includes(year)) s += 15;
+        if (s >= HIGH_SCORE_THRESHOLD) return true;
+      }
+      return false;
+    };
+
+    const searchIlike = async (phrase: string, method: string) => {
+      const escaped = phrase.replace(/'/g, "''");
+      const { data, error } = await supabaseAdmin
         .from("v_stock_summary")
         .select(selectCols)
-        .or(orConditions.join(","))
-        .limit(50);
+        .ilike("name", `%${escaped}%`)
+        .limit(30);
+      if (data) addCandidates(data, method);
+      if (error) console.error(`Search error (${method}):`, error);
+    };
 
-      if (ilikeCandidates) addCandidates(ilikeCandidates, "phrase_ilike");
-      if (iErr) console.error("ILIKE search error:", iErr);
+    // Phase 1: Producer + Name + Year (most specific)
+    if (producer && productName && year) {
+      await searchIlike(`${producer} ${productName} ${year}`, "producer_name_year");
+      if (hasHighScore()) {
+        logStep("Product Search (Stock)", "success", `Found high-confidence match at phase 1 (producer+name+year). ${allCandidates.length} candidates`, searchStart);
+      }
     }
 
-    // Phase 2: Word-level search for broader recall
-    const allWords = [productName, producer, year].join(" ").split(/\s+/).filter(w => w.length > 2);
-    const uniqueWords = [...new Set(allWords)];
-    for (const word of uniqueWords.slice(0, 6)) {
-      const { data: wordHits } = await supabaseAdmin
-        .from("v_stock_summary")
-        .select(selectCols)
-        .ilike("name", `%${word}%`)
-        .limit(20);
-
-      if (wordHits) addCandidates(wordHits, "word_match");
+    // Phase 2: Producer + Name
+    if (!hasHighScore() && producer && productName) {
+      await searchIlike(`${producer} ${productName}`, "producer_name");
+      if (hasHighScore()) {
+        logStep("Product Search (Stock)", "success", `Found high-confidence match at phase 2 (producer+name). ${allCandidates.length} candidates`, searchStart);
+      }
     }
 
-    logStep("Product Search (Stock)", "success", `Found ${allCandidates.length} candidates with available stock`, searchStart);
+    // Phase 3: Name only
+    if (!hasHighScore() && productName) {
+      await searchIlike(productName, "name_only");
+      if (hasHighScore()) {
+        logStep("Product Search (Stock)", "success", `Found high-confidence match at phase 3 (name). ${allCandidates.length} candidates`, searchStart);
+      }
+    }
+
+    // Phase 4: Producer only
+    if (!hasHighScore() && producer) {
+      await searchIlike(producer, "producer_only");
+    }
+
+    // Phase 5: Word-level fallback for broader recall
+    if (!hasHighScore()) {
+      const allWords = [productName, producer, year].join(" ").split(/\s+/).filter(w => w.length > 2);
+      const uniqueWords = [...new Set(allWords)];
+      for (const word of uniqueWords.slice(0, 6)) {
+        await searchIlike(word, "word_fallback");
+        if (hasHighScore()) break;
+      }
+    }
+
+    if (!allCandidates.length || !hasHighScore()) {
+      logStep("Product Search (Stock)", "success", `Completed all phases. ${allCandidates.length} candidates found`, searchStart);
+    }
 
     // Step 7: Score and rank
     const scoreStart = Date.now();
