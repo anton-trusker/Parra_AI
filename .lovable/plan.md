@@ -1,117 +1,117 @@
 
 
-# Syrve Integration Flow Redesign
+# Syrve Integration Improvements
 
 ## Summary
 
-Redesign the Syrve Settings page to support two distinct user journeys: **Initial Setup** (new connection) and **Ongoing Management** (existing connection). The initial setup auto-imports all reference data on successful connection test, then guides the user through configuration before the first product import. The ongoing management view shows current sync status and provides quick actions.
+Enhance the Syrve Settings page with smarter category filtering, better re-import options, refresh buttons per section, a "Clean All" reset, dynamic product type detection, and fixes to ensure full category hierarchy import with proper parent linking.
 
 ---
 
-## Flow 1: New Connection (First-Time Setup)
+## Changes Overview
 
-### Step-by-step user experience:
+### 1. Categories: Show "with products" by default + toggle to view all
 
-1. **Credentials** -- User enters Server URL, Login, Password and clicks "Test Connection"
-2. **Auto-import on success** -- On successful test, automatically fetch and store ALL reference data:
-   - Departments (business locations) via `/corporation/departments`
-   - Warehouses/Stores via `/corporation/stores`
-   - Product Groups (categories hierarchy) via `/v2/entities/products/group/list`
-   - Measurement Units via `/v2/entities/list?rootType=MeasureUnit`
-   - Business info extraction (already exists)
-3. **Configure Warehouses** -- User selects which warehouses to integrate (multi-select with "Select All")
-4. **Configure Categories** -- Show full category tree (auto-refreshed based on warehouse selection). User picks which to import. Hierarchical picker with select/deselect branches.
-5. **Import Rules** -- Product types to import, reimport mode. Sync Schedule section is hidden for new setup.
-6. **"Save & Import"** button -- Saves config AND triggers a bootstrap sync. Shows real-time progress.
-7. **Import behavior** -- Only imports products matching: selected warehouses + selected product types + selected categories. Products without a category ARE still imported.
+- Add a `product_count` indicator per category by querying `products` table grouped by `category_id`
+- Default the category picker to highlight/filter categories that have products in the selected warehouses
+- Add a toggle: "Show categories with products" (default ON) vs "Show all categories"
+- This is a frontend-only enhancement on the CategoryTreePicker component
 
-### What changes on the backend (`syrve-connect-test`):
+### 2. Refresh buttons on Warehouses and Categories sections
 
-- After successful auth, also fetch categories via `/v2/entities/products/group/list` and save to DB (currently only done during sync)
-- Return categories count in the response so the UI can immediately show the category picker
+- Add a small refresh icon button next to each section header (Warehouses, Categories)
+- Clicking it calls `syrve-sync` with `sync_type: 'stores'` or `sync_type: 'categories'` respectively, re-fetching from Syrve and updating the DB
+- After completion, invalidate the relevant query cache to update the picker
 
-### What changes on the UI (`SyrveSettings.tsx`):
+### 3. Improved Re-import Mode (compact UI + clearer options)
 
-- Restructure into a wizard-like flow for new connections:
-  - After test succeeds: auto-expand Warehouses section, show category picker populated from freshly imported data
-  - Hide "Sync Schedule" section during initial setup
-  - Replace "Save All Settings" + "Sync Now" with a single "Save & Import" button
-  - Show import progress inline
+Replace the current 4-option grid (merge/hide/replace/fresh) with 2 clear actions:
 
----
+- **"Save & Import"** (default button) -- Imports new products, updates existing ones. Products no longer matching the selection are marked `is_active = false` (soft deactivate, data preserved). They won't show in results but data remains.
+- **"Clean Import"** -- A separate destructive button that deletes ALL Syrve-sourced data (products, barcodes, stock_levels, categories, stores, measurement_units, syrve_raw_objects) and runs a fresh bootstrap import from scratch.
 
-## Flow 2: Existing Connection (Ongoing Management)
+This replaces the confusing merge/hide/replace/fresh grid with two clear, distinct actions.
 
-### User experience:
+### 4. "Clean All Data" button
 
-1. **Dashboard view** -- Shows current connection status, last sync time, and summary cards:
-   - Warehouses: X selected out of Y
-   - Categories: X selected
-   - Products: X imported
-   - Stock: last updated at...
-2. **Quick Actions**:
-   - "Re-sync Products, Prices & Stock" -- Runs a sync that imports/updates all changes from Syrve for current selection. New products in selected stores are auto-imported.
-   - "Refresh Prices & Stock Only" -- Quick update without re-importing product catalog
-3. **Edit Configuration** -- Expandable sections to modify warehouses, categories, import rules
-4. **Behavior on config change + sync** -- If user changes categories/warehouses and clicks sync, perform full replacement: delete products not matching new selection, import all matching products fresh
+- Add a "Clean All Syrve Data" button (with confirmation dialog) that truncates all Syrve integration tables:
+  - `products` (where syrve_product_id is not null)
+  - `product_barcodes` (source = 'syrve')
+  - `stock_levels` (source = 'syrve')
+  - `categories`
+  - `stores`
+  - `measurement_units`
+  - `syrve_raw_objects`
+  - `syrve_sync_runs`
+  - `syrve_api_logs`
+- Resets `syrve_config.connection_status` to `'not_configured'`
+- This effectively returns the system to a pre-integration state
 
----
+### 5. Dynamic product types from Syrve
 
-## Technical Changes
+- Currently the `PRODUCT_TYPES` list is hardcoded to 5 values (GOODS, DISH, MODIFIER, PREPARED, SERVICE)
+- During `syrve-connect-test`, extract unique product types from the fetched product list and return them
+- On the frontend, merge hardcoded defaults with any additional types discovered from Syrve
+- Alternative (simpler): query distinct `product_type` from `products` table and from `syrve_raw_objects` to build the list dynamically
 
-### 1. Edge Function: `syrve-connect-test`
+### 6. Full category import verification
 
-- Add category fetching (same logic as `syncCategories` in `syrve-sync`) during connection test
-- Save categories to DB immediately so the picker works before first sync
-- Return `categories_count` in response
+**Current issue**: The category sync uses `/v2/entities/products/group/list` which returns product groups. Per the Syrve API docs, there's also `rootType=ProductGroup` via `/v2/entities/list`. The current endpoint should return the full hierarchy.
 
-### 2. Edge Function: `syrve-sync`
+**Fix**: Ensure the `syncCategories` function and `syrve-connect-test` category import:
+- Use `includeDeleted=true` to get ALL groups (then mark deleted ones as inactive)
+- Parse both `parentId` and `parent` fields from the response (already done)
+- After upserting, re-resolve ALL parent_id references (not just those with parent_syrve_id) to catch any orphaned links
+- Add logging of how many root vs child categories were imported
 
-- Add "Select All" warehouse support: if no specific stores selected, sync all stores
-- Ensure products without a category (`parentGroupId` is null/empty) are still imported when category filtering is active
-- When reimport mode triggers after config changes, properly handle the full replacement flow
+### 7. Parent/UUID linking verification in sync
 
-### 3. Frontend: `SyrveSettings.tsx` -- Major Restructure
-
-**New connection flow:**
-- After successful test: show a "Setting up..." state while reference data loads
-- Auto-open warehouse selection populated from test results
-- Category picker populated from freshly-imported categories
-- Single "Save & Import" call-to-action at the bottom
-- Inline progress display
-
-**Existing connection flow:**
-- Compact summary dashboard at the top showing key metrics
-- "Re-sync" and "Refresh Prices & Stock" buttons prominently placed
-- Collapsible sections for editing configuration
-- When config is changed, the sync button changes to "Save & Re-import" to signal full replacement
-
-**Select All for warehouses:**
-- Add a "Select All / Deselect All" toggle above the warehouse list
-
-### 4. Category Picker Enhancement
-
-- Ensure categories refresh when warehouse selection changes (already partially implemented)
-- Show both standard groups and custom categories in the tree
-- Products without category note: add info text "Products without a category will also be imported"
-
-### 5. Product Import Logic Fix
-
-In `syncProducts` within `syrve-sync`:
-- Currently skips products where `parentGroupId` is not in `selectedSyrveIds`
-- Change: if `selectedSyrveIds` is set but product has NO `parentGroupId` (null/empty), still import it
-- This ensures uncategorized products are always included
+- After category sync: verify all `parent_syrve_id` values resolve to valid `parent_id` UUIDs. Log any orphans.
+- After product sync: verify all `main_unit_id` values are resolved from Syrve GUIDs to internal UUIDs. Log any unresolved.
+- After stock sync: verify `store_id` and `product_id` references are valid.
 
 ---
 
-## Files to Modify
+## Technical Details
 
-| File | Change |
-|------|--------|
-| `supabase/functions/syrve-connect-test/index.ts` | Add category import on connection test |
-| `supabase/functions/syrve-sync/index.ts` | Fix uncategorized product import, improve reimport logic |
-| `src/pages/SyrveSettings.tsx` | Major UI restructure: wizard for new, dashboard for existing |
-| `src/hooks/useSyrve.ts` | Minor: add query for last sync run stats |
+### Files to Modify
 
-No database schema changes needed -- all required tables already exist.
+| File | Changes |
+|------|---------|
+| `src/pages/SyrveSettings.tsx` | Add refresh buttons, replace reimport grid with 2 buttons, add Clean All button, dynamic product types, category filter toggle |
+| `src/components/syrve/CategoryTreePicker.tsx` | Add `productCounts` prop and "show with products" toggle filter |
+| `src/hooks/useSyrve.ts` | Add `useCategoryProductCounts()` hook, add `useCleanAllSyrveData()` mutation |
+| `supabase/functions/syrve-connect-test/index.ts` | Extract unique product types, include in response |
+| `supabase/functions/syrve-sync/index.ts` | Update `syncCategories` to use `includeDeleted=true`, add orphan parent logging, improve `applyReimportMode` to use soft-deactivate by default, add clean import support |
+
+### New Hook: `useCategoryProductCounts`
+
+```typescript
+// Returns Map<category_id, product_count> for categories that have products
+useQuery({
+  queryKey: ['category_product_counts'],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('category_id')
+      .eq('is_active', true)
+      .not('category_id', 'is', null);
+    // Count per category_id
+    return countMap;
+  }
+});
+```
+
+### New Mutation: `useCleanAllSyrveData`
+
+Calls a series of delete operations via the Supabase client to clean all Syrve-related tables, then resets config status.
+
+### Edge Function Changes
+
+**`syrve-connect-test`**: After fetching products list (lightweight -- just to extract types), collect unique `type`/`productType` values and return as `product_types: string[]` in the response.
+
+**`syrve-sync`**: 
+- Default reimport behavior changed: non-matching products get `is_active = false` instead of being deleted
+- Add `sync_type: 'clean_import'` that first cleans all data then runs bootstrap
+- Add parent resolution verification with console logging
 
