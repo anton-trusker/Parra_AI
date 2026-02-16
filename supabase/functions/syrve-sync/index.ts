@@ -115,7 +115,8 @@ serve(async (req) => {
       // 2. Sync based on type
       if (runType === "bootstrap" || runType === "stores") {
         await updateProgress('syncing_stores', 10);
-        await syncStores(adminClient, serverUrl, syrveToken, syncRun?.id, stats);
+        const selectedStoreIds = config.selected_store_ids || [];
+        await syncStores(adminClient, serverUrl, syrveToken, syncRun?.id, stats, selectedStoreIds);
       }
 
       // 2b. Sync measurement units
