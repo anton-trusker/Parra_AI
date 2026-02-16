@@ -175,7 +175,7 @@ serve(async (req) => {
       );
     }
 
-    // Step 6: Search products (GOODS type only)
+    // Step 6: Search products via v_stock_summary (only GOODS with available stock)
     const searchStart = Date.now();
     const searchTerms: string[] = [];
     if (extracted.product_name) searchTerms.push(String(extracted.product_name));
@@ -189,24 +189,20 @@ serve(async (req) => {
     if (extracted.producer) {
       const producer = String(extracted.producer).replace(/'/g, "''");
       orConditions.push(`name.ilike.%${producer}%`);
-      // Also search in metadata->producer
     }
 
     let allCandidates: any[] = [];
 
-    // Search by name/producer ILIKE
+    // Search by name/producer ILIKE against v_stock_summary
     if (orConditions.length > 0) {
       const { data: ilikeCandidates, error: iErr } = await supabaseAdmin
-        .from("products")
-        .select("id, name, code, sku, syrve_product_id, product_type, current_stock, purchase_price, sale_price, unit_capacity, category_id, metadata, syrve_data")
-        .eq("is_active", true)
-        .eq("is_deleted", false)
-        .or("product_type.eq.GOODS,product_type.is.null")
+        .from("v_stock_summary")
+        .select("product_id, name, code, sku, total_stock, purchase_price, sale_price, unit_capacity, category_name, syrve_data")
         .or(orConditions.join(","))
         .limit(50);
 
       if (ilikeCandidates) {
-        allCandidates.push(...ilikeCandidates.map(c => ({ ...c, retrieval_method: "ilike" })));
+        allCandidates.push(...ilikeCandidates.map(c => ({ ...c, id: c.product_id, retrieval_method: "ilike" })));
       }
       if (iErr) {
         console.error("ILIKE search error:", iErr);
@@ -217,24 +213,21 @@ serve(async (req) => {
     const words = searchTerms.join(" ").split(/\s+/).filter(w => w.length > 2);
     for (const word of words.slice(0, 5)) {
       const { data: wordHits } = await supabaseAdmin
-        .from("products")
-        .select("id, name, code, sku, syrve_product_id, product_type, current_stock, purchase_price, sale_price, unit_capacity, category_id, metadata, syrve_data")
-        .eq("is_active", true)
-        .eq("is_deleted", false)
-        .or("product_type.eq.GOODS,product_type.is.null")
+        .from("v_stock_summary")
+        .select("product_id, name, code, sku, total_stock, purchase_price, sale_price, unit_capacity, category_name, syrve_data")
         .ilike("name", `%${word}%`)
         .limit(20);
       
       if (wordHits) {
         for (const hit of wordHits) {
-          if (!allCandidates.find(c => c.id === hit.id)) {
-            allCandidates.push({ ...hit, retrieval_method: "word_match" });
+          if (!allCandidates.find(c => c.product_id === hit.product_id)) {
+            allCandidates.push({ ...hit, id: hit.product_id, retrieval_method: "word_match" });
           }
         }
       }
     }
 
-    logStep("Product Search (GOODS)", "success", `Found ${allCandidates.length} candidate products from ILIKE + word search`, searchStart);
+    logStep("Product Search (Stock)", "success", `Found ${allCandidates.length} candidates with available stock`, searchStart);
 
     // Step 7: Score and rank
     const scoreStart = Date.now();
@@ -248,7 +241,6 @@ serve(async (req) => {
       if (pName === extractedName) score += 40;
       else if (pName.includes(extractedName) || extractedName.includes(pName)) score += 25;
       else {
-        // Word overlap scoring
         const pWords = new Set(pName.split(/\s+/).filter(w => w.length > 2));
         const eWords = extractedName.split(/\s+/).filter(w => w.length > 2);
         const overlap = eWords.filter(w => pWords.has(w)).length;
@@ -258,10 +250,9 @@ serve(async (req) => {
       // Producer in name check
       if (extractedProducer && pName.includes(extractedProducer)) score += 20;
 
-      // Producer in metadata
-      const meta = product.metadata || {};
+      // Producer in syrve_data
       const syrveData = product.syrve_data || {};
-      const metaProducer = ((meta as any).producer || (syrveData as any).producer || "").toLowerCase();
+      const metaProducer = ((syrveData as any).producer || "").toLowerCase();
       if (extractedProducer && metaProducer && (metaProducer.includes(extractedProducer) || extractedProducer.includes(metaProducer))) {
         score += 15;
       }
@@ -280,11 +271,12 @@ serve(async (req) => {
         name: product.name,
         code: product.code,
         sku: product.sku,
-        product_type: product.product_type,
-        current_stock: product.current_stock,
+        product_type: "GOODS",
+        current_stock: product.total_stock,
         purchase_price: product.purchase_price,
         sale_price: product.sale_price,
         unit_capacity: product.unit_capacity,
+        category_name: product.category_name,
         retrieval_method: product.retrieval_method,
         confidence_pct: Math.min(score, 100),
       };
