@@ -1117,6 +1117,77 @@ export type Database = {
         }
         Relationships: []
       }
+      stock_levels: {
+        Row: {
+          created_at: string | null
+          id: string
+          last_synced_at: string | null
+          product_id: string
+          quantity: number
+          source: string | null
+          store_id: string
+          sync_run_id: string | null
+          unit_cost: number | null
+          unit_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          last_synced_at?: string | null
+          product_id: string
+          quantity?: number
+          source?: string | null
+          store_id: string
+          sync_run_id?: string | null
+          unit_cost?: number | null
+          unit_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          last_synced_at?: string | null
+          product_id?: string
+          quantity?: number
+          source?: string | null
+          store_id?: string
+          sync_run_id?: string | null
+          unit_cost?: number | null
+          unit_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_levels_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_levels_store_id_fkey"
+            columns: ["store_id"]
+            isOneToOne: false
+            referencedRelation: "stores"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_levels_sync_run_id_fkey"
+            columns: ["sync_run_id"]
+            isOneToOne: false
+            referencedRelation: "syrve_sync_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_levels_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_snapshots: {
         Row: {
           created_at: string
