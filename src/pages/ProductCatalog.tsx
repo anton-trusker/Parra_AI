@@ -32,10 +32,12 @@ const PRODUCT_COLUMN_DEFS: ColumnDef[] = [
   { key: 'code', label: 'Code' },
   { key: 'category', label: 'Category' },
   { key: 'type', label: 'Type' },
+  { key: 'parent', label: 'Parent Product' },
+  { key: 'unit', label: 'Unit' },
   { key: 'sale_price', label: 'Sale Price' },
   { key: 'purchase_price', label: 'Purchase Price' },
   { key: 'stock', label: 'Stock' },
-  { key: 'unit_capacity', label: 'Volume (L)' },
+  { key: 'unit_capacity', label: 'Volume' },
   { key: 'containers', label: 'Containers' },
   { key: 'synced_at', label: 'Synced At' },
 ];
@@ -262,10 +264,15 @@ export default function ProductCatalog() {
     { key: 'code', label: 'Code', render: p => <span className="text-muted-foreground text-xs">{p.code || '—'}</span> },
     { key: 'category', label: 'Category', render: p => <span className="text-muted-foreground">{p.categories?.name || '—'}</span> },
     { key: 'type', label: 'Type', render: p => <TypeBadge type={p.product_type} />, sortFn: (a, b) => (a.product_type || '').localeCompare(b.product_type || '') },
+    { key: 'parent', label: 'Parent', render: p => {
+      const parent = Array.isArray(p.parent_product) ? p.parent_product[0] : p.parent_product;
+      return parent ? <span className="text-xs text-muted-foreground truncate max-w-[140px] block">{parent.name}</span> : <span className="text-muted-foreground">—</span>;
+    }},
+    { key: 'unit', label: 'Unit', render: p => <span className="text-muted-foreground text-xs">{p.syrve_data?.mainUnit || '—'}</span> },
     { key: 'sale_price', label: 'Sale Price', align: 'right', render: p => <span className="text-accent font-medium">{p.sale_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.sale_price || 0) - (b.sale_price || 0) },
     { key: 'purchase_price', label: 'Purchase Price', align: 'right', render: p => <span className="text-muted-foreground">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
     { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
-    { key: 'unit_capacity', label: 'Volume (L)', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
+    { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'synced_at', label: 'Synced', render: p => <span className="text-xs text-muted-foreground">{p.synced_at ? new Date(p.synced_at).toLocaleDateString() : '—'}</span> },
     { key: 'actions', label: '', minWidth: 40, render: p => <RowActionsMenu product={p} /> },
