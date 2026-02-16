@@ -36,23 +36,39 @@ function TypeBadge({ type }: { type: string | null }) {
   );
 }
 
-function StockIndicator({ stock }: { stock: number | null }) {
+/** Get the primary container's volume (litres per unit) from syrve_data */
+function getContainerVolume(syrveData: any): number | null {
+  const containers = syrveData?.containers;
+  if (!Array.isArray(containers) || containers.length === 0) return null;
+  const primary = containers.find((c: any) => !c.deleted) || containers[0];
+  return primary?.count != null ? Number(primary.count) : null;
+}
+
+/** Format stock with volume: "3 btl · 2.25L" */
+function formatStockWithVolume(stock: number | null, syrveData: any): { label: string; volume: string | null } {
+  if (stock === null || stock === undefined) return { label: '—', volume: null };
+  const containerVol = getContainerVolume(syrveData);
+  const containers = syrveData?.containers;
+  const unitName = Array.isArray(containers) && containers.length > 0
+    ? (containers.find((c: any) => !c.deleted) || containers[0])?.name || ''
+    : '';
+  const volumeStr = containerVol ? `${(stock * containerVol).toFixed(2)}L` : null;
+  return { label: `${stock}${unitName ? ` ${unitName}` : ''}`, volume: volumeStr };
+}
+
+function StockIndicator({ stock, syrveData }: { stock: number | null; syrveData?: any }) {
   if (stock === null || stock === undefined) return <span className="text-muted-foreground">—</span>;
-  if (stock <= 0) return (
-    <span className="inline-flex items-center gap-1.5 text-destructive font-semibold">
-      <span className="w-2 h-2 rounded-full bg-destructive animate-pulse" />{stock}
+  const { label, volume } = formatStockWithVolume(stock, syrveData);
+  const indicator = (colorVar: string, pulse = false) => (
+    <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: `hsl(var(${colorVar}))` }}>
+      <span className={`w-2 h-2 rounded-full ${pulse ? 'animate-pulse' : ''}`} style={{ background: `hsl(var(${colorVar}))` }} />
+      <span className="tabular-nums">{label}</span>
+      {volume && <span className="text-[10px] font-normal text-muted-foreground ml-0.5">{volume}</span>}
     </span>
   );
-  if (stock < 5) return (
-    <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'hsl(var(--wine-warning))' }}>
-      <span className="w-2 h-2 rounded-full" style={{ background: 'hsl(var(--wine-warning))' }} />{stock}
-    </span>
-  );
-  return (
-    <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: 'hsl(var(--wine-success))' }}>
-      <span className="w-2 h-2 rounded-full" style={{ background: 'hsl(var(--wine-success))' }} />{stock}
-    </span>
-  );
+  if (stock <= 0) return indicator('--destructive', true);
+  if (stock < 5) return indicator('--wine-warning');
+  return indicator('--wine-success');
 }
 
 function ContainerInfo({ syrveData }: { syrveData: any }) {
@@ -295,7 +311,7 @@ export default function ProductCatalog() {
     { key: 'unit_capacity', label: 'Volume', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.unit_capacity ?? '—'}</span>, sortFn: (a, b) => (a.unit_capacity || 0) - (b.unit_capacity || 0) },
     { key: 'containers', label: 'Containers', render: p => <ContainerInfo syrveData={p.syrve_data} /> },
     { key: 'purchase_price', label: 'Cost', align: 'right', render: p => <span className="text-muted-foreground tabular-nums">{p.purchase_price?.toFixed(2) ?? '—'}</span>, sortFn: (a, b) => (a.purchase_price || 0) - (b.purchase_price || 0) },
-    { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
+    { key: 'stock', label: 'Stock', align: 'right', render: p => <StockIndicator stock={p.current_stock} syrveData={p.syrve_data} />, sortFn: (a, b) => (a.current_stock || 0) - (b.current_stock || 0) },
     { key: 'dishes_count', label: 'Dishes', align: 'center', render: p => {
       const count = goodsToDishesMap.get(p.id)?.length || 0;
       return count > 0 ? <span className="font-medium tabular-nums" style={{ color: 'hsl(38 45% 60%)' }}>{count}</span> : <span className="text-muted-foreground/40">—</span>;

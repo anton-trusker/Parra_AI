@@ -47,7 +47,15 @@ export default function ProductDetail() {
   const cookingPlaceType = metadata.cookingPlaceType || syrveData.cookingPlaceType || null;
   const productCategory = metadata.productCategory || syrveData.productCategory || null;
 
+  // Container volume (litres per unit)
+  const primaryContainer = Array.isArray(containers) && containers.length > 0
+    ? (containers.find((c: any) => !c.deleted) || containers[0])
+    : null;
+  const containerVolume = primaryContainer?.count != null ? Number(primaryContainer.count) : null;
+  const containerName = primaryContainer?.name || '';
+
   const totalStoreStock = stockByStore.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0);
+  const totalVolume = containerVolume ? totalStoreStock * containerVolume : null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
@@ -172,21 +180,27 @@ export default function ProductDetail() {
               </h3>
               {stockByStore.length > 0 ? (
                 <div className="space-y-0">
-                  <div className="grid grid-cols-4 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border/50 px-1">
-                    <span>Store</span><span>Type</span><span className="text-right">Quantity</span><span className="text-right">Unit Cost</span>
+                  <div className="grid grid-cols-5 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border/50 px-1">
+                    <span>Store</span><span>Type</span><span className="text-right">Quantity</span><span className="text-right">Volume</span><span className="text-right">Unit Cost</span>
                   </div>
-                  {stockByStore.map(s => (
-                    <div key={s.id} className="grid grid-cols-4 gap-2 py-2.5 border-b border-border/30 last:border-0 text-sm px-1">
-                      <span className="font-medium">{s.stores?.name || 'Unknown'}</span>
-                      <span className="text-muted-foreground text-xs">{s.stores?.store_type || '—'}</span>
-                      <span className="text-right tabular-nums font-medium">{Number(s.quantity).toFixed(2)}</span>
-                      <span className="text-right tabular-nums text-muted-foreground">{s.unit_cost?.toFixed(2) ?? '—'}</span>
-                    </div>
-                  ))}
-                  <div className="grid grid-cols-4 gap-2 pt-2 font-semibold text-sm px-1">
+                  {stockByStore.map(s => {
+                    const qty = Number(s.quantity) || 0;
+                    const vol = containerVolume ? qty * containerVolume : null;
+                    return (
+                      <div key={s.id} className="grid grid-cols-5 gap-2 py-2.5 border-b border-border/30 last:border-0 text-sm px-1">
+                        <span className="font-medium">{s.stores?.name || 'Unknown'}</span>
+                        <span className="text-muted-foreground text-xs">{s.stores?.store_type || '—'}</span>
+                        <span className="text-right tabular-nums font-medium">{qty.toFixed(2)}{containerName ? ` ${containerName}` : ''}</span>
+                        <span className="text-right tabular-nums text-muted-foreground">{vol != null ? `${vol.toFixed(2)}L` : '—'}</span>
+                        <span className="text-right tabular-nums text-muted-foreground">{s.unit_cost?.toFixed(2) ?? '—'}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="grid grid-cols-5 gap-2 pt-2 font-semibold text-sm px-1">
                     <span>Total</span>
                     <span />
-                    <span className="text-right tabular-nums">{totalStoreStock.toFixed(2)}</span>
+                    <span className="text-right tabular-nums">{totalStoreStock.toFixed(2)}{containerName ? ` ${containerName}` : ''}</span>
+                    <span className="text-right tabular-nums">{totalVolume != null ? `${totalVolume.toFixed(2)}L` : '—'}</span>
                     <span />
                   </div>
                 </div>
@@ -204,7 +218,8 @@ export default function ProductDetail() {
             <CardContent className="p-5">
               <h3 className="text-sm font-semibold text-foreground mb-3">Summary</h3>
               <div className="grid grid-cols-3 gap-4">
-                <InfoRow label="Total Stock" value={product.current_stock?.toString()} highlight />
+                <InfoRow label="Total Stock" value={`${totalStoreStock || product.current_stock || 0}${containerName ? ` ${containerName}` : ''}`} highlight />
+                <InfoRow label="Total Volume" value={totalVolume != null ? `${totalVolume.toFixed(2)}L` : (product.unit_capacity && product.current_stock ? `${(product.current_stock * product.unit_capacity).toFixed(2)}L` : null)} />
                 <InfoRow label="Not in Store Movement" value={product.not_in_store_movement ? 'Yes' : 'No'} />
                 <InfoRow label="Last Stock Update" value={product.stock_updated_at ? new Date(product.stock_updated_at).toLocaleDateString() : null} />
               </div>

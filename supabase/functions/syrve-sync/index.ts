@@ -886,16 +886,20 @@ async function syncStock(client: any, baseUrl: string, token: string, syncRunId:
       if (error) console.error("Stock upsert error:", error.message);
     }
 
-    // Also update products.current_stock with total stock across all stores
-    // Aggregate by product_id from the batch we just upserted
-    const productStockMap = new Map<string, number>();
-    for (const sl of stockBatch) {
-      productStockMap.set(sl.product_id, (productStockMap.get(sl.product_id) || 0) + (Number(sl.quantity) || 0));
-    }
-    const productUpdates = Array.from(productStockMap.entries());
-    for (let i = 0; i < productUpdates.length; i += BATCH_SIZE) {
-      const batch = productUpdates.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(([pid, qty]) =>
+    // Update products.current_stock with TOTAL stock across ALL stores (not just this batch)
+    const uniqueProductIds = [...new Set(stockBatch.map(sl => sl.product_id))];
+    for (let i = 0; i < uniqueProductIds.length; i += BATCH_SIZE) {
+      const pidBatch = uniqueProductIds.slice(i, i + BATCH_SIZE);
+      // Query actual totals from stock_levels table
+      const { data: totals } = await client
+        .from("stock_levels")
+        .select("product_id, quantity")
+        .in("product_id", pidBatch);
+      const aggMap = new Map<string, number>();
+      for (const row of totals || []) {
+        aggMap.set(row.product_id, (aggMap.get(row.product_id) || 0) + (Number(row.quantity) || 0));
+      }
+      await Promise.all(Array.from(aggMap.entries()).map(([pid, qty]) =>
         client.from("products").update({ current_stock: qty, stock_updated_at: new Date().toISOString() }).eq("id", pid)
       ));
     }
