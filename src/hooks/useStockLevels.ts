@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useSelectedStoreIds } from '@/hooks/useStores';
 
 export interface StockLevel {
   id: string;
@@ -31,9 +32,19 @@ export function useStockLevelsByStore(storeId: string | null) {
 }
 
 export function useStockSummaryByStore() {
+  const { data: selectedSyrveIds = [] } = useSelectedStoreIds();
+
   return useQuery({
-    queryKey: ['stock_levels_summary'],
+    queryKey: ['stock_levels_summary', selectedSyrveIds],
     queryFn: async () => {
+      // First get store IDs matching selected syrve IDs
+      let storeQuery = supabase.from('stores').select('id, syrve_store_id').eq('is_active', true);
+      if (selectedSyrveIds.length > 0) {
+        storeQuery = storeQuery.in('syrve_store_id', selectedSyrveIds);
+      }
+      const { data: stores } = await storeQuery;
+      const validStoreIds = new Set((stores || []).map(s => s.id));
+
       const { data, error } = await supabase
         .from('stock_levels')
         .select('store_id, quantity');
@@ -41,6 +52,7 @@ export function useStockSummaryByStore() {
 
       const summary: Record<string, { totalQuantity: number; productCount: number }> = {};
       for (const row of data || []) {
+        if (selectedSyrveIds.length > 0 && !validStoreIds.has(row.store_id)) continue;
         if (!summary[row.store_id]) {
           summary[row.store_id] = { totalQuantity: 0, productCount: 0 };
         }

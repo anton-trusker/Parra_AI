@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useProduct, useProductBarcodes, useProductChildren, useProductStockByStore } from '@/hooks/useProducts';
+import { useProduct, useProductBarcodes, useProductChildren, useProductStockByStore, useMeasurementUnitsMap, resolveUnitName } from '@/hooks/useProducts';
 import { mockAiScans } from '@/data/mockAiScans';
 
 export default function ProductDetail() {
@@ -15,6 +15,7 @@ export default function ProductDetail() {
   const { data: barcodes = [] } = useProductBarcodes(id);
   const { data: children = [] } = useProductChildren(id);
   const { data: stockByStore = [] } = useProductStockByStore(id);
+  const { data: unitsMap } = useMeasurementUnitsMap();
   const productAiScans = mockAiScans.filter(s => s.productId === id).slice(0, 5);
 
   if (isLoading) {
@@ -46,7 +47,16 @@ export default function ProductDetail() {
   const cookingPlaceType = metadata.cookingPlaceType || syrveData.cookingPlaceType || null;
   const productCategory = metadata.productCategory || syrveData.productCategory || null;
 
+  // Container info and main unit
+  const primaryContainer = Array.isArray(containers) && containers.length > 0
+    ? (containers.find((c: any) => !c.deleted) || containers[0])
+    : null;
+  const containerVolume = primaryContainer?.count != null ? Number(primaryContainer.count) : null;
+  const containerName = primaryContainer?.name || '';
+  const mainUnitLabel = resolveUnitName(product.main_unit_id, unitsMap) || syrveData.mainUnit || '';
+
   const totalStoreStock = stockByStore.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0);
+  const totalAmount = containerVolume ? totalStoreStock / containerVolume : null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-5 animate-fade-in">
@@ -104,7 +114,7 @@ export default function ProductDetail() {
               <CardContent className="p-5">
                 <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Ruler className="w-4 h-4 text-muted-foreground" />Unit & Volume</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  <InfoRow label="Main Unit" value={syrveData.mainUnit || product.main_unit_id || null} />
+                  <InfoRow label="Main Unit" value={resolveUnitName(product.main_unit_id, unitsMap) || syrveData.mainUnit || null} />
                   <InfoRow label="Unit Capacity" value={product.unit_capacity ? `${product.unit_capacity}` : null} />
                   {Array.isArray(containers) && containers.length > 0 && (
                     <div className="col-span-2">
@@ -171,21 +181,27 @@ export default function ProductDetail() {
               </h3>
               {stockByStore.length > 0 ? (
                 <div className="space-y-0">
-                  <div className="grid grid-cols-4 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border/50 px-1">
-                    <span>Store</span><span>Type</span><span className="text-right">Quantity</span><span className="text-right">Unit Cost</span>
+                  <div className="grid grid-cols-5 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border/50 px-1">
+                    <span>Store</span><span>Type</span><span className="text-right">Stock</span><span className="text-right">Qty</span><span className="text-right">Unit Cost</span>
                   </div>
-                  {stockByStore.map(s => (
-                    <div key={s.id} className="grid grid-cols-4 gap-2 py-2.5 border-b border-border/30 last:border-0 text-sm px-1">
-                      <span className="font-medium">{s.stores?.name || 'Unknown'}</span>
-                      <span className="text-muted-foreground text-xs">{s.stores?.store_type || '—'}</span>
-                      <span className="text-right tabular-nums font-medium">{Number(s.quantity).toFixed(2)}</span>
-                      <span className="text-right tabular-nums text-muted-foreground">{s.unit_cost?.toFixed(2) ?? '—'}</span>
-                    </div>
-                  ))}
-                  <div className="grid grid-cols-4 gap-2 pt-2 font-semibold text-sm px-1">
+                  {stockByStore.map(s => {
+                    const qty = Number(s.quantity) || 0;
+                    const amt = containerVolume ? qty / containerVolume : null;
+                    return (
+                      <div key={s.id} className="grid grid-cols-5 gap-2 py-2.5 border-b border-border/30 last:border-0 text-sm px-1">
+                        <span className="font-medium">{s.stores?.name || 'Unknown'}</span>
+                        <span className="text-muted-foreground text-xs">{s.stores?.store_type || '—'}</span>
+                        <span className="text-right tabular-nums font-medium">{qty.toFixed(2)}{mainUnitLabel ? ` ${mainUnitLabel}` : ''}</span>
+                        <span className="text-right tabular-nums text-muted-foreground">{amt != null ? amt.toFixed(2) : '—'}</span>
+                        <span className="text-right tabular-nums text-muted-foreground">{s.unit_cost?.toFixed(2) ?? '—'}</span>
+                      </div>
+                    );
+                  })}
+                  <div className="grid grid-cols-5 gap-2 pt-2 font-semibold text-sm px-1">
                     <span>Total</span>
                     <span />
-                    <span className="text-right tabular-nums">{totalStoreStock.toFixed(2)}</span>
+                    <span className="text-right tabular-nums">{totalStoreStock.toFixed(2)}{mainUnitLabel ? ` ${mainUnitLabel}` : ''}</span>
+                    <span className="text-right tabular-nums">{totalAmount != null ? totalAmount.toFixed(2) : '—'}</span>
                     <span />
                   </div>
                 </div>
@@ -203,7 +219,8 @@ export default function ProductDetail() {
             <CardContent className="p-5">
               <h3 className="text-sm font-semibold text-foreground mb-3">Summary</h3>
               <div className="grid grid-cols-3 gap-4">
-                <InfoRow label="Total Stock" value={product.current_stock?.toString()} highlight />
+                <InfoRow label="Total Stock" value={`${totalStoreStock || product.current_stock || 0}${mainUnitLabel ? ` ${mainUnitLabel}` : ''}`} highlight />
+                <InfoRow label="Total Qty" value={totalAmount != null ? totalAmount.toFixed(2) : (product.unit_capacity && product.current_stock ? (product.current_stock / product.unit_capacity).toFixed(2) : null)} />
                 <InfoRow label="Not in Store Movement" value={product.not_in_store_movement ? 'Yes' : 'No'} />
                 <InfoRow label="Last Stock Update" value={product.stock_updated_at ? new Date(product.stock_updated_at).toLocaleDateString() : null} />
               </div>
@@ -332,7 +349,7 @@ export default function ProductDetail() {
               <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2"><Database className="w-4 h-4 text-muted-foreground" />Syrve Mapping</h3>
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <InfoRow label="Syrve Product ID" value={product.syrve_product_id} />
-                <InfoRow label="Main Unit (Syrve)" value={syrveData.mainUnit || product.main_unit_id} />
+                <InfoRow label="Main Unit (Syrve)" value={resolveUnitName(product.main_unit_id, unitsMap) || syrveData.mainUnit || product.main_unit_id} />
                 <InfoRow label="Last Synced" value={product.synced_at ? new Date(product.synced_at).toLocaleString() : null} />
                 <InfoRow label="Active" value={product.is_active ? 'Yes' : 'No'} />
                 <InfoRow label="Deleted in Syrve" value={product.is_deleted ? 'Yes' : 'No'} />
@@ -343,8 +360,16 @@ export default function ProductDetail() {
           </Card>
           <Card className="rounded-xl border-border/60">
             <CardContent className="p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-3">Raw Metadata</h3>
-              <pre className="text-xs bg-muted/30 p-4 rounded-lg overflow-x-auto max-h-64 text-muted-foreground">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Raw Syrve Data</h3>
+              <pre className="text-xs bg-muted/30 p-4 rounded-lg overflow-x-auto max-h-96 text-muted-foreground whitespace-pre-wrap break-words">
+                {JSON.stringify(syrveData, null, 2)}
+              </pre>
+            </CardContent>
+          </Card>
+          <Card className="rounded-xl border-border/60">
+            <CardContent className="p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-3">Product Metadata</h3>
+              <pre className="text-xs bg-muted/30 p-4 rounded-lg overflow-x-auto max-h-96 text-muted-foreground whitespace-pre-wrap break-words">
                 {JSON.stringify(metadata, null, 2)}
               </pre>
             </CardContent>

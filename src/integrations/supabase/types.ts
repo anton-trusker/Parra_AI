@@ -939,6 +939,13 @@ export type Database = {
             referencedRelation: "products"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "product_barcodes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_stock_summary"
+            referencedColumns: ["product_id"]
+          },
         ]
       }
       products: {
@@ -1043,6 +1050,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_parent_product_id_fkey"
+            columns: ["parent_product_id"]
+            isOneToOne: false
+            referencedRelation: "v_stock_summary"
+            referencedColumns: ["product_id"]
           },
         ]
       }
@@ -1165,6 +1179,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "products"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_levels_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_stock_summary"
+            referencedColumns: ["product_id"]
           },
           {
             foreignKeyName: "stock_levels_store_id_fkey"
@@ -2391,6 +2412,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "wines_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "v_stock_summary"
+            referencedColumns: ["product_id"]
+          },
+          {
             foreignKeyName: "wines_replacement_wine_id_fkey"
             columns: ["replacement_wine_id"]
             isOneToOne: false
@@ -2408,7 +2436,33 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_stock_summary: {
+        Row: {
+          category_id: string | null
+          category_name: string | null
+          code: string | null
+          main_unit_id: string | null
+          name: string | null
+          product_id: string | null
+          purchase_price: number | null
+          sale_price: number | null
+          sku: string | null
+          synced_at: string | null
+          syrve_data: Json | null
+          total_stock: number | null
+          total_value: number | null
+          unit_capacity: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       build_wine_search_text: {

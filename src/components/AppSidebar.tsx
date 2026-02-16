@@ -2,7 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore, useUserRole } from '@/stores/authStore';
 import {
   LayoutDashboard, Package, FolderTree, Warehouse, ClipboardCheck, Bot, History,
-  BarChart3, ShoppingCart, Settings, Users, LogOut, User, ChevronDown, Menu, X, ScanLine
+  BarChart3, ShoppingCart, Settings, Users, LogOut, User, ChevronDown, Menu, X, ScanLine, Layers
 } from 'lucide-react';
 import { useState } from 'react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -38,6 +38,7 @@ const navGroups: NavGroup[] = [
     defaultOpen: true,
     items: [
       { label: 'Products', icon: Package, path: '/products' },
+      { label: 'Stock', icon: Layers, path: '/stock' },
       { label: 'Categories', icon: FolderTree, path: '/categories' },
       { label: 'By Store', icon: Warehouse, path: '/inventory/by-store' },
       { label: 'Sessions', icon: ClipboardCheck, path: '/inventory/checks' },

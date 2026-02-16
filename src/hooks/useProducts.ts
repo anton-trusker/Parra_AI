@@ -31,6 +31,38 @@ export interface Product {
   not_in_store_movement: boolean | null;
   categories?: { name: string } | null;
   parent_product?: { id: string; name: string; product_type: string | null }[] | { id: string; name: string; product_type: string | null } | null;
+  store_names?: string[];
+  main_unit_name?: string | null;
+}
+
+/** Fetches all measurement units and returns lookup maps by both DB id and syrve_unit_id */
+export function useMeasurementUnitsMap() {
+  return useQuery({
+    queryKey: ['measurement_units_map'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('measurement_units')
+        .select('id, name, short_name, syrve_unit_id');
+      if (error) throw error;
+      const byId = new Map<string, string>();
+      const bySyrveId = new Map<string, string>();
+      for (const u of data || []) {
+        const label = u.short_name || u.name;
+        byId.set(u.id, label);
+        bySyrveId.set(u.syrve_unit_id, label);
+      }
+      return { byId, bySyrveId };
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function resolveUnitName(
+  unitId: string | null,
+  unitsMap: { byId: Map<string, string>; bySyrveId: Map<string, string> } | undefined
+): string | null {
+  if (!unitId || !unitsMap) return null;
+  return unitsMap.byId.get(unitId) || unitsMap.bySyrveId.get(unitId) || null;
 }
 
 export interface ProductBarcode {
@@ -66,8 +98,7 @@ export function useProducts(filters?: {
         .from('products')
         .select(`
           *,
-          categories!products_category_id_fkey(name, is_active, is_deleted),
-          parent_product:products!products_parent_product_id_fkey(id, name, product_type)
+          categories!products_category_id_fkey(name, is_active, is_deleted)
         `)
         .eq('is_deleted', false)
         .order('name');
@@ -83,12 +114,56 @@ export function useProducts(filters?: {
         query = query.eq('category_id', filters.categoryId);
       }
 
-      const { data, error } = await query.limit(500);
+      const { data, error } = await query.limit(2000);
       if (error) throw error;
-      return ((data || []) as unknown as Product[]).filter(p => {
-        // Normalize parent_product from array to single object
-        if (Array.isArray(p.parent_product)) {
-          p.parent_product = p.parent_product[0] || null;
+
+      const products = (data || []) as unknown as Product[];
+
+      // Fetch stock_levels with store names to map products → stores AND aggregate real stock
+      const productIds = products.map(p => p.id);
+      const storeMap = new Map<string, Set<string>>();
+      const stockTotals = new Map<string, number>();
+      if (productIds.length > 0) {
+        // Fetch in batches of 500 to avoid URL length limits
+        for (let i = 0; i < productIds.length; i += 500) {
+          const batch = productIds.slice(i, i + 500);
+          const { data: stockData } = await supabase
+            .from('stock_levels')
+            .select('product_id, quantity, stores(name)')
+            .in('product_id', batch);
+          for (const sl of stockData || []) {
+            // Aggregate total stock across all stores
+            stockTotals.set(sl.product_id, (stockTotals.get(sl.product_id) || 0) + (sl.quantity || 0));
+            const storeName = (sl.stores as any)?.name;
+            if (storeName && sl.quantity > 0) {
+              if (!storeMap.has(sl.product_id)) storeMap.set(sl.product_id, new Set());
+              storeMap.get(sl.product_id)!.add(storeName);
+            }
+          }
+        }
+      }
+
+      // Build parent lookup from the same dataset
+      const parentIds = new Set(products.map(p => p.parent_product_id).filter(Boolean) as string[]);
+      const parentLookup = new Map<string, { id: string; name: string; product_type: string | null }>();
+      for (const p of products) {
+        if (parentIds.has(p.id)) {
+          parentLookup.set(p.id, { id: p.id, name: p.name, product_type: p.product_type });
+        }
+      }
+
+      return products.filter(p => {
+        // Attach parent_product from lookup
+        if (p.parent_product_id && parentLookup.has(p.parent_product_id)) {
+          p.parent_product = parentLookup.get(p.parent_product_id)!;
+        } else {
+          p.parent_product = null;
+        }
+        // Attach store names
+        p.store_names = storeMap.has(p.id) ? [...storeMap.get(p.id)!] : [];
+        // Override current_stock with real aggregated value from stock_levels
+        if (stockTotals.has(p.id)) {
+          p.current_stock = stockTotals.get(p.id)!;
         }
         if (!p.categories) return true;
         const cat = p.categories as any;
@@ -107,16 +182,22 @@ export function useProduct(id: string | undefined) {
         .from('products')
         .select(`
           *,
-          categories!products_category_id_fkey(name),
-          parent_product:products!products_parent_product_id_fkey(id, name, product_type)
+          categories!products_category_id_fkey(name)
         `)
         .eq('id', id)
         .single();
       if (error) throw error;
       const product = data as unknown as Product;
-      // Normalize parent_product from array to single object
-      if (Array.isArray(product.parent_product)) {
-        product.parent_product = product.parent_product[0] || null;
+      // Fetch parent product separately if needed
+      if (product.parent_product_id) {
+        const { data: parent } = await supabase
+          .from('products')
+          .select('id, name, product_type')
+          .eq('id', product.parent_product_id)
+          .maybeSingle();
+        product.parent_product = parent || null;
+      } else {
+        product.parent_product = null;
       }
       return product;
     },
