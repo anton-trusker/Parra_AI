@@ -182,7 +182,7 @@ export default function ProductDetail() {
               {stockByStore.length > 0 ? (
                 <div className="space-y-0">
                   <div className="grid grid-cols-5 gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wider pb-2 border-b border-border/50 px-1">
-                    <span>Store</span><span>Type</span><span className="text-right">Quantity</span><span className="text-right">Amount</span><span className="text-right">Unit Cost</span>
+                    <span>Store</span><span>Type</span><span className="text-right">Stock</span><span className="text-right">Qty</span><span className="text-right">Unit Cost</span>
                   </div>
                   {stockByStore.map(s => {
                     const qty = Number(s.quantity) || 0;
@@ -192,7 +192,7 @@ export default function ProductDetail() {
                         <span className="font-medium">{s.stores?.name || 'Unknown'}</span>
                         <span className="text-muted-foreground text-xs">{s.stores?.store_type || '—'}</span>
                         <span className="text-right tabular-nums font-medium">{qty.toFixed(2)}{mainUnitLabel ? ` ${mainUnitLabel}` : ''}</span>
-                        <span className="text-right tabular-nums text-muted-foreground">{amt != null ? `${amt.toFixed(2)}L` : '—'}</span>
+                        <span className="text-right tabular-nums text-muted-foreground">{amt != null ? amt.toFixed(2) : '—'}</span>
                         <span className="text-right tabular-nums text-muted-foreground">{s.unit_cost?.toFixed(2) ?? '—'}</span>
                       </div>
                     );
@@ -201,7 +201,7 @@ export default function ProductDetail() {
                     <span>Total</span>
                     <span />
                     <span className="text-right tabular-nums">{totalStoreStock.toFixed(2)}{mainUnitLabel ? ` ${mainUnitLabel}` : ''}</span>
-                    <span className="text-right tabular-nums">{totalAmount != null ? `${totalAmount.toFixed(2)}L` : '—'}</span>
+                    <span className="text-right tabular-nums">{totalAmount != null ? totalAmount.toFixed(2) : '—'}</span>
                     <span />
                   </div>
                 </div>
@@ -220,7 +220,7 @@ export default function ProductDetail() {
               <h3 className="text-sm font-semibold text-foreground mb-3">Summary</h3>
               <div className="grid grid-cols-3 gap-4">
                 <InfoRow label="Total Stock" value={`${totalStoreStock || product.current_stock || 0}${mainUnitLabel ? ` ${mainUnitLabel}` : ''}`} highlight />
-                <InfoRow label="Total Amount" value={totalAmount != null ? `${totalAmount.toFixed(2)}L` : (product.unit_capacity && product.current_stock ? `${(product.current_stock * product.unit_capacity).toFixed(2)}L` : null)} />
+                <InfoRow label="Total Qty" value={totalAmount != null ? totalAmount.toFixed(2) : (product.unit_capacity && product.current_stock ? (product.current_stock * product.unit_capacity).toFixed(2) : null)} />
                 <InfoRow label="Not in Store Movement" value={product.not_in_store_movement ? 'Yes' : 'No'} />
                 <InfoRow label="Last Stock Update" value={product.stock_updated_at ? new Date(product.stock_updated_at).toLocaleDateString() : null} />
               </div>
