@@ -44,23 +44,23 @@ function getContainerVolume(syrveData: any): number | null {
   return primary?.count != null ? Number(primary.count) : null;
 }
 
-/** Format stock with amount: "3 kg · 2.25L" */
-function formatStockWithAmount(stock: number | null, syrveData: any, mainUnitName?: string | null): { label: string; amount: string | null } {
-  if (stock === null || stock === undefined) return { label: '—', amount: null };
+/** Format stock with qty: "3 kg · Qty: 2.25" */
+function formatStockWithQty(stock: number | null, syrveData: any, mainUnitName?: string | null): { label: string; qty: string | null } {
+  if (stock === null || stock === undefined) return { label: '—', qty: null };
   const containerVol = getContainerVolume(syrveData);
   const unit = mainUnitName || syrveData?.mainUnit || '';
-  const amountStr = containerVol ? `${(stock * containerVol).toFixed(2)}L` : null;
-  return { label: `${stock}${unit ? ` ${unit}` : ''}`, amount: amountStr };
+  const qtyStr = containerVol ? `${(stock * containerVol).toFixed(2)}` : null;
+  return { label: `${stock}${unit ? ` ${unit}` : ''}`, qty: qtyStr };
 }
 
 function StockIndicator({ stock, syrveData, mainUnitName }: { stock: number | null; syrveData?: any; mainUnitName?: string | null }) {
   if (stock === null || stock === undefined) return <span className="text-muted-foreground">—</span>;
-  const { label, amount } = formatStockWithAmount(stock, syrveData, mainUnitName);
+  const { label, qty } = formatStockWithQty(stock, syrveData, mainUnitName);
   const indicator = (colorVar: string, pulse = false) => (
     <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: `hsl(var(${colorVar}))` }}>
       <span className={`w-2 h-2 rounded-full ${pulse ? 'animate-pulse' : ''}`} style={{ background: `hsl(var(${colorVar}))` }} />
       <span className="tabular-nums">{label}</span>
-      {amount && <span className="text-[10px] font-normal text-muted-foreground ml-0.5">{amount}</span>}
+      {qty && <span className="text-[10px] font-normal text-muted-foreground ml-0.5">Qty: {qty}</span>}
     </span>
   );
   if (stock <= 0) return indicator('--destructive', true);
