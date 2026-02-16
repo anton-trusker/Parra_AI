@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { Navigate, Link } from 'react-router-dom';
-import { ArrowLeft, Brain, Sliders, Image, Loader2, Key, Upload, CheckCircle2, XCircle, AlertTriangle, Clock, Search, FlaskConical } from 'lucide-react';
+import { ArrowLeft, Brain, Sliders, Image, Loader2, Key, Upload, CheckCircle2, XCircle, AlertTriangle, Clock, Search, FlaskConical, Eye, EyeOff, RotateCcw } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -290,8 +291,44 @@ function AiTestingTab() {
 
 // ---- Configuration Tab (original settings) ----
 
+const PROVIDER_OPTIONS = [
+  { value: 'lovable', label: 'Built-in (Lovable AI)', needsKey: false },
+  { value: 'openai', label: 'OpenAI', needsKey: true },
+  { value: 'google', label: 'Google (Gemini)', needsKey: true },
+  { value: 'anthropic', label: 'Anthropic (Claude)', needsKey: true },
+  { value: 'custom', label: 'Custom (OpenAI-compatible)', needsKey: true },
+];
+
+const MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  lovable: [
+    { value: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash (default)' },
+    { value: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+    { value: 'google/gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
+    { value: 'openai/gpt-5-mini', label: 'GPT-5 Mini' },
+    { value: 'openai/gpt-5', label: 'GPT-5' },
+  ],
+  openai: [
+    { value: 'gpt-4o', label: 'GPT-4o' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+  ],
+  google: [
+    { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+    { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+  ],
+  anthropic: [
+    { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
+    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+    { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' },
+  ],
+  custom: [],
+};
+
 function ConfigurationTab({ config, isLoading }: { config: any; isLoading: boolean }) {
   const updateConfig = useUpdateAiConfig();
+  const [showKey, setShowKey] = useState(false);
   const [form, setForm] = useState({
     is_active: true,
     model_name: 'google/gemini-2.5-flash',
@@ -374,10 +411,9 @@ function ConfigurationTab({ config, isLoading }: { config: any; isLoading: boole
             <Switch checked={visionEnabled} onCheckedChange={v => setForm(f => ({ ...f, settings: { ...f.settings, vision_verification_enabled: v } }))} />
           </div>
           <div className="rounded-lg bg-muted/50 p-3 flex items-center gap-2">
-            <Badge variant="outline">{form.model_name}</Badge>
-            <span className="text-xs text-muted-foreground">
-              {form.settings.custom_api_key ? 'using custom key' : 'built-in'}
-            </span>
+            <Badge variant="outline">{form.provider === 'lovable' ? 'Built-in' : PROVIDER_OPTIONS.find(p => p.value === form.provider)?.label}</Badge>
+            <Badge variant="secondary">{form.model_name}</Badge>
+            {form.settings.custom_api_key && <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px]">Key configured</Badge>}
           </div>
         </div>
       </CollapsibleSection>
@@ -418,35 +454,137 @@ function ConfigurationTab({ config, isLoading }: { config: any; isLoading: boole
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection icon={Key} title="API Key">
+      <CollapsibleSection icon={Key} title="AI Provider & API Key" defaultOpen>
         <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">
-            By default, the built-in AI gateway is used. You can optionally provide your own API key for direct access to Google Gemini or OpenAI models.
-          </p>
+          {/* Provider Select */}
           <div className="space-y-1">
-            <Label className="text-xs">Custom API Key</Label>
-            <Input
-              type="password"
-              placeholder="Leave empty to use built-in gateway"
-              value={form.settings.custom_api_key || ''}
-              onChange={e => setForm(f => ({ ...f, settings: { ...f.settings, custom_api_key: e.target.value || undefined } }))}
-              className="bg-secondary border-border font-mono text-xs"
-            />
+            <Label className="text-xs">Provider</Label>
+            <Select
+              value={form.provider}
+              onValueChange={(val) => {
+                const models = MODEL_OPTIONS[val] || [];
+                const defaultModel = models[0]?.value || '';
+                setForm(f => ({
+                  ...f,
+                  provider: val,
+                  model_name: val === 'custom' ? f.model_name : defaultModel,
+                  settings: { ...f.settings, ai_provider: val },
+                }));
+              }}
+            >
+              <SelectTrigger className="bg-secondary border-border">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PROVIDER_OPTIONS.map(p => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {form.provider === 'lovable' && (
+              <p className="text-xs text-muted-foreground">No API key needed — uses the built-in Lovable AI gateway.</p>
+            )}
           </div>
+
+          {/* Model Select */}
           <div className="space-y-1">
-            <Label className="text-xs">Custom Gateway URL</Label>
-            <Input
-              type="url"
-              placeholder="https://ai.gateway.lovable.dev/v1/chat/completions"
-              value={form.settings.custom_gateway_url || ''}
-              onChange={e => setForm(f => ({ ...f, settings: { ...f.settings, custom_gateway_url: e.target.value || undefined } }))}
-              className="bg-secondary border-border font-mono text-xs"
-            />
-            <p className="text-xs text-muted-foreground">OpenAI-compatible endpoint. Leave empty for default.</p>
+            <Label className="text-xs">Model</Label>
+            {form.provider === 'custom' ? (
+              <Input
+                placeholder="e.g. my-fine-tuned-model"
+                value={form.model_name}
+                onChange={e => setForm(f => ({ ...f, model_name: e.target.value }))}
+                className="bg-secondary border-border font-mono text-xs"
+              />
+            ) : (
+              <Select
+                value={form.model_name}
+                onValueChange={(val) => setForm(f => ({ ...f, model_name: val }))}
+              >
+                <SelectTrigger className="bg-secondary border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(MODEL_OPTIONS[form.provider] || []).map(m => (
+                    <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="flex items-center gap-2 mt-1">
+              <Badge variant="outline" className="text-[10px]">{form.model_name}</Badge>
+              {form.provider !== 'lovable' && (
+                <Badge variant="secondary" className="text-[10px]">Custom</Badge>
+              )}
+            </div>
           </div>
-          {form.settings.custom_api_key && (
-            <Button variant="outline" size="sm" onClick={() => setForm(f => ({ ...f, settings: { ...f.settings, custom_api_key: undefined, custom_gateway_url: undefined } }))}>
-              Clear Custom Key
+
+          {/* API Key (only for non-lovable) */}
+          {PROVIDER_OPTIONS.find(p => p.value === form.provider)?.needsKey && (
+            <div className="space-y-1">
+              <Label className="text-xs">API Key</Label>
+              <div className="relative">
+                <Input
+                  type={showKey ? 'text' : 'password'}
+                  placeholder={`Enter your ${PROVIDER_OPTIONS.find(p => p.value === form.provider)?.label} API key`}
+                  value={form.settings.custom_api_key || ''}
+                  onChange={e => setForm(f => ({ ...f, settings: { ...f.settings, custom_api_key: e.target.value || undefined } }))}
+                  className="bg-secondary border-border font-mono text-xs pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey(s => !s)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {!form.settings.custom_api_key && (
+                <p className="text-xs text-amber-500">⚠ API key required for this provider</p>
+              )}
+            </div>
+          )}
+
+          {/* Custom Gateway URL */}
+          {form.provider !== 'lovable' && (
+            <div className="space-y-1">
+              <Label className="text-xs">API Endpoint URL (optional)</Label>
+              <Input
+                type="url"
+                placeholder={
+                  form.provider === 'openai' ? 'https://api.openai.com/v1/chat/completions' :
+                  form.provider === 'google' ? 'https://generativelanguage.googleapis.com/v1beta' :
+                  form.provider === 'anthropic' ? 'https://api.anthropic.com/v1/messages' :
+                  'https://your-api.com/v1/chat/completions'
+                }
+                value={form.settings.custom_gateway_url || ''}
+                onChange={e => setForm(f => ({ ...f, settings: { ...f.settings, custom_gateway_url: e.target.value || undefined } }))}
+                className="bg-secondary border-border font-mono text-xs"
+              />
+              <p className="text-xs text-muted-foreground">Override the default endpoint. Leave empty for standard API.</p>
+            </div>
+          )}
+
+          {/* Reset to built-in */}
+          {form.provider !== 'lovable' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setForm(f => ({
+                  ...f,
+                  provider: 'lovable',
+                  model_name: 'google/gemini-2.5-flash',
+                  settings: {
+                    ...f.settings,
+                    ai_provider: 'lovable',
+                    custom_api_key: undefined,
+                    custom_gateway_url: undefined,
+                  },
+                }));
+              }}
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Reset to Built-in AI
             </Button>
           )}
         </div>
