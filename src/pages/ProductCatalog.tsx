@@ -316,12 +316,12 @@ export default function ProductCatalog() {
       const containerCount = getContainerVolume(p.syrve_data);
       const containerName = getContainerName(p.syrve_data);
       if (containerCount == null || p.current_stock == null) return <span className="text-muted-foreground">—</span>;
-      const qty = p.current_stock * containerCount;
+      const qty = p.current_stock / containerCount;
       return <span className="tabular-nums text-muted-foreground">{qty.toFixed(2)}{containerName ? ` ${containerName}` : ''}</span>;
     }, sortFn: (a, b) => {
       const aVol = getContainerVolume(a.syrve_data);
       const bVol = getContainerVolume(b.syrve_data);
-      return ((a.current_stock || 0) * (aVol || 0)) - ((b.current_stock || 0) * (bVol || 0));
+      return ((a.current_stock || 0) / (aVol || 1)) - ((b.current_stock || 0) / (bVol || 1));
     }},
     { key: 'dishes_count', label: 'Dishes', align: 'center', render: p => {
       const count = goodsToDishesMap.get(p.id)?.length || 0;
