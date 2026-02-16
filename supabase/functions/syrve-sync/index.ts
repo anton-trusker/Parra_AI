@@ -781,51 +781,56 @@ async function syncPrices(client: any, _baseUrl: string, _token: string, syncRun
 
 async function syncStock(client: any, baseUrl: string, token: string, syncRunId: string | null, stats: any, storeId: string) {
   const start = Date.now();
-  const today = new Date().toISOString().split("T")[0];
-  // Use v2/reports/balance POST endpoint (the correct Syrve Server API)
-  const url = `${baseUrl}/v2/reports/balance?key=${token}`;
-  const requestBody = `<balanceRequest><storeId>${storeId}</storeId><dateFrom>${today}</dateFrom><dateTo>${today}</dateTo></balanceRequest>`;
-  try {
-    const resp = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/xml" },
-      body: requestBody,
-    });
-    if (!resp.ok) {
-      // Fallback: try legacy GET endpoint
-      const legacyUrl = `${baseUrl}/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${today}`;
-      const legacyResp = await fetch(legacyUrl);
-      if (!legacyResp.ok) {
-        await logApi(client, syncRunId, "FETCH_STOCK", "error", url, `POST ${resp.status}, GET ${legacyResp.status}`, Date.now() - start);
-        console.error(`Stock balance fetch failed: POST ${resp.status}, GET ${legacyResp.status}`);
-        const _body = await legacyResp.text();
-        return;
+  // Use /v2/reports/balance/stores with timestamp format yyyy-MM-dd'T'HH:mm:ss
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/\.\d{3}Z$/, '');
+  // Try v2 first (per docs example), then fallback to non-v2
+  const urls = [
+    `${baseUrl}/v2/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${encodeURIComponent(timestamp)}`,
+    `${baseUrl}/reports/balance/stores?key=${token}&store=${storeId}&timestamp=${encodeURIComponent(timestamp)}`,
+  ];
+  let text: string | null = null;
+  let usedUrl = '';
+  for (const url of urls) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        text = await resp.text();
+        usedUrl = url;
+        await logApi(client, syncRunId, "FETCH_STOCK", "success", url.substring(0, 200), undefined, Date.now() - start, text.substring(0, 500));
+        break;
       }
-      const xml = await legacyResp.text();
-      await logApi(client, syncRunId, "FETCH_STOCK", "success", legacyUrl, undefined, Date.now() - start, xml.substring(0, 500));
-      await processStockXml(client, xml, storeId, syncRunId, stats);
-      return;
+      console.log(`Stock endpoint returned ${resp.status}: ${url.substring(0, 120)}`);
+    } catch (e) {
+      console.error(`Stock endpoint error: ${url.substring(0, 120)}`, e);
     }
-
-    const xml = await resp.text();
-    await logApi(client, syncRunId, "FETCH_STOCK", "success", url, undefined, Date.now() - start, xml.substring(0, 500));
-    await processStockXml(client, xml, storeId, syncRunId, stats);
-
-  } catch (e) {
-    console.error("syncStock error:", e);
-    await logApi(client, syncRunId, "FETCH_STOCK", "error", url, e instanceof Error ? e.message : "Unknown", Date.now() - start);
   }
-}
+  if (!text) {
+    await logApi(client, syncRunId, "FETCH_STOCK", "error", urls[0].substring(0, 200), "All stock endpoints returned errors", Date.now() - start);
+    console.error(`Stock: all endpoints failed for store ${storeId}`);
+    return;
+  }
 
-async function processStockXml(client: any, xml: string, storeId: string, syncRunId: string | null, stats: any) {
-    const stockItems = parseStockBalanceXml(xml);
-
-    const syrveProductIds = stockItems.map((s: any) => s.product_id).filter(Boolean);
-    if (syrveProductIds.length === 0) {
-      console.log(`Stock: no items returned for store ${storeId}`);
-      return;
+  try {
+    // Response is JSON: [{ "store": "uuid", "product": "uuid", "amount": number, "sum": number }]
+    let stockItems: { product_id: string; amount: number; sum: number }[] = [];
+    try {
+      const parsed = JSON.parse(text);
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of arr) {
+        const productId = item.product || item.productId;
+        const amount = parseFloat(item.amount || "0");
+        const sum = parseFloat(item.sum || "0");
+        if (productId) stockItems.push({ product_id: productId, amount, sum });
+      }
+    } catch {
+      stockItems = parseStockXmlFallback(text);
     }
 
+    console.log(`Stock: fetched ${stockItems.length} items for store ${storeId}`);
+    if (stockItems.length === 0) return;
+
+    const syrveProductIds = stockItems.map(s => s.product_id).filter(Boolean);
     const productLookup = new Map<string, { id: string; main_unit_id: string | null }>();
     for (let i = 0; i < syrveProductIds.length; i += 200) {
       const batch = syrveProductIds.slice(i, i + 200);
@@ -842,45 +847,43 @@ async function processStockXml(client: any, xml: string, storeId: string, syncRu
     const { data: storeRow } = await client.from("stores").select("id").eq("syrve_store_id", storeId).maybeSingle();
     const internalStoreId = storeRow?.id;
     let unmatchedProducts = 0;
-
     const BATCH_SIZE = 50;
     const stockBatch: any[] = [];
+    // Resolve syrve unit IDs to internal UUIDs
+    const { data: allUnits } = await client.from("measurement_units").select("id, syrve_unit_id");
+    const unitLookup = new Map((allUnits || []).map((u: any) => [u.syrve_unit_id, u.id]));
     for (const item of stockItems) {
       const prod = productLookup.get(item.product_id);
-      if (!prod) {
-        unmatchedProducts++;
-        continue;
-      }
-
+      if (!prod) { unmatchedProducts++; continue; }
       if (internalStoreId) {
         stockBatch.push({
-          product_id: prod.id,
-          store_id: internalStoreId,
-          quantity: item.amount,
-          unit_id: prod.main_unit_id || null,
-          source: 'syrve',
-          sync_run_id: syncRunId,
-          last_synced_at: new Date().toISOString(),
+          product_id: prod.id, store_id: internalStoreId, quantity: item.amount,
+          unit_cost: item.sum && item.amount ? item.sum / item.amount : null,
+          unit_id: prod.main_unit_id || null, source: 'syrve',
+          sync_run_id: syncRunId, last_synced_at: new Date().toISOString(),
         });
       }
-
       stats.stock_updated++;
     }
 
-    // Batch upsert stock_levels
     for (let i = 0; i < stockBatch.length; i += BATCH_SIZE) {
-      await client.from("stock_levels").upsert(
+      const { error } = await client.from("stock_levels").upsert(
         stockBatch.slice(i, i + BATCH_SIZE),
         { onConflict: "product_id,store_id" }
       );
+      if (error) console.error("Stock upsert error:", error.message);
     }
 
-    console.log(`Stock: parsed ${stockItems.length} items, matched ${stats.stock_updated} for store ${storeId}${unmatchedProducts > 0 ? `, ${unmatchedProducts} unmatched` : ''}`);
+    console.log(`Stock: matched ${stats.stock_updated}, unmatched ${unmatchedProducts} for store ${storeId}`);
+  } catch (e) {
+    console.error("syncStock error:", e);
+    await logApi(client, syncRunId, "FETCH_STOCK", "error", "balance/stores", e instanceof Error ? e.message : "Unknown", Date.now() - start);
+  }
 }
 
-function parseStockBalanceXml(xml: string): { product_id: string; amount: number }[] {
-  const items: { product_id: string; amount: number }[] = [];
-  const itemRegex = /<(?:item|remainItem|record)>([\s\S]*?)<\/(?:item|remainItem|record)>/g;
+function parseStockXmlFallback(xml: string): { product_id: string; amount: number; sum: number }[] {
+  const items: { product_id: string; amount: number; sum: number }[] = [];
+  const itemRegex = /<(?:item|remainItem|record|productStockInStoreDto)>([\s\S]*?)<\/(?:item|remainItem|record|productStockInStoreDto)>/g;
   let match;
   while ((match = itemRegex.exec(xml)) !== null) {
     const content = match[1];
@@ -890,8 +893,9 @@ function parseStockBalanceXml(xml: string): { product_id: string; amount: number
     };
     const productId = getField("product") || getField("productId") || getField("id");
     const amount = parseFloat(getField("amount") || getField("endStore") || getField("balance") || "0");
+    const sum = parseFloat(getField("sum") || "0");
     if (productId) {
-      items.push({ product_id: productId, amount });
+      items.push({ product_id: productId, amount, sum });
     }
   }
   return items;
